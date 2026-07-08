@@ -17,6 +17,14 @@ interface CommandDef {
  * サブコマンドレジストリ。起動オーバーヘッド削減のためコマンド本体は遅延 import。
  */
 const commands: Record<string, CommandDef> = {
+  init: {
+    summary: "Initialize ~/.kura (extensions, DB, config)",
+    load: () => import("./commands/init"),
+  },
+  doctor: {
+    summary: "Diagnose installation and environment",
+    load: () => import("./commands/doctor"),
+  },
   config: {
     summary: "Read and write ~/.kura/config.toml",
     load: () => import("./commands/config"),

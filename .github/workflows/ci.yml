@@ -17,3 +17,6 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun test
+        env:
+          # vaporetto の実ダウンロード + ロード統合テストを有効化（linux-x64）
+          KURA_TEST_DOWNLOAD: "1"
