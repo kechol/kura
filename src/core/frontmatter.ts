@@ -64,9 +64,7 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
   // 手書き frontmatter で全数字キーが非クォートの場合も救済する
   const rawKey = obj.kura_key;
   const kuraKey =
-    typeof rawKey === "number" && Number.isSafeInteger(rawKey)
-      ? String(rawKey)
-      : asString(rawKey);
+    typeof rawKey === "number" && Number.isSafeInteger(rawKey) ? String(rawKey) : asString(rawKey);
   const fm: Frontmatter = {
     kura_key: kuraKey,
     title: asString(obj.title),
