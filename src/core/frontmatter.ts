@@ -61,8 +61,14 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
   }
   const obj = parsed as Record<string, unknown>;
   const contentType = asString(obj.content_type);
+  // 手書き frontmatter で全数字キーが非クォートの場合も救済する
+  const rawKey = obj.kura_key;
+  const kuraKey =
+    typeof rawKey === "number" && Number.isSafeInteger(rawKey)
+      ? String(rawKey)
+      : asString(rawKey);
   const fm: Frontmatter = {
-    kura_key: asString(obj.kura_key),
+    kura_key: kuraKey,
     title: asString(obj.title),
     bucket: asString(obj.bucket),
     tags: asTags(obj.tags),
@@ -91,7 +97,8 @@ export function serializeFrontmatter(fm: {
   updated_at: string;
 }): string {
   const lines = ["---"];
-  lines.push(`kura_key: ${fm.kura_key}`);
+  // doc_key は全数字になり得るため必ずクォートする（YAML の数値化を防ぐ）
+  lines.push(`kura_key: ${yamlScalar(fm.kura_key)}`);
   lines.push(`title: ${yamlScalar(fm.title)}`);
   lines.push(`bucket: ${yamlScalar(fm.bucket)}`);
   if (fm.tags.length > 0) {

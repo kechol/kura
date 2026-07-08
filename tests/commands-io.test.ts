@@ -85,7 +85,7 @@ describe("kura export / import / bucket (e2e)", () => {
     const walPath = join(exportDir, "main", "SQLite の WAL モード.md");
     expect(existsSync(walPath)).toBe(true);
     const wal = readFileSync(walPath, "utf-8");
-    expect(wal).toMatch(/kura_key: [0-9a-f]{8}\n/);
+    expect(wal).toMatch(/kura_key: "[0-9a-f]{8}"\n/);
     expect(wal).toContain('title: "SQLite の WAL モード"');
     expect(wal).toContain("bucket:");
     expect(wal).toContain("技術/データベース");
@@ -112,11 +112,14 @@ describe("kura export / import / bucket (e2e)", () => {
 
   test("import: 別 KURA_HOME への取り込みと kura_key ラウンドトリップ", async () => {
     const first = await runCli(["import", exportDir], envB);
+    // skip が起きた場合は stderr に理由が出る（失敗時の診断用に先に検証）
+    expect(first.stderr).toBe("");
     expect(first.code).toBe(0);
     expect(first.stdout).toContain("imported: 3 created, 0 updated, 0 skipped");
 
     // 同じ export を再 import すると kura_key 一致で全件 updated になる
     const second = await runCli(["import", exportDir], envB);
+    expect(second.stderr).toBe("");
     expect(second.code).toBe(0);
     expect(second.stdout).toContain("imported: 0 created, 3 updated, 0 skipped");
 

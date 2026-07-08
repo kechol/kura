@@ -229,6 +229,24 @@ describe("listDocuments", () => {
 });
 
 describe("import / export round-trip", () => {
+  test("全数字・指数表記風の doc_key もラウンドトリップする（YAML 数値化の回帰）", () => {
+    for (const key of ["16052989", "12e45678", "0012ab34"]) {
+      const fmText = serializeFrontmatter({
+        kura_key: key,
+        title: "数字キー",
+        bucket: "main",
+        tags: [],
+        created_at: "2026-07-07 10:00:00",
+        updated_at: "2026-07-07 10:00:00",
+      });
+      const { fm } = parseFrontmatter(`${fmText}\n本文`);
+      expect(fm?.kura_key).toBe(key);
+    }
+    // 手書きの非クォート全数字キーも文字列として救済される
+    const hand = parseFrontmatter("---\nkura_key: 16052989\ntitle: t\n---\n本文");
+    expect(hand.fm?.kura_key).toBe("16052989");
+  });
+
   test("kura_key ありは更新、なしは新規", () => {
     const doc = createDocument(db, {
       title: "元タイトル",
