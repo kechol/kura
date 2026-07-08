@@ -150,7 +150,9 @@ The FTS5 tokenizer is decided **once per database** and persisted in the
 
 1. `setupSqlite()` (macOS Homebrew override, before any `Database`).
 2. `new Database(path)`; `PRAGMA journal_mode=WAL`, `foreign_keys=ON`,
-   `busy_timeout=5000`.
+   `busy_timeout=15000` (wait out transient WAL write-lock contention —
+   concurrent writers or a slow/loaded filesystem — instead of erroring
+   with "database is locked").
 3. **sqlite-vec — required.** On failure the connection is closed and an
    error is thrown with a platform-appropriate hint (macOS:
    `brew install sqlite`; elsewhere: `kura doctor`). Nothing downstream can

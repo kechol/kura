@@ -106,7 +106,11 @@ export function openDatabase(opts: OpenOptions = {}): OpenResult {
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
-  db.exec("PRAGMA busy_timeout = 5000");
+  // Wait, don't immediately error, when another connection holds the write
+  // lock (e.g. the MCP server running alongside a CLI write, or rapid
+  // successive commands). 15s absorbs transient WAL contention on slow /
+  // loaded filesystems where 5s occasionally surfaced "database is locked".
+  db.exec("PRAGMA busy_timeout = 15000");
 
   const warnings: string[] = [];
 
