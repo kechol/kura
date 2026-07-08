@@ -155,6 +155,32 @@ markdown-it (html: true, linkify)
    highlight.js token colors are custom properties too, so both themes share
    one stylesheet.
 
+### Brand color
+
+kura's accent is **Hanada (縹 / Japan Blue)** — an indigo drawn from the
+world of the Edo-period white-plastered storehouse (蔵) the name evokes. It
+deepens to a saturated blue on the light "plaster" ground and lightens on the
+dark "sumi (墨)" ground so it stays legible on both.
+
+| Token | Light (`#`) | Dark (`#`) | Role |
+|---|---|---|---|
+| accent | `#275c86` | `#64abda` | primary accent — buttons, links, active nav, the wordmark |
+| accent-text | `#ffffff` | `#10131a` | text/foreground placed **on** the accent |
+
+The same brand hue is applied across every kura surface, each defining it in
+its own token vocabulary:
+
+| Surface | File | Light accent | Dark accent |
+|---|---|---|---|
+| Browser UI | `src/client/styles.css` (`--accent` / `--accent-text`) | `#275c86` | `#64abda` |
+| Docs site | `docs/src/styles/custom.css` (`--sl-color-accent`; `-low` / `-high` shades) | `#275c86` (low `#d8e8f4`, high `#1d465f`) | `#64abda` (low `#123246`, high `#a8d3ec`) |
+| Favicons | `docs/public/favicon.svg` | block `#275c86`, lattice `#cfe6f5` | — |
+| Marp deck | `docs/marp/kura-v0.1.ja.md` | `#275c86` (headings, accents) | — |
+
+When retheming, change the accent in each surface's own token block — there is
+no shared source file across surfaces, so the four files above are the canonical
+list to keep in sync.
+
 ## Knowledge graph implementation
 
 `pages/Graph.tsx` uses **only `d3-force`** (no d3-selection/zoom/drag —

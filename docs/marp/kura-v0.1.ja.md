@@ -14,19 +14,19 @@ style: |
     justify-content: center;
   }
   h1 {
-    color: #4f46e5;
+    color: #275c86;
   }
   h2 {
-    color: #4f46e5;
-    border-bottom: 2px solid #4f46e5;
+    color: #275c86;
+    border-bottom: 2px solid #275c86;
     padding-bottom: 8px;
   }
   strong {
-    color: #4f46e5;
+    color: #275c86;
   }
   code {
-    background: #eef2ff;
-    color: #4338ca;
+    background: #e8f1f8;
+    color: #1d465f;
     padding: 2px 6px;
     border-radius: 4px;
   }
@@ -49,7 +49,7 @@ style: |
     font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
     font-size: 1.6em;
     font-weight: bold;
-    color: #4f46e5;
+    color: #275c86;
     text-align: center;
     padding: 32px 24px;
     margin: 24px 0;
@@ -86,11 +86,11 @@ style: |
     vertical-align: top;
   }
   th {
-    background: #4f46e5;
+    background: #275c86;
     color: white;
   }
   tbody tr:nth-child(even) {
-    background: #eef2ff;
+    background: #e8f1f8;
   }
   td code {
     font-size: 0.92em;
@@ -107,9 +107,9 @@ style: |
   .flow-step {
     padding: 10px 16px;
     border-radius: 8px;
-    background: #eef2ff;
-    color: #3730a3;
-    border: 1px solid #c7d2fe;
+    background: #e8f1f8;
+    color: #1d465f;
+    border: 1px solid #b9d5e8;
     text-align: center;
     font-weight: 600;
     font-size: 0.9em;
@@ -140,9 +140,9 @@ style: |
     font-size: 0.82em;
     text-align: center;
   }
-  .pipe-kw   { background: #0ea5e9; }
-  .pipe-vec  { background: #4f46e5; }
-  .pipe-rank { background: #7c3aed; }
+  .pipe-kw   { background: #5fa9d6; }
+  .pipe-vec  { background: #275c86; }
+  .pipe-rank { background: #163a52; }
   .pipe-desc {
     font-size: 0.85em;
     color: #334155;
@@ -155,7 +155,7 @@ style: |
   }
   .arch-layer {
     background: #f8fafc;
-    border-left: 4px solid #4f46e5;
+    border-left: 4px solid #275c86;
     border-radius: 6px;
     padding: 10px 16px;
     font-size: 0.88em;
@@ -163,7 +163,7 @@ style: |
   }
   .arch-layer-title {
     font-weight: bold;
-    color: #4f46e5;
+    color: #275c86;
   }
   .arch-layer-detail {
     color: #475569;

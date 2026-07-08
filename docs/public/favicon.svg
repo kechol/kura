@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="7" fill="#4f46e5"/>
-  <!-- stacked store layers: a storehouse (蔵) of knowledge -->
-  <g fill="none" stroke="#e0e7ff" stroke-width="2.2" stroke-linejoin="round">
+  <rect width="32" height="32" rx="7" fill="#275c86"/>
+  <!-- stacked store layers: a storehouse (蔵) of knowledge. Hanada / Japan Blue -->
+  <g fill="none" stroke="#cfe6f5" stroke-width="2.2" stroke-linejoin="round">
     <path d="M6 11 L16 6 L26 11 L16 16 Z"/>
     <path d="M6 16 L16 21 L26 16"/>
     <path d="M6 21 L16 26 L26 21"/>

@@ -33,24 +33,25 @@
 }
 
 /* ----------------------------------------------------------------
- * Accent palette — indigo
+ * Accent palette — Hanada (縹 / Japan Blue): #275c86 on plaster,
+ * lightened to #64abda on the dark (墨) ground. See docs: browser-ui.md.
  * ---------------------------------------------------------------- */
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #e0e7ff;
-  --sl-color-accent: #4f46e5;
-  --sl-color-accent-high: #3730a3;
-  --kura-shadow-soft: 0 1px 2px hsl(245 40% 15% / 5%), 0 4px 16px hsl(245 40% 15% / 7%);
-  --kura-shadow-lift: 0 2px 4px hsl(245 40% 15% / 7%), 0 8px 24px hsl(245 40% 15% / 11%);
+  --sl-color-accent-low: #d8e8f4;
+  --sl-color-accent: #275c86;
+  --sl-color-accent-high: #1d465f;
+  --kura-shadow-soft: 0 1px 2px hsl(206 45% 16% / 5%), 0 4px 16px hsl(206 45% 16% / 7%);
+  --kura-shadow-lift: 0 2px 4px hsl(206 45% 16% / 7%), 0 8px 24px hsl(206 45% 16% / 11%);
 
-  /* Soft near-black for headings — pure #000 is too heavy under bold weights. */
-  --kura-text-strong: #1e1b2e;
+  /* Soft near-black (blue-biased) for headings — pure #000 is too heavy. */
+  --kura-text-strong: #16232e;
 }
 
 :root[data-theme='dark'] {
-  --sl-color-accent-low: #1e1b4b;
-  --sl-color-accent: #a5b4fc;
-  --sl-color-accent-high: #c7d2fe;
+  --sl-color-accent-low: #123246;
+  --sl-color-accent: #64abda;
+  --sl-color-accent-high: #a8d3ec;
   --kura-shadow-soft: 0 1px 2px hsl(0 0% 0% / 30%), 0 4px 16px hsl(0 0% 0% / 25%);
   --kura-shadow-lift: 0 2px 4px hsl(0 0% 0% / 35%), 0 8px 24px hsl(0 0% 0% / 35%);
 

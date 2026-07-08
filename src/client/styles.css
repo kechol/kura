@@ -8,7 +8,7 @@
   --text: #21252b;
   --text-muted: #6b7280;
   --border: #e0e0dc;
-  --accent: #2563eb;
+  --accent: #275c86; /* Hanada / Japan Blue — brand accent (docs: browser-ui.md) */
   --accent-text: #ffffff;
   --danger: #dc2626;
   --warning-bg: #fef3c7;
@@ -33,7 +33,7 @@
   --text: #e3e6ea;
   --text-muted: #9aa2ad;
   --border: #33383f;
-  --accent: #5b93ff;
+  --accent: #64abda; /* Hanada / Japan Blue, lightened for the dark ground */
   --accent-text: #10131a;
   --danger: #f87171;
   --warning-bg: #3d3110;
@@ -60,7 +60,7 @@
     --text: #e3e6ea;
     --text-muted: #9aa2ad;
     --border: #33383f;
-    --accent: #5b93ff;
+    --accent: #64abda; /* Hanada / Japan Blue, lightened for the dark ground */
     --accent-text: #10131a;
     --danger: #f87171;
     --warning-bg: #3d3110;
