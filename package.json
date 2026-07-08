@@ -8,7 +8,7 @@
     "dev": "bun run src/cli/index.ts",
     "build:client": "bun run scripts/build-html.ts",
     "build": "bun run build:client",
-    "compile": "bun run build && bun build src/cli/index.ts --compile --outfile=kura",
+    "compile": "bun run scripts/compile.ts",
     "test": "bun test",
     "check": "bunx tsc --noEmit && bunx @biomejs/biome check src"
   },

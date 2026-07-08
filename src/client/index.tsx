@@ -1,0 +1,45 @@
+import { render } from "preact";
+import { Route, Switch } from "wouter-preact";
+import "./styles.css";
+import { Layout } from "./components/Layout";
+import { DocByTitle } from "./pages/DocByTitle";
+import { DocDetail } from "./pages/DocDetail";
+import { DocEdit } from "./pages/DocEdit";
+import { DocList } from "./pages/DocList";
+import { GraphPage } from "./pages/Graph";
+import { Home } from "./pages/Home";
+import { SearchPage } from "./pages/Search";
+import { TagsPage } from "./pages/Tags";
+import { initTheme } from "./theme";
+
+initTheme();
+
+function NotFound() {
+  return (
+    <div class="page">
+      <h1>404</h1>
+      <p>ページが見つかりません。</p>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Layout>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/docs" component={DocList} />
+        <Route path="/docs/title/:title">{(params) => <DocByTitle title={params.title} />}</Route>
+        <Route path="/docs/:key/edit">{(params) => <DocEdit docKey={params.key} />}</Route>
+        <Route path="/docs/:key">{(params) => <DocDetail docKey={params.key} />}</Route>
+        <Route path="/search" component={SearchPage} />
+        <Route path="/tags" component={TagsPage} />
+        <Route path="/graph" component={GraphPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
+  );
+}
+
+const mount = document.getElementById("app");
+if (mount) render(<App />, mount);
