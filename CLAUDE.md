@@ -4,7 +4,11 @@ kura is a local knowledge management CLI that stores Markdown/HTML documents in
 SQLite and serves both humans (CLI, browser UI) and AI agents (MCP server,
 `--json` output). Japanese-aware hybrid search is the core feature: FTS5 with
 the sqlite-vaporetto morphological tokenizer, sqlite-vec KNN with local
-embeddings, and local-LLM reranking. See `SPEC.md` for the full design.
+embeddings, and local-LLM reranking.
+
+Detailed documentation lives in **`.claude/docs/`** (start at its
+[README](.claude/docs/README.md)); `SPEC.md` is the original design baseline
+and an index into those documents.
 
 ## Commands
 
@@ -43,6 +47,21 @@ Degraded operation is a hard requirement: every LLM-dependent feature must
 work (with a warning) when no provider is reachable, and FTS falls back to the
 trigram tokenizer when vaporetto is unavailable. Tests for LLM features use a
 mock `LLMProvider` (`setProviderForTests`), never a live server.
+
+## Documentation
+
+Topic docs live in `.claude/docs/` — one document per subsystem, indexed in
+`.claude/docs/README.md`. Rules that keep them useful:
+
+- **Docs change with the code.** A change to user-facing behavior, schema,
+  protocols, CLI surface, or invariants updates the matching document in the
+  same commit. Code comments may cite `SPEC §N`; the mapping from § to
+  document is the table in `SPEC.md`.
+- New subsystems get a new document plus an index row in
+  `.claude/docs/README.md` (and a line in `SPEC.md`'s mapping table).
+- The source code is the source of truth. Where implementation deviates from
+  the SPEC baseline, the doc records it under "Deviations from SPEC" — don't
+  silently rewrite the baseline.
 
 ## Language conventions
 
@@ -84,9 +103,12 @@ PR, issue comment, and CHANGELOG line is public** the moment it lands on
   download from GitHub Releases during `kura init` / `kura doctor --fix`,
   (2) build-time prebuilt fetches from the npm registry
   (`scripts/fetch-vendor.ts`), (3) localhost LLM providers
-  (Ollama / LM Studio), and (4) the user-initiated `kura clip <url>`
-  fetch. Don't add HTTP clients beyond these, version-check pings,
-  or analytics. Anything new on this list is a design discussion.
+  (Ollama / LM Studio), (4) the user-initiated `kura clip <url>`
+  fetch, and (5) the browser UI's lazy mermaid load from
+  cdn.jsdelivr.net (browser-side, only when a document contains a
+  mermaid block; fails soft offline). Don't add HTTP clients beyond
+  these, version-check pings, or analytics. Anything new on this
+  list is a design discussion.
 - **Attribution.** When borrowing an algorithm or pattern from a
   paper / blog post / other OSS project, cite it in code comments
   and / or `CHANGELOG.md`. Don't paste code from incompatible

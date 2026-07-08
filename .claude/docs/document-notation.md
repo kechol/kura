@@ -1,0 +1,154 @@
+# Document Notation
+
+> Covers SPEC §4. Key sources: `src/core/wiki.ts`, `src/core/frontmatter.ts`, `src/core/links.ts`, `src/core/documents.ts`, `tests/wiki.test.ts`
+
+Document bodies are Markdown (GFM); raw HTML is stored with
+`content_type = 'html'`. On every save the repository extracts wiki links
+and hashtags from the body and syncs them into `links` / `document_tags`
+(see [architecture.md](architecture.md) for the transaction, and
+[data-model.md](data-model.md) for the tables).
+
+## Wiki links
+
+Syntax: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (`LINK_RE` in
+`src/core/wiki.ts`).
+
+- The title part may not contain `[`, `]`, `|`, or a newline. The first `|`
+  splits title from display; later `|` characters stay in the display text
+  (`[[A|B|C]]` → title `A`, display `B|C`).
+- Title and display are **trimmed**; an empty title (`[[]]`, `[[ | x]]`) is
+  ignored; an empty display (`[[メモ|]]`) is treated as no display (`null`).
+- Unclosed `[[` is plain text; with nested-looking input (`[[外側[[内側]]]]`)
+  only the innermost bracket pair becomes a link.
+- Extraction **deduplicates by lowercased title**, keeping the first
+  occurrence in document order (`[[SQLite]] と [[sqlite]]` yields one link).
+- **Resolution is case-insensitive and scoped to the document's bucket**
+  (`syncLinks` in `src/core/links.ts`): `[[bun runtime]]` resolves to a
+  same-bucket document titled `Bun Runtime`, never to another bucket.
+  Self-references stay unresolved. Unresolved links keep the raw
+  `target_title` with `target_id = NULL`.
+
+### Code is never notation
+
+Both extraction and rename rewriting ignore code (`visibleLines` /
+`maskInlineCode` in `src/core/wiki.ts`):
+
+- **Fenced blocks** — a line-by-line state machine. A fence opens with up to
+  3 spaces of indent plus 3+ backticks or tildes (`FENCE_OPEN_RE`); a
+  backtick fence whose info string contains a backtick is not a fence
+  (CommonMark). It closes on a run of the same character at least as long as
+  the opener (`FENCE_CLOSE_RE`) — a 5-backtick run closes a 3-backtick
+  opener. An unclosed fence swallows everything to EOF. Info strings on the
+  opening line are not scanned (a fence opened as ```` ```js #not-a-tag ````
+  produces no tag).
+- **Inline code** — backtick spans are masked before regex matching. A span
+  is a pair of **equal-length** backtick runs (CommonMark), so
+  `` `#tag` `` and ``` ``code ` #inner`` ``` are ignored; unpaired backticks
+  stay live. The mask replaces the whole span (including delimiters) with
+  backtick characters, which is **length-preserving** — match indexes found
+  on the masked line apply directly to the original line. Extraction only
+  needs the masked text; rename rewriting depends on the preserved offsets.
+
+## Hashtags
+
+Syntax: `#tech/db/sqlite`-style tags anywhere in visible body text (`TAG_RE`
+in `src/core/wiki.ts`), merged into `document_tags` with `source='manual'`.
+
+- **Character class is Unicode-aware**: each path segment is
+  `[\p{L}\p{N}_-]+`, segments joined by `/`. Japanese tags work:
+  `#技術/データベース`.
+- **Preceding character**: `#` counts as a tag only after line start,
+  whitespace, or an opening bracket — including CJK brackets
+  `（「『【〔〈《` — via lookbehind. This excludes URL fragments
+  (`…/index.html#section`), mid-word hashes (`issue#123`), and `]]#直後`.
+- **Headings vs tags**: `# 見出し` (hash + space) never matches because a
+  space cannot start the tag character class; `#見出しではなくタグ` at line
+  start **is** a tag. A trailing `/` is not part of the tag (`#tech/` →
+  `tech`).
+- **Normalization** (`normalizeTagPath`): lowercase, trim each segment
+  (Unicode whitespace included), drop empty segments (collapses `//`, strips
+  leading/trailing `/`). Extraction dedupes on the normalized form, keeping
+  first-occurrence order. The same normalizer runs on every other tag input
+  path (frontmatter, `--tags`, `kura tag add`), so `tags.path` is always in
+  normal form.
+
+## Unresolved links and rename rewriting
+
+- **Write links first, connect later** (SPEC §10.1): saving `[[未来のページ]]`
+  before that page exists stores an unresolved row. When a document with a
+  matching title (case-insensitive, same bucket) is later **created or
+  renamed**, `resolveUnresolvedLinks` (`src/core/links.ts`) rewires those
+  rows inside the same save transaction. `kura doctor --fix` bulk-resolves
+  the remainder (`resolveAllUnresolvedLinks` in `src/core/doctor.ts`).
+- **Rename** (`kura mv` → `updateDocument` with a new title): every
+  same-bucket referrer with a resolved link to the document gets its body
+  rewritten by `replaceWikiLinkTarget` (`src/core/wiki.ts`), and the
+  document's own self-links are rewritten too. Only the **title part** of
+  `[[旧タイトル]]` / `[[旧タイトル|表示名]]` is replaced (display text is
+  preserved); matching is trim + case-insensitive. Code is protected: fenced
+  blocks pass through untouched, and inline code is skipped via the
+  length-preserving mask — the rewriter finds `LINK_RE` matches on the
+  masked line, then splices `newTitle` into the *original* line at the same
+  offsets. Referrer bodies are saved through `updateDocument`, so their
+  derived data re-syncs; `UpdateResult.relinked` reports how many referrers
+  changed.
+
+## Frontmatter
+
+Used for import/export round-trips (`kura export` / `kura import`), parsed
+and serialized by `src/core/frontmatter.ts`. The block must start at the
+first byte (`---` … `---` or `...`); files without one import as body-only.
+
+| Field | Type | On import (omitted ⇒) |
+| --- | --- | --- |
+| `kura_key` | string, 8-hex | Present + known ⇒ **update** that document; unknown/absent ⇒ create (unknown-but-taken keys are regenerated — see [data-model.md](data-model.md)) |
+| `title` | string | Falls back to the file name (`fallbackTitle`) |
+| `bucket` | string | `--bucket` flag wins over frontmatter; otherwise config `default_bucket`. Missing buckets are auto-created |
+| `tags` | string array or comma-separated string | No tags. Each entry is normalized (`normalizeTagPath`) and deduped |
+| `source_url` | string | Kept from the existing document on update; `null` on create |
+| `content_type` | `'markdown'` \| `'html'` (anything else ignored) | `'markdown'` |
+| `created_at` / `updated_at` | ISO 8601 (anything `Date`-parsable) | `datetime('now')` at save; converted to SQLite format via `toSqliteDatetime`, unparsable values ignored |
+
+- **`kura_key` round-trip**: `serializeFrontmatter` always JSON-quotes the
+  key because an unquoted all-digit key (`16052989`) or exponent-like key
+  (`12e45678`) would be coerced to a YAML number and break the round-trip.
+  The parser additionally rescues hand-written unquoted integer keys
+  (`kura_key: 16052989`) by converting safe integers back to strings.
+  Regression tests: `tests/documents.test.ts`.
+- Export (`src/cli/commands/export.ts`) writes
+  `<dir>/<bucket>/<sanitized title>.md`, quoting all string scalars, emitting
+  `tags` only when non-empty, `content_type` only when not `markdown`, and
+  timestamps as ISO 8601 (`toIsoDatetime`).
+
+## `content_type: 'html'` special cases
+
+HTML documents are stored verbatim and mostly opt out of notation handling
+(`src/core/documents.ts`):
+
+- **Wiki extraction is skipped** — no links or hashtags are read from an
+  HTML body (`syncDerived` substitutes an empty extraction). Tags can still
+  be attached via frontmatter, `--tags`, or `kura tag add`.
+- **Rename rewriting is skipped** for HTML bodies, both as a referrer and
+  for self-links.
+- Everything else still applies: HTML content is FTS-indexed and chunked for
+  embeddings as plain text, and the browser UI sanitizes it with DOMPurify
+  before rendering (`src/client/components/DocContent.tsx`).
+- Export emits `content_type: html` so the round-trip preserves the type.
+
+## Deviations from SPEC
+
+- **Code-block exclusion**: SPEC §4 does not mention it; the implementation
+  excludes fenced blocks and inline code from link/tag extraction and from
+  rename rewriting (a deliberate hardening — `[[x]]` and `#x` inside code
+  samples are almost never intended as notation).
+- **Hashtag grammar**: SPEC only gives an example (`#tech/db/sqlite`); the
+  Unicode character class, preceding-character rule, and heading distinction
+  are implementation-defined (locked in by `tests/wiki.test.ts`).
+- **`content_type` frontmatter field**: not in SPEC §4's field list; added
+  so HTML documents survive the export/import round-trip.
+- **HTML opt-outs**: SPEC doesn't define how `content_type='html'` interacts
+  with wiki syntax; skipping extraction and rename rewriting for HTML is
+  implementation-defined.
+- **Edge-case semantics** (empty display ⇒ `null`, innermost-bracket wins,
+  lowercase-dedupe keeping first occurrence) are defined by the
+  implementation and property tests, not by SPEC.

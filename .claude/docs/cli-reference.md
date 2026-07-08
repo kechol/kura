@@ -1,0 +1,587 @@
+# CLI reference
+
+> Covers SPEC §7. Key sources: `src/cli/index.ts`, `src/cli/args.ts`,
+> `src/cli/render.ts`, `src/cli/searchOutput.ts`, `src/cli/commands/*.ts`,
+> `src/core/errors.ts`, `src/core/documents.ts` (`resolveDoc`).
+
+Every command lives in its own file under `src/cli/commands/` and is
+registered in `src/cli/index.ts` with a lazy `import()` (startup-cost
+control). A command module exports `summary`, `usage`, and
+`run(argv) → exit code`. `kura --help` / `kura help` / no arguments print the
+command list; `kura --version` / `-v` / `version` print the version from
+`package.json` (`src/core/paths.ts`). `kura <cmd> --help` prints the module's
+`usage` string and exits 0. Unknown commands exit 2.
+
+## Global conventions
+
+### Argument parsing
+
+`parseCommandArgs` (`src/cli/args.ts`) wraps Node's `util.parseArgs` in
+strict mode and merges `--json` and `--help`/`-h` into **every** command's
+option set. Unknown options or malformed values become `UsageError` (exit 2,
+usage printed to stderr). Helpers: `strOpt`, `boolOpt`, `intOpt` (throws
+`UsageError` on non-integers), `listOpt` (comma-separated, trimmed,
+empties dropped).
+
+### Document specifier `<doc>`
+
+Resolved by `resolveDoc` in `src/core/documents.ts`, in this order:
+
+1. `#a1b2c3d4` — explicit key. Must match `/^[0-9a-f]{8}$/` (else
+   `UsageError`); missing key is `NotFoundError` (exit 3).
+2. Bare `a1b2c3d4` — if it looks like a key, tried as a key first; on a miss
+   it falls through to title lookup (so an 8-hex-char *title* still works).
+3. Title, matched case-insensitively. With `--bucket` the lookup is scoped to
+   that bucket; without it the lookup spans **all buckets** and a title that
+   exists in more than one bucket throws `ConflictError` (exit 1) listing the
+   candidates and suggesting `#key` or `--bucket`.
+
+### `--bucket` defaults
+
+There is no single global default; each command class behaves differently:
+
+| Commands | `--bucket` omitted means |
+| --- | --- |
+| `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
+| `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls` (title resolution) | all buckets, ambiguity is an error |
+| `ls`, `search`, `vsearch`, `query`, `export`, `link broken` (filters) | all buckets |
+
+### Exit codes
+
+Defined in `src/cli/args.ts` (`EXIT`) and mapped from exception types in
+`src/cli/index.ts::main`. Commands either return a code or throw; the
+dispatcher does the translation.
+
+| Code | Constant | Produced by | Notes |
+| --- | --- | --- | --- |
+| 0 | `OK` | normal completion | also: `rm`/`clip` confirmation answered "no" ("aborted") |
+| 1 | `ERROR` | any `Error` not listed below, incl. `ConflictError` | duplicate titles, ambiguous titles, non-empty bucket `rm`, `doctor` with failed checks, `import` where every file was skipped, non-TTY `clip` URL duplicate without `--force` |
+| 2 | `USAGE` | `UsageError` | bad flags/positionals; also prints the command's `usage` to stderr. Unknown command names too |
+| 3 | `NOT_FOUND` | `NotFoundError` | missing document / bucket / config key |
+| 4 | `NO_LLM` | `LLMUnavailableError` | thrown by `requireProvider` (`src/core/llm/provider.ts`); dispatcher appends a "Run 'kura doctor'" hint |
+
+Exception classes live in `src/core/errors.ts` and are re-exported through
+`src/cli/args.ts`. Only `vsearch`, `embed`, and `tag suggest` call
+`requireProvider` and can exit 4; `query`, `clip`, and `tag audit` use
+`resolveProvider` and degrade with warnings instead (SPEC §5.1 degraded
+mode).
+
+### `--json`
+
+Accepted by every command (parser-level), but only read commands and the
+bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
+`export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `search`,
+`vsearch`, `query`. Write commands like `rm`, `mv`, `edit` silently ignore
+it. JSON goes to stdout; warnings and progress always go to stderr, so
+`--json` output stays parseable when piped.
+
+### TTY and ANSI rendering
+
+`src/cli/render.ts` implements the in-house Markdown → ANSI renderer
+(headings, emphasis, inline/fenced code, lists, quotes, rules, wiki links,
+tables pass through; wraps at width 80 counting East-Asian fullwidth
+characters as width 2). Rules:
+
+- `isColorEnabled()`: color only when the stream is a TTY **and** `NO_COLOR`
+  is unset or empty. `NO_COLOR` disables ANSI escapes, not the layout.
+- `kura get` renders pretty output when stdout is a TTY (or `--pretty` is
+  forced) and emits the raw body when piped (or `--raw`).
+- Search results, `ls`, `status`, etc. print plain line-oriented text
+  regardless of TTY; only `get` uses the renderer.
+- Interactive confirmations (`rm`, `clip`, `tag suggest/audit --apply`)
+  require both stdin and stdout to be TTYs; see the individual commands for
+  their non-TTY behavior.
+
+---
+
+## Setup and diagnostics
+
+### `kura init`
+
+```
+kura init [--no-download]
+```
+
+Idempotent bootstrap (`src/cli/commands/init.ts`): creates `KURA_HOME` and
+`lib/<version>/`, writes a default `config.toml` if absent ("exists, kept"
+otherwise), downloads/extracts sqlite-vaporetto when the platform is
+supported (`src/core/bootstrap.ts`; SHA256-pinned), opens/creates the DB
+(which picks the FTS tokenizer and runs migrations, `src/core/db.ts`), then
+prints `ollama pull` lines for the three configured models plus a
+`kura doctor` pointer. `--no-download` skips the vaporetto fetch and the DB
+is created with the trigram tokenizer — the standard way tests build an
+isolated home. A failed download is a **warning**, not an error: FTS falls
+back to trigram and `init` still exits 0.
+
+### `kura doctor`
+
+```
+kura doctor [--fix]
+```
+
+`src/cli/commands/doctor.ts` prints one `✓ / ⚠ / ✗` line per check and a
+summary; exits 1 only when at least one check **failed** (warnings don't
+affect the exit code). Checks: platform/Bun/KURA_HOME, Homebrew SQLite
+(macOS only, fail when missing), config parse, sqlite-vec load
+(`vec_version()` probe), vaporetto load + a live Japanese tokenization probe,
+database (`PRAGMA quick_check`, schema version, doc count,
+documents/FTS row-count sync, tokenizer-vs-availability mismatch, meta
+`embedding_model` vs config), Ollama reachability + required models
+(suggests `ollama pull …`), LM Studio reachability, and the resolved
+provider (warn on `none`: degraded mode).
+
+`--fix` runs **before** the checks (`runFixes`), in this order
+(`src/core/doctor.ts`):
+
+1. download vaporetto if supported and missing,
+2. `recreateVecIfModelChanged` — meta vs config mismatch drops and recreates
+   `chunks_vec` with the new dimensions and NULLs all `embedded_at`
+   (follow up with `kura embed`),
+3. `gcOrphans` — orphaned `chunks` / `chunks_vec` rows,
+4. `fixContentHashes` — recompute mismatched hashes and re-chunk (preserves
+   `updated_at`),
+5. `rebuildFtsIfNeeded` — row-count mismatch triggers a full FTS reinsert,
+6. `resolveAllUnresolvedLinks` — bulk re-resolution (same bucket,
+   case-insensitive),
+7. `retokenizeFts` to vaporetto when the DB was built with trigram but
+   vaporetto now loads.
+
+### `kura status`
+
+```
+kura status [--json]
+```
+
+Statistics from `src/core/stats.ts` plus the top-5 stale documents from
+`src/core/stale.ts`: total documents and per-bucket counts, tag count,
+embedding coverage (`embedded/total chunks` + meta model), stale count with
+per-doc score lines, unresolved link count, DB size and active tokenizer.
+`--json` prints the stats object with a `staleTop` array added.
+
+### `kura config`
+
+```
+kura config list [--json] | get <key> | set <key> <value>
+```
+
+Dot-notation access to `~/.kura/config.toml`; the subcommand defaults to
+`list`. Unknown keys are `NotFoundError` (exit 3); `set` preserves the
+existing value's type. Full semantics in
+[configuration.md](configuration.md).
+
+---
+
+## Document CRUD
+
+### `kura add`
+
+```
+kura add <file>... [--bucket b] [--tags t1,t2] [--title T] [--type markdown|html] [--json]
+kura add - --title T
+```
+
+Creates one document per input file (`src/cli/commands/add.ts` →
+`createDocument`). Frontmatter is parsed and honored
+(`src/core/frontmatter.ts`); a `kura_key` in frontmatter is **ignored with a
+warning** pointing at `kura import` (add always creates). Rules:
+
+- **Title precedence: frontmatter `title:` → `--title` → file basename**
+  (extension stripped). `--title` with multiple files is a usage error;
+  stdin (`-`) requires `--title` (there is no basename fallback).
+- `--tags`, when given, **replaces** frontmatter tags entirely (an empty
+  `--tags ""` clears them); hashtags in the body are still extracted and
+  merged by the repository layer.
+- `--type` overrides frontmatter `content_type`; values other than
+  `markdown`/`html` are usage errors.
+- Bucket: `--bucket` → frontmatter `bucket:` → `general.default_bucket`. The
+  bucket must already exist (`NotFoundError` otherwise — unlike `import`,
+  which auto-creates).
+- The single blank separator line after the frontmatter block is stripped
+  from the body.
+- Duplicate title in the bucket → `ConflictError` (exit 1).
+
+Output: `#key  title  (bucket)` per document; `--json` prints an array of
+`{key, title, bucket, tags, created_at}`. Embeddings are **not** generated
+(lazy backfill, see [`embed`](#kura-embed)).
+
+### `kura get`
+
+```
+kura get <doc> [--pretty|--raw] [--json] [--lines A:B] [--bucket b]
+```
+
+Resolves the document, calls `touchAccess` (increments `access_count`, sets
+`last_accessed_at`), then re-reads so the output reflects post-touch values.
+`--lines A:B` slices 1-based inclusive line ranges; open ends `50:` and
+`:100` are allowed, `":"` alone or inverted ranges are usage errors.
+Output modes: `--json` → full record
+(`key, title, bucket, tags, content, content_type, source_url, created_at,
+updated_at, last_accessed_at, access_count`; `content` is the sliced text);
+otherwise pretty ANSI (TTY default, or `--pretty`) with a synthesized
+`# title` heading and a `#key · bucket · tags` meta line, or the raw body
+(piped default, or `--raw`). `--pretty --raw` together is a usage error.
+
+### `kura edit`
+
+```
+kura edit <doc> [--bucket b]
+```
+
+Round-trips **frontmatter + body** through an editor
+(`src/cli/commands/edit.ts`): serializes
+`kura_key/title/bucket/tags/source_url/content_type/created_at/updated_at`
+above the body into `$TMPDIR/kura-edit-<key>-<pid>-<ts>.md`, launches the
+editor, and re-parses on exit.
+
+- **Editor resolution: `general.editor` (config) → `$EDITOR` → `vi`.** The
+  value is split on whitespace, so `EDITOR="bun script.ts"` works.
+- Non-zero editor exit discards changes (temp file kept, exit 1). A
+  byte-identical file prints `no changes`.
+- Frontmatter edits are applied: title changes rename (and relink referrers,
+  same as `mv`), `bucket:` moves the document, and the frontmatter `tags`
+  list is authoritative — tags removed from the list are detached via
+  `removeTagsFromDoc`, new ones attached.
+- `kura_key` must not change; a mismatch aborts with a usage error and keeps
+  the temp file. Because YAML would coerce an unquoted all-digit key to a
+  number, the raw text is re-scanned (`rawFrontmatterKey`) before rejecting —
+  see [testing.md](testing.md#lessons-learned) for the incident.
+
+### `kura rm`
+
+```
+kura rm <doc> [--force|-f] [--bucket b]
+```
+
+Interactive `[y/N]` confirmation on a TTY; anything but `y`/`yes` prints
+`aborted` (exit 0). **Without `--force` on a non-TTY it refuses with a usage
+error (exit 2)** — scripts must pass `--force`. Deletion cleans FTS and
+`chunks_vec` explicitly and relies on CASCADE / SET NULL for the rest;
+incoming links revert to unresolved (they re-resolve if a document with the
+same title is created later, SPEC §10.1).
+
+### `kura mv`
+
+```
+kura mv <doc> <new-title> [--bucket b]
+```
+
+Renames via `renameDocument` → `updateDocument` (`src/core/documents.ts`):
+rewrites `[[old title]]` (and `[[old title|display]]`) in the document's own
+body and in every same-bucket referrer, prints
+`renamed #key old -> new (relinked N documents)`. Rename to a title that
+already exists in the bucket is a `ConflictError`. Unresolved links that
+already pointed at the *new* title are auto-resolved. Chunks are rebuilt on
+rename (chunk context headers embed the title).
+
+### `kura ls`
+
+```
+kura ls [--bucket b] [--tag t] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
+```
+
+`listDocuments` with filters; `--tag` includes descendant tags
+(`t` matches `t` and `t/…`). Default sort is `updated` (desc); `accessed`
+puts never-accessed docs last; invalid sorts are usage errors. `--stale`
+switches to staleness mode: candidates older than `general.stale_days` are
+scored by `src/core/stale.ts` (age normalized by `stale_days`, dampened by
+`access_count` and backlinks; only scores ≥ 1 qualify) and sorted by score
+descending; `--limit` is applied **after** scoring. Text output is
+`#key  title  [bucket]  tags  updated_at` plus an `N documents` trailer;
+`--json` mirrors the `add`/`get` field names.
+
+### `kura export`
+
+```
+kura export [--bucket b] [--tag t] --dir <path> [--json]
+```
+
+Writes every matching document to `<dir>/<bucket>/<title>.md` with a
+serialized frontmatter block (`kura_key` always quoted; datetimes emitted as
+ISO 8601). Filenames are sanitized (`/ \ : * ? " < > |` and control chars →
+`-`); empty results use the key, and case-insensitive collisions within a
+bucket get a `-<key>` suffix. Doubles as a backup; `--dir` is required.
+`--json` → `{exported, dir}`.
+
+### `kura import`
+
+```
+kura import <dir|file>... [--bucket b] [--json]
+```
+
+Directories are scanned recursively for `*.md` / `*.markdown` (name-sorted).
+Per file: frontmatter with a `kura_key` that exists → **update** that
+document; otherwise **create** (reusing the frontmatter key if it is unused
+and well-formed). `--bucket` overrides frontmatter, which overrides
+`general.default_bucket`; unlike `add`, missing buckets are **created**
+(`getOrCreateBucket`). Frontmatter `created_at`/`updated_at` are preserved
+on round-trip. Invalid frontmatter or title conflicts (`ConflictError`) are
+skipped with a `skip <path>: reason` line on stderr and the run continues.
+Summary `imported: X created, Y updated, Z skipped`; `--json` →
+`{created, updated, skipped: [paths]}`. Exit 0 if anything succeeded, **1
+when every file failed**, 3 when a path doesn't exist or no Markdown was
+found.
+
+---
+
+## Search
+
+Search output is shared (`src/cli/searchOutput.ts`):
+`#key  title  [bucket]  tags  (score)` plus an indented one-line snippet;
+`no results` when empty. `--json` → array of
+`{key, title, bucket, tags, score, snippet, source}` with the score rounded
+to 4 decimals; `source` is `keyword` / `vector` / `hybrid`. The query is all
+positionals joined with spaces; an empty query is a usage error.
+
+### `kura search`
+
+```
+kura search "<query>" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
+```
+
+Pure FTS5 BM25 (`src/core/search/keyword.ts`), no LLM. Title/content/tags
+are weighted 5.0/1.0/3.0. With vaporetto, the input goes through
+`vaporetto_or_query()` (or `vaporetto_and_query()` with `--all`); with
+trigram, each whitespace-separated term is phrase-quoted and joined with
+OR/AND. Trigram cannot match terms shorter than 3 chars: when such a term
+exists and FTS returned nothing, a `LIKE`-based fallback runs (ordered by
+`updated_at`, hand-built `**term**` snippets, score 0). A missing vaporetto
+function surfaces as an error pointing at `kura doctor`.
+
+### `kura vsearch`
+
+```
+kura vsearch "<query>" [--bucket b] [--tag t] [--limit 20] [--json]
+```
+
+KNN over `chunks_vec` (`src/core/search/vector.ts`). Requires an embedding
+provider — exits 4 without one. Before searching, `ensureEmbeddings` checks
+the backlog of `embedded_at IS NULL` chunks: **≤ 100 pending are backfilled
+synchronously and silently; more than 100 prints a stderr warning and
+searches anyway** with existing embeddings (run `kura embed` to catch up).
+Results are aggregated per document keeping the best chunk; score is
+`1/(1+distance)`; snippets are the chunk body with the context header
+stripped. KNN fetches `max(limit*4, 40)` chunks so post-filtering by
+bucket/tag still fills the limit.
+
+### `kura query`
+
+```
+kura query "<query>" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
+```
+
+The hybrid pipeline (`src/core/search/hybrid.ts`, SPEC §5.1): optional LLM
+query expansion (original weight 2, two variants weight 1, cached in
+`llm_cache`) → keyword + vector candidate lists (top 50 each) → RRF fusion
+(`rrf_k`, `keyword_weight`, `vector_weight` from config) → yes/no LLM rerank
+of the top `rerank_top_k` → position-weighted blend (RRF ranks 1–3: 75/25,
+4–10: 60/40, 11+: 40/60). Default limit is `search.default_limit`.
+
+`query` **never exits 4**: without a provider it answers from keyword search
+alone; failed vector search, expansion, or rerank each degrade independently
+with a stderr `warning:` line. The auto-backfill rule from `vsearch` also
+applies here.
+
+### `kura embed`
+
+```
+kura embed [--all]
+```
+
+Backfills all pending chunks in batches of 16 (`backfillEmbeddings`),
+resumable because `embedded_at` is set per chunk inside a per-batch
+transaction. Progress goes to stderr: an in-place `\rembedding done/total`
+line on a TTY, one line every 160 chunks otherwise. `--all` wipes
+`chunks_vec` and re-embeds everything (the recovery step after changing the
+embedding model/dimensions). When there is nothing to do and `--all` was not
+given, prints "all chunks are already embedded" **without touching the
+provider** (exit 0 even offline); otherwise a missing provider exits 4. A
+returned vector whose length differs from `embedding_dimensions` aborts
+with guidance. On success the meta keys `embedding_model` /
+`embedding_dimensions` are updated to match config — this is what `doctor`
+later compares (see [configuration.md](configuration.md#config-vs-meta)).
+
+---
+
+## Tags, links, buckets
+
+### `kura tag`
+
+```
+kura tag ls [--tree] [--json]
+kura tag add <doc> <tag>... [--bucket b]
+kura tag rm <doc> <tag>... [--bucket b]
+kura tag mv <old-path> <new-path>
+kura tag gc
+kura tag suggest [--doc d] [--untagged] [--apply] [--bucket b]
+kura tag audit [--apply]
+```
+
+`src/cli/commands/tag.ts`, backed by `src/core/tags.ts` and
+`src/core/gardening.ts`. Tag paths are normalized on entry (lowercased,
+slashes trimmed/collapsed — `src/core/wiki.ts::normalizeTagPath`).
+
+- `ls`: `path  count` lines in path order; `--tree` renders the hierarchy
+  with cumulative counts (`segment (total)`), including intermediate nodes
+  that have no documents of their own. `--json` returns `[{path, count}]`,
+  or the `TagTreeNode[]` structure
+  (`{segment, path, count, total, children}`) with `--tree`.
+- `add` / `rm`: report exactly what changed (`added: …` / `no tags added`,
+  `removed N tags`); attaching is idempotent, `rm` only counts tags that
+  were present. `tag add` records `source='manual'`.
+- `mv`: renames a tag **and all descendants**; when the target path already
+  exists the documents are merged onto it (`moved N tags (merged into
+  existing)`).
+- `gc`: deletes tags attached to zero documents and lists them.
+- `suggest`: **requires `--doc` or `--untagged`** (usage error otherwise) and
+  a provider (exit 4). Sends title+body plus the full existing tag list to
+  the generation model (prompt strongly prefers reusing the taxonomy,
+  SPEC §10.3; cached under `llm_cache` purpose `tag`). Without `--apply` it
+  only prints suggestions; with `--apply` each document asks `[y/N]` on a
+  TTY and **applies without asking on a non-TTY** (the confirm helper's
+  non-TTY default is "yes"). Applied tags get `source='auto'`.
+- `audit`: works without a provider (edit-distance only, with a warning);
+  with one, tag-name embeddings add similarity-based merge candidates.
+  Reports singular/plural variants and merge candidates
+  (`merge: a -> b (reason)`) plus oversized tags (attached to >30% of all
+  documents). `--apply` merges via `renameTag` with the same TTY confirm
+  semantics as `suggest`.
+
+### `kura link`
+
+```
+kura link ls <doc> [--bucket b] [--json]
+kura link broken [--bucket b] [--json]
+```
+
+`ls` prints three sections — `outlinks:` (each `[[target]] -> #key (bucket)`
+or `(unresolved)`), `backlinks:`, and `2-hop (via <title>):` groups
+(documents sharing an outlink target, `src/core/links.ts`) — with `(none)`
+placeholders. `--json` →
+`{outlinks: [{target_title, key|null, title|null, bucket|null}], backlinks,
+twoHop: [{via, docs}]}`. `broken` lists unresolved links grouped by target
+title (`[[target]] <- #key title (bucket)` per source); `--bucket` filters by
+the **source** document's bucket and a nonexistent bucket exits 3. Creating
+the missing target later auto-resolves the links (SPEC §10.1), which
+`link broken` then reflects.
+
+### `kura bucket`
+
+```
+kura bucket ls [--json]
+kura bucket add <name> [--desc <text>]
+kura bucket rm <name> [--force]
+kura bucket mv <old> <new>
+```
+
+Bucket names must match `^[a-z0-9][a-z0-9-]*$` (`src/core/buckets.ts`,
+usage error otherwise). `rm` refuses the configured
+`general.default_bucket` (usage error) and refuses non-empty buckets
+(`ConflictError`, exit 1) unless `--force`, which deletes every contained
+document first and reports the count. `mv` renames; duplicates conflict.
+`ls` shows `name  N documents  description`; `--json` →
+`[{name, description, documents, created_at}]`.
+
+---
+
+## `kura clip`
+
+```
+kura clip <url> [--bucket b] [--tags t1,t2] [--no-llm] [--dry-run] [--force]
+```
+
+`src/cli/commands/clip.ts` (SPEC §7.5). Only `http(s)://` URLs are accepted.
+Pipeline: fetch + Readability extraction (`src/core/clip/extract.ts`, 30s
+timeout, explicit User-Agent) → Markdown formatting
+(`src/core/clip/format.ts`): the generation model reformats and extracts a
+title (cached under purpose `clip`), or turndown converts mechanically with
+`--no-llm` — and also, **with a warning, when no provider is reachable**
+(clip never exits 4) → LLM tag suggestions seeded with the existing tag list
+(failures are warnings) → save with `source_url`.
+
+- **URL duplicate detection is scoped per bucket**: an existing document
+  with the same `source_url` in the target bucket triggers a `[y/N]` update
+  confirmation on a TTY; on a non-TTY without `--force` the command prints
+  the conflict and exits 1. `--force` updates unconditionally. Updates keep
+  the doc key and apply `--tags`; suggested tags are added as
+  `source='auto'`.
+- `--dry-run` prints the title, a `> url / formatter / tags` info line, and
+  the formatted Markdown without saving — useful to preview the
+  LLM-vs-turndown output.
+- `--tags` supplies manual tags in addition to the suggestions.
+- Progress (`fetching <url> ...`) goes to stderr.
+
+---
+
+## Servers
+
+### `kura browser`
+
+```
+kura browser [--port 7578] [--no-open]
+```
+
+Starts the REST + SPA server (`src/server/http.ts`) on `127.0.0.1` only.
+The port defaults to `browser.port`; on EADDRINUSE it retries +1 up to 10
+times. Prints the URL, opens the default browser unless `--no-open`, and
+stays resident until SIGINT/SIGTERM. Details in
+[http-api.md](http-api.md) and [browser-ui.md](browser-ui.md).
+
+### `kura mcp`
+
+```
+kura mcp [--print-config]
+```
+
+Runs the MCP server on stdio (`src/server/mcp.ts`) until the client
+disconnects. `--print-config` prints ready-to-paste `claude mcp add` and
+`.mcp.json` snippets instead of starting. Tool inventory in
+[mcp-server.md](mcp-server.md).
+
+---
+
+## How commands relate
+
+- **`init` → everything else**: `getDb()` (`src/core/db.ts`) refuses to run
+  any data command when the DB file doesn't exist ("Run 'kura init' first",
+  exit 1). `KURA_DB=:memory:` bypasses this for tests. `init` ends by
+  pointing at `doctor`; `doctor --fix` can finish an interrupted `init`
+  (vaporetto re-download, trigram→vaporetto reindex).
+- **`add`/`edit`/`clip`/`import` → `embed` → `vsearch`/`query`**: writes
+  never block on embeddings (`embedded_at = NULL`); `vsearch`/`query`
+  auto-backfill ≤ 100 pending chunks and warn beyond that; `embed` clears
+  the backlog explicitly and stamps meta so `doctor` can detect model drift.
+- **Config embedding change → `doctor --fix` → `embed`**: changing
+  `llm.models.embedding*` makes `doctor` warn, `doctor --fix` recreate
+  `chunks_vec`, and `kura embed` repopulate it (see
+  [configuration.md](configuration.md)).
+- **`mv`/`edit` (rename) ↔ `link`**: renames rewrite referrer bodies;
+  creating a document auto-resolves matching unresolved links; `link broken`
+  and `doctor --fix` expose/repair the remainder.
+- **`export` ↔ `import`**: a lossless round-trip keyed on `kura_key`
+  (re-import updates in place, even into a different `KURA_HOME`).
+
+## Deviations from SPEC
+
+- **`--bucket` default (SPEC §7 global conventions).** SPEC says `<doc>`
+  resolution defaults to `config default_bucket`; the implementation
+  resolves titles across **all buckets** and errors on ambiguity instead.
+  Search commands defaulting to all buckets matches SPEC.
+- **`init --no-download` is an addition** (not in SPEC §7.1); it exists for
+  offline installs and is the backbone of test isolation.
+- **`edit` round-trips frontmatter + body**, not "the body only" as SPEC
+  §7.2 words it — title/tags/bucket edits in the frontmatter are applied on
+  save.
+- **`add` title precedence** puts frontmatter `title:` above `--title`
+  (SPEC doesn't define an order).
+- **No idle background embedding in `browser`/`mcp`** (SPEC §5.3 item 3).
+  Only the ≤100-chunk pre-search auto-backfill and explicit `kura embed`
+  exist; the REST search endpoint shares the same `ensureEmbeddings` path.
+- **`tag suggest` requires `--doc` or `--untagged`** (SPEC's synopsis shows
+  both as optional), and `--apply` on a non-TTY applies without interactive
+  confirmation (SPEC describes interactive confirmation only).
+- **`--json` also works on `add`/`export`/`import`** (SPEC promises it for
+  read commands only).
+- **`clip --force` overwrite confirmation is per-bucket**: the same URL in a
+  different bucket creates a second document rather than prompting.
+- **Trigram short-term LIKE fallback** (`search` with <3-char terms) is an
+  implementation addition beyond SPEC §5.4's escape rules.
