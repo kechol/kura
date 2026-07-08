@@ -13,10 +13,13 @@ import { EXIT, parseCommandArgs } from "../args";
 
 export const summary = "Diagnose installation and environment";
 
-export const usage = `Usage: kura doctor
+export const usage = `Usage: kura doctor [--fix]
 
 Checks SQLite / native extensions / database integrity / LLM providers.
-(--fix will be available in a future milestone)`;
+
+Options:
+  --fix   修復を実行: 拡張再取得 / FTS リビルド・再トークナイズ / 孤立チャンク GC /
+          content_hash 再計算 / 未解決リンク再解決 / embedding 設定変更の反映`;
 
 type Status = "ok" | "warn" | "fail";
 
@@ -229,9 +232,69 @@ async function checkProviders(checks: Check[], config: KuraConfig): Promise<void
   });
 }
 
+async function runFixes(config: KuraConfig): Promise<void> {
+  const { ensureVaporetto } = await import("../../core/bootstrap");
+  const {
+    fixContentHashes,
+    gcOrphans,
+    rebuildFtsIfNeeded,
+    recreateVecIfModelChanged,
+    resolveAllUnresolvedLinks,
+    retokenizeFts,
+  } = await import("../../core/doctor");
+
+  const reports: Array<{ action: string; detail: string }> = [];
+
+  // 拡張再取得（対応プラットフォームで未展開のときのみダウンロード）
+  if (vaporettoSupported() && !existsSync(vaporettoLibPath() ?? "")) {
+    try {
+      const path = await ensureVaporetto({ download: true });
+      if (path) reports.push({ action: "vaporetto", detail: `拡張を取得しました: ${path}` });
+    } catch (e) {
+      reports.push({
+        action: "vaporetto",
+        detail: `拡張の取得に失敗しました（${e instanceof Error ? e.message : e}）`,
+      });
+    }
+  }
+
+  if (dbPath() === ":memory:" || existsSync(dbPath())) {
+    const { db, tokenizer, vaporettoLoaded } = openDatabase();
+    try {
+      for (const fix of [
+        () => recreateVecIfModelChanged(db, config),
+        () => gcOrphans(db),
+        () => fixContentHashes(db),
+        () => rebuildFtsIfNeeded(db),
+        () => resolveAllUnresolvedLinks(db),
+      ]) {
+        const report = fix();
+        if (report) reports.push(report);
+      }
+      // trigram で構築された DB でも vaporetto が使えるようになったら再インデックス
+      if (tokenizer === "trigram" && vaporettoLoaded) {
+        reports.push(retokenizeFts(db, "vaporetto"));
+      }
+    } finally {
+      db.close();
+    }
+  }
+
+  if (reports.length === 0) {
+    console.log("--fix: 修復対象はありませんでした");
+  } else {
+    for (const r of reports) console.log(`fixed: ${r.action.padEnd(16)} ${r.detail}`);
+  }
+  console.log("");
+}
+
 export async function run(argv: string[]): Promise<number> {
-  parseCommandArgs(argv);
+  const parsed = parseCommandArgs(argv, { fix: { type: "boolean", default: false } });
   const checks: Check[] = [];
+
+  if (parsed.values.fix === true) {
+    await runFixes(loadConfig());
+  }
 
   checks.push({
     name: "platform",

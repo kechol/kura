@@ -249,14 +249,10 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     expect(again.stdout).toBe("no orphan tags\n");
   }, 30_000);
 
-  test("suggest / audit は未実装エラーで exit 2", async () => {
+  test("suggest は --doc / --untagged なしで exit 2", async () => {
     const suggest = await runCli(["tag", "suggest"], env);
     expect(suggest.code).toBe(2);
-    expect(suggest.stderr).toContain("まだ実装されていません");
-
-    const audit = await runCli(["tag", "audit"], env);
-    expect(audit.code).toBe(2);
-    expect(audit.stderr).toContain("まだ実装されていません");
+    expect(suggest.stderr).toContain("--doc <doc> or --untagged");
   }, 30_000);
 });
 

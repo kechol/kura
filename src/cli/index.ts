@@ -101,6 +101,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Start the browser UI server",
     load: () => import("./commands/browser"),
   },
+  clip: {
+    summary: "Clip a web page into the knowledge base",
+    load: () => import("./commands/clip"),
+  },
 };
 
 function printHelp(): void {

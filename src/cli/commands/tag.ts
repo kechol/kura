@@ -1,5 +1,9 @@
+import { suggestTagsForText } from "../../core/clip/format";
+import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
-import { resolveDoc } from "../../core/documents";
+import { type DocumentRecord, resolveDoc } from "../../core/documents";
+import { auditTags, untaggedDocuments } from "../../core/gardening";
+import { requireProvider, resolveProvider } from "../../core/llm/provider";
 import {
   addTagsToDoc,
   buildTagTree,
@@ -9,7 +13,7 @@ import {
   renameTag,
   type TagTreeNode,
 } from "../../core/tags";
-import { boolOpt, EXIT, parseCommandArgs, strOpt, UsageError } from "../args";
+import { boolOpt, EXIT, type Parsed, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "Manage tags";
 
@@ -19,9 +23,7 @@ export const usage = `Usage:
   kura tag rm <doc> <tag>... [--bucket b]
   kura tag mv <old-path> <new-path>
   kura tag gc
-
-Not implemented yet (M6):
-  kura tag suggest [--doc d] [--untagged] [--apply]
+  kura tag suggest [--doc d] [--untagged] [--apply] [--bucket b]
   kura tag audit [--apply]
 
 Examples:
@@ -40,6 +42,9 @@ export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {
     tree: { type: "boolean", default: false },
     bucket: { type: "string" },
+    doc: { type: "string" },
+    untagged: { type: "boolean", default: false },
+    apply: { type: "boolean", default: false },
   });
   const [sub, ...rest] = parsed.positionals;
   const json = boolOpt(parsed, "json");
@@ -100,9 +105,103 @@ export async function run(argv: string[]): Promise<number> {
       return EXIT.OK;
     }
     case "suggest":
+      return runSuggest(parsed);
     case "audit":
-      throw new UsageError("'kura tag <suggest|audit>' はまだ実装されていません (M6 で追加予定)");
+      return runAudit(parsed);
     default:
       throw new UsageError(sub ? `unknown subcommand: ${sub}` : "missing subcommand");
   }
+}
+
+/** TTY での y/N 確認。非 TTY は既定値を返す */
+async function confirm(prompt: string, nonTtyDefault: boolean): Promise<boolean> {
+  if (process.stdout.isTTY !== true || process.stdin.isTTY !== true) return nonTtyDefault;
+  process.stdout.write(`${prompt} [y/N] `);
+  const answer = await new Promise<string>((resolve) => {
+    process.stdin.once("data", (d) => resolve(String(d)));
+  });
+  return /^y(es)?$/i.test(answer.trim());
+}
+
+/** kura tag suggest: LLM によるタグ提案（既存タグ体系を最優先で再利用、SPEC §10.3） */
+async function runSuggest(parsed: Parsed): Promise<number> {
+  const docSpec = strOpt(parsed, "doc");
+  if (!docSpec && !boolOpt(parsed, "untagged")) {
+    throw new UsageError("tag suggest requires --doc <doc> or --untagged");
+  }
+  const config = loadConfig();
+  const { db } = getDb();
+  const provider = await requireProvider(config);
+  const apply = boolOpt(parsed, "apply");
+  const bucket = strOpt(parsed, "bucket");
+
+  let targets: Array<Pick<DocumentRecord, "id" | "key" | "title" | "content">>;
+  if (docSpec) {
+    targets = [resolveDoc(db, docSpec, bucket)];
+  } else {
+    targets = untaggedDocuments(db, bucket);
+  }
+  if (targets.length === 0) {
+    console.log("対象ドキュメントはありません");
+    return EXIT.OK;
+  }
+
+  const existing = listTags(db).map((t) => t.path);
+  let applied = 0;
+  for (const doc of targets) {
+    const suggested = await suggestTagsForText(
+      db,
+      provider,
+      config,
+      `${doc.title}\n\n${doc.content}`,
+      existing,
+    );
+    if (suggested.length === 0) {
+      console.log(`#${doc.key}  ${doc.title}: 提案なし`);
+      continue;
+    }
+    console.log(`#${doc.key}  ${doc.title}: ${suggested.join(", ")}`);
+    if (apply && (await confirm(`  適用しますか?`, true))) {
+      const added = addTagsToDoc(db, doc.id, suggested, "auto");
+      applied += added.length;
+      if (added.length > 0) console.log(`  applied: ${added.join(", ")}`);
+    }
+  }
+  if (apply) console.log(`${applied} tags applied`);
+  else console.log("(--apply で適用できます)");
+  return EXIT.OK;
+}
+
+/** kura tag audit: 類似タグの統合提案と巨大タグの細分化指摘（SPEC §10.3） */
+async function runAudit(parsed: Parsed): Promise<number> {
+  const config = loadConfig();
+  const { db } = getDb();
+  const provider = await resolveProvider(config);
+  if (!provider) {
+    console.error("warning: LLM プロバイダ不在のため編集距離のみで監査します");
+  }
+  const result = await auditTags(db, provider, config);
+
+  if (result.merges.length === 0 && result.oversized.length === 0) {
+    console.log("問題は見つかりませんでした");
+    return EXIT.OK;
+  }
+
+  let merged = 0;
+  for (const m of result.merges) {
+    console.log(`merge: ${m.from} -> ${m.to}  （${m.reason}）`);
+    if (boolOpt(parsed, "apply") && (await confirm("  統合しますか?", true))) {
+      renameTag(db, m.from, m.to);
+      merged++;
+      console.log("  merged");
+    }
+  }
+  for (const o of result.oversized) {
+    console.log(
+      `oversized: ${o.path} は全体の ${(o.share * 100).toFixed(0)}% (${o.count} 件) に付与されています。細分化を検討してください`,
+    );
+  }
+  if (boolOpt(parsed, "apply")) console.log(`${merged} merges applied`);
+  else if (result.merges.length > 0) console.log("(--apply で対話的に統合できます)");
+  return EXIT.OK;
 }

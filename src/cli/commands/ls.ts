@@ -1,6 +1,7 @@
 import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
 import { type ListFilter, listDocuments } from "../../core/documents";
+import { staleDocuments } from "../../core/stale";
 import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "List documents";
@@ -34,14 +35,25 @@ export function run(argv: string[]): number {
 
   const { db } = getDb();
   const config = loadConfig();
-  const docs = listDocuments(db, {
+  const stale = boolOpt(parsed, "stale");
+  let docs = listDocuments(db, {
     bucket: strOpt(parsed, "bucket"),
     tag: strOpt(parsed, "tag"),
     sort: sort as ListFilter["sort"],
-    stale: boolOpt(parsed, "stale"),
+    stale,
     staleDays: config.general.stale_days,
-    limit: intOpt(parsed, "limit"),
+    limit: stale ? undefined : intOpt(parsed, "limit"),
   });
+  if (stale) {
+    // 陳腐化スコア（経過日数 × 低参照）でフィルタ・並べ替え（SPEC §10.4）
+    const scored = staleDocuments(db, config, { bucket: strOpt(parsed, "bucket") });
+    const order = new Map(scored.map((s, i) => [s.key, i]));
+    docs = docs
+      .filter((d) => order.has(d.key))
+      .sort((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0));
+    const limit = intOpt(parsed, "limit");
+    if (limit !== undefined) docs = docs.slice(0, limit);
+  }
 
   if (boolOpt(parsed, "json")) {
     const out = docs.map((d) => ({
