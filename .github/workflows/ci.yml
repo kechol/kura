@@ -14,7 +14,7 @@ jobs:
     name: typecheck + lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           # Pinned to a stable version to avoid the dlopen regression (oven-sh/bun#30717)
@@ -30,7 +30,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # macOS needs the Homebrew SQLite keg — Apple's bundled SQLite cannot
       # load the sqlite-vec / sqlite-vaporetto extensions (docs: native-extensions.md).
       - if: runner.os == 'macOS'
