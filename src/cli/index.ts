@@ -73,6 +73,22 @@ const commands: Record<string, CommandDef> = {
     summary: "Show links and backlinks",
     load: () => import("./commands/link"),
   },
+  search: {
+    summary: "Fast keyword search (FTS5 BM25)",
+    load: () => import("./commands/search"),
+  },
+  vsearch: {
+    summary: "Semantic vector search (KNN)",
+    load: () => import("./commands/vsearch"),
+  },
+  query: {
+    summary: "Hybrid RAG search (FTS + vector + rerank)",
+    load: () => import("./commands/query"),
+  },
+  embed: {
+    summary: "Generate embeddings for pending chunks",
+    load: () => import("./commands/embed"),
+  },
 };
 
 function printHelp(): void {

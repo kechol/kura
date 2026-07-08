@@ -1,7 +1,69 @@
-export const summary = "TODO";
+import { loadConfig } from "../../core/config";
+import { getDb } from "../../core/db";
+import { type ListFilter, listDocuments } from "../../core/documents";
+import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../args";
 
-export const usage = "Usage: kura ls (not implemented yet)";
+export const summary = "List documents";
 
-export function run(_argv: string[]): number {
-  throw new Error("not implemented: ls");
+export const usage = `Usage: kura ls [--bucket b] [--tag t] [--sort updated|created|accessed|title]
+               [--stale] [--limit n] [--json]
+
+Options:
+  --bucket <name>   Only documents in this bucket (default: all buckets)
+  --tag <path>      Only documents with this tag (descendants included)
+  --sort <key>      updated (default) | created | accessed | title
+  --stale           Only documents older than general.stale_days
+  --limit <n>       Maximum number of documents
+  --json            Machine-readable output`;
+
+const SORTS = ["updated", "created", "accessed", "title"] as const;
+
+export function run(argv: string[]): number {
+  const parsed = parseCommandArgs(argv, {
+    bucket: { type: "string" },
+    tag: { type: "string" },
+    sort: { type: "string" },
+    stale: { type: "boolean", default: false },
+    limit: { type: "string" },
+  });
+
+  const sort = strOpt(parsed, "sort");
+  if (sort !== undefined && !(SORTS as readonly string[]).includes(sort)) {
+    throw new UsageError(`--sort must be one of ${SORTS.join("|")}, got: ${sort}`);
+  }
+
+  const { db } = getDb();
+  const config = loadConfig();
+  const docs = listDocuments(db, {
+    bucket: strOpt(parsed, "bucket"),
+    tag: strOpt(parsed, "tag"),
+    sort: sort as ListFilter["sort"],
+    stale: boolOpt(parsed, "stale"),
+    staleDays: config.general.stale_days,
+    limit: intOpt(parsed, "limit"),
+  });
+
+  if (boolOpt(parsed, "json")) {
+    const out = docs.map((d) => ({
+      key: d.key,
+      title: d.title,
+      bucket: d.bucket,
+      tags: d.tags,
+      created_at: d.createdAt,
+      updated_at: d.updatedAt,
+      last_accessed_at: d.lastAccessedAt,
+      access_count: d.accessCount,
+    }));
+    console.log(JSON.stringify(out, null, 2));
+    return EXIT.OK;
+  }
+
+  for (const d of docs) {
+    const parts = [`#${d.key}`, d.title, `[${d.bucket}]`];
+    if (d.tags.length > 0) parts.push(d.tags.join(","));
+    parts.push(d.updatedAt);
+    console.log(parts.join("  "));
+  }
+  console.log(`${docs.length} documents`);
+  return EXIT.OK;
 }

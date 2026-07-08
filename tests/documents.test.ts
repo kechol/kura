@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createBucket, deleteBucket, listBuckets, renameBucket } from "../src/core/buckets";
+import { openDatabase } from "../src/core/db";
 import {
   createDocument,
   deleteDocument,
@@ -12,7 +13,6 @@ import {
   touchAccess,
   updateDocument,
 } from "../src/core/documents";
-import { openDatabase } from "../src/core/db";
 import { parseFrontmatter, serializeFrontmatter } from "../src/core/frontmatter";
 import { backlinks, brokenLinks, outlinks, twoHopLinks } from "../src/core/links";
 import { buildTagTree, gcTags, listTags, removeTagsFromDoc, renameTag } from "../src/core/tags";
@@ -28,9 +28,10 @@ afterEach(() => {
 });
 
 function ftsRow(id: number): { title: string; tags: string } | null {
-  return db
-    .prepare("SELECT title, tags FROM documents_fts WHERE rowid = ?")
-    .get(id) as { title: string; tags: string } | null;
+  return db.prepare("SELECT title, tags FROM documents_fts WHERE rowid = ?").get(id) as {
+    title: string;
+    tags: string;
+  } | null;
 }
 
 describe("createDocument", () => {
@@ -137,7 +138,8 @@ describe("renameDocument (kura mv)", () => {
     const target = createDocument(db, { title: "旧タイトル", content: "本文", bucket: "main" });
     const ref = createDocument(db, {
       title: "参照元",
-      content: "詳細は [[旧タイトル]] と [[旧タイトル|表示名]] を参照。\n```\n[[旧タイトル]] はコード内なので残る\n```",
+      content:
+        "詳細は [[旧タイトル]] と [[旧タイトル|表示名]] を参照。\n```\n[[旧タイトル]] はコード内なので残る\n```",
       bucket: "main",
     });
 
@@ -216,7 +218,11 @@ describe("listDocuments", () => {
     createDocument(db, { title: "C", content: "#life", bucket: "work" });
 
     expect(listDocuments(db, { bucket: "work" }).map((d) => d.title)).toEqual(["C"]);
-    expect(listDocuments(db, { tag: "tech/db" }).map((d) => d.title).sort()).toEqual(["A", "B"]);
+    expect(
+      listDocuments(db, { tag: "tech/db" })
+        .map((d) => d.title)
+        .sort(),
+    ).toEqual(["A", "B"]);
     expect(listDocuments(db, { tag: "tech" }).length).toBe(2);
     expect(listDocuments(db, { limit: 2 }).length).toBe(2);
   });
@@ -266,7 +272,11 @@ describe("import / export round-trip", () => {
 
 describe("tags", () => {
   test("renameTag は子孫ごと移動し、既存タグへは merge する", () => {
-    const a = createDocument(db, { title: "A", content: "#tech/db #tech/db/sqlite", bucket: "main" });
+    const a = createDocument(db, {
+      title: "A",
+      content: "#tech/db #tech/db/sqlite",
+      bucket: "main",
+    });
     createDocument(db, { title: "B", content: "#dev/db", bucket: "main" });
 
     const result = renameTag(db, "tech/db", "dev/db");
@@ -323,6 +333,10 @@ describe("buckets", () => {
     createDocument(db, { title: "A", content: "x", bucket: "work" });
     expect(() => deleteBucket(db, "work")).toThrow(/not empty/);
     renameBucket(db, "work", "biz");
-    expect(listBuckets(db).map((b) => b.name).sort()).toEqual(["biz", "main"]);
+    expect(
+      listBuckets(db)
+        .map((b) => b.name)
+        .sort(),
+    ).toEqual(["biz", "main"]);
   });
 });
