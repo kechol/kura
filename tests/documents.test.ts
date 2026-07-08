@@ -70,7 +70,7 @@ describe("createDocument", () => {
     expect(hit.length).toBe(1);
   });
 
-  test("a link written first auto-resolves when the page is created later (SPEC §10.1)", () => {
+  test("a link written first auto-resolves when the page is created later (docs: self-healing.md)", () => {
     const a = createDocument(db, {
       title: "リンク元",
       content: "[[未来のページ]] を参照",

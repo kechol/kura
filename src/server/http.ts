@@ -69,7 +69,7 @@ export interface KuraServer {
 }
 
 /**
- * Browser UI / REST API server (SPEC §8.1).
+ * Browser UI / REST API server (docs: http-api.md).
  * Binds to 127.0.0.1 only; on EADDRINUSE, retries up to 10 times, incrementing the port.
  */
 export function startServer(opts: ServeOptions): KuraServer {

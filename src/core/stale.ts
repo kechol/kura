@@ -13,7 +13,7 @@ export interface StaleDoc {
 }
 
 /**
- * Staleness score = f(days since last update, access_count, backlink count) (SPEC §10.4).
+ * Staleness score = f(days since last update, access_count, backlink count) (docs: self-healing.md).
  * Normalizes elapsed days by stale_days and dampens with usage.
  * The goal is to prompt review, not deletion (nothing is auto-deleted).
  */

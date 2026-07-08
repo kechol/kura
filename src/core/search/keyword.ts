@@ -10,7 +10,7 @@ export interface KeywordOptions {
   limit?: number;
 }
 
-/** Query building for the trigram fallback: phrase-quote each term and join with OR/AND (SPEC §5.4) */
+/** Query building for the trigram fallback: phrase-quote each term and join with OR/AND (docs: search-pipeline.md) */
 export function buildTrigramQuery(query: string, all: boolean): string {
   const terms = query.split(/\s+/).filter((t) => t !== "");
   return terms.map((t) => `"${t.replaceAll('"', '""')}"`).join(all ? " AND " : " OR ");
@@ -46,7 +46,7 @@ const TAG_FILTER = `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id =
 const TAGS_SELECT = `(SELECT group_concat(t.path, ' ') FROM document_tags dt
   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id)`;
 
-/** FTS5 BM25 keyword search. Weights title/content/tags at 5.0/1.0/3.0 (SPEC §5.4) */
+/** FTS5 BM25 keyword search. Weights title/content/tags at 5.0/1.0/3.0 (docs: search-pipeline.md) */
 export function keywordSearch(
   db: Database,
   tokenizer: FtsTokenizer,

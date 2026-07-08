@@ -123,7 +123,7 @@ async function confirm(prompt: string, nonTtyDefault: boolean): Promise<boolean>
   return /^y(es)?$/i.test(answer.trim());
 }
 
-/** kura tag suggest: LLM tag suggestions (reusing the existing tag taxonomy first, SPEC §10.3) */
+/** kura tag suggest: LLM tag suggestions (reusing the existing tag taxonomy first, docs: self-healing.md) */
 async function runSuggest(parsed: Parsed): Promise<number> {
   const docSpec = strOpt(parsed, "doc");
   if (!docSpec && !boolOpt(parsed, "untagged")) {
@@ -172,7 +172,7 @@ async function runSuggest(parsed: Parsed): Promise<number> {
   return EXIT.OK;
 }
 
-/** kura tag audit: merge proposals for similar tags and warnings about oversized tags (SPEC §10.3) */
+/** kura tag audit: merge proposals for similar tags and warnings about oversized tags (docs: self-healing.md) */
 async function runAudit(parsed: Parsed): Promise<number> {
   const config = loadConfig();
   const { db } = getDb();

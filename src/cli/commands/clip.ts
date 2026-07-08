@@ -40,7 +40,7 @@ export async function run(argv: string[]): Promise<number> {
   const page = await fetchAndExtract(url);
   const formatted = await formatClip(db, provider, config, page, { noLlm });
 
-  // Tag suggestion (prefers existing tags, SPEC §7.5)
+  // Tag suggestion (prefers existing tags, docs: cli-reference.md)
   const manualTags = listOpt(parsed, "tags");
   let suggested: string[] = [];
   if (provider) {

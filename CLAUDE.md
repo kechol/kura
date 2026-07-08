@@ -6,9 +6,8 @@ SQLite and serves both humans (CLI, browser UI) and AI agents (MCP server,
 the sqlite-vaporetto morphological tokenizer, sqlite-vec KNN with local
 embeddings, and local-LLM reranking.
 
-Detailed documentation lives in **`.claude/docs/`** (start at its
-[README](.claude/docs/README.md)); `SPEC.md` is the original design baseline
-and an index into those documents.
+Detailed documentation lives in **`.claude/docs/`** — start at its
+[README](.claude/docs/README.md).
 
 ## Commands
 
@@ -55,13 +54,14 @@ Topic docs live in `.claude/docs/` — one document per subsystem, indexed in
 
 - **Docs change with the code.** A change to user-facing behavior, schema,
   protocols, CLI surface, or invariants updates the matching document in the
-  same commit. Code comments may cite `SPEC §N`; the mapping from § to
-  document is the table in `SPEC.md`.
+  same commit. Code comments cite documents as `docs: <name>.md`, meaning
+  `.claude/docs/<name>.md`.
 - New subsystems get a new document plus an index row in
-  `.claude/docs/README.md` (and a line in `SPEC.md`'s mapping table).
-- The source code is the source of truth. Where implementation deviates from
-  the SPEC baseline, the doc records it under "Deviations from SPEC" — don't
-  silently rewrite the baseline.
+  `.claude/docs/README.md`.
+- The source code is the source of truth. The original design spec (the
+  baseline the docs grew from, cited as `SPEC §N` inside them) lives in git
+  history; where the implementation diverges from it, the doc records the
+  divergence under "Deviations from SPEC" — don't silently rewrite history.
 
 ## Language conventions
 
@@ -71,7 +71,7 @@ Topic docs live in `.claude/docs/` — one document per subsystem, indexed in
   (`tests/fixtures/docs/`), search queries, titles, tags, and content
   assertions exist to prevent regressions in Japanese tokenization, BM25
   ranking, snippets, and chunking. Translating them would silently gut the
-  tests. English-only search tests are not acceptable (SPEC §14).
+  tests. English-only search tests are not acceptable (docs: testing.md).
 - Two intentional Japanese surfaces in the product: the browser UI strings
   (`src/client/`) and the LLM prompt templates (clip formatting, tag
   suggestion, query expansion) — kura is a Japanese-first knowledge tool and

@@ -1,10 +1,14 @@
 # kura documentation
 
 Topic-focused documentation for contributors and Claude Code sessions.
-`SPEC.md` at the repository root is the historical design baseline and an
-index into these documents; **the source code is the source of truth**, and
-these docs explain the code — its invariants, trade-offs, and the reasons
-behind them.
+**The source code is the source of truth**, and these docs explain the code —
+its invariants, trade-offs, and the reasons behind them.
+
+Code comments cite these documents as `docs: <name>.md`, meaning
+`.claude/docs/<name>.md`. References to `SPEC §N` (in the "Covers" notes and
+"Deviations from SPEC" sections below) point to the original v1 design
+specification, which these documents replaced; it remains available in git
+history (`SPEC.md`, removed after the docs restructure).
 
 ## Documents
 
@@ -39,7 +43,7 @@ behind them.
 - **Keep docs in sync with behavior changes.** A PR that changes user-facing
   behavior, schema, protocols, or invariants updates the matching document
   in the same commit. New subsystems get a new document plus a row in the
-  table above and, when relevant, a line in `SPEC.md`'s index.
+  table above.
 - Where the implementation deviates from the original SPEC baseline, the
   document says so explicitly (a "Deviations from SPEC" note) instead of
   silently rewriting history.

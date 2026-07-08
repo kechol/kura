@@ -79,7 +79,7 @@ const EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
 const OVERSIZED_SHARE = 0.3;
 
 /**
- * Tag gardening audit (SPEC §10.3):
+ * Tag gardening audit (docs: self-healing.md):
  * list merge candidates via normalized edit distance plus, when a provider is available,
  * cosine similarity of tag-name embeddings, and flag tags attached to more than 30% of
  * all documents as candidates for splitting.

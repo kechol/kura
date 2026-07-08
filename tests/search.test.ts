@@ -220,7 +220,7 @@ describe("scoring primitives", () => {
     expect(parseYesNo("わかりません")).toBe(0.5);
   });
 
-  test("blendScores position weighting (SPEC §5.1)", () => {
+  test("blendScores position weighting (docs: search-pipeline.md)", () => {
     expect(blendScores(1, 0, 1)).toBeCloseTo(0.75);
     expect(blendScores(1, 0, 5)).toBeCloseTo(0.6);
     expect(blendScores(1, 0, 11)).toBeCloseTo(0.4);

@@ -1,4 +1,4 @@
-/* kura browser UI (SPEC §8.3) — light/dark theming via CSS custom properties */
+/* kura browser UI (docs: browser-ui.md) — light/dark theming via CSS custom properties */
 
 :root {
   color-scheme: light;

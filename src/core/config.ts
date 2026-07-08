@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { configPath } from "./paths";
 
-/** Config schema per SPEC §11 */
+/** Config schema (docs: configuration.md) */
 export interface KuraConfig {
   general: {
     default_bucket: string;

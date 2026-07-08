@@ -1,5 +1,5 @@
 /**
- * Browser UI build pipeline (SPEC §8.1).
+ * Browser UI build pipeline (docs: browser-ui.md).
  * Bundles src/client/index.tsx into dist/ and copies index.html.
  * Artifacts use fixed, hash-free names: index.js / index.css / index.html.
  */

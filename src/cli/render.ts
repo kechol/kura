@@ -1,5 +1,5 @@
 /**
- * Markdown → ANSI terminal renderer (SPEC §7: lightweight in-house implementation).
+ * Markdown → ANSI terminal renderer (docs: cli-reference.md: lightweight in-house implementation).
  * Decorates headings, emphasis, code blocks, lists, quotes, and links; tables etc. pass through.
  */
 

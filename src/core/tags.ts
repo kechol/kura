@@ -93,7 +93,7 @@ export interface RenameTagResult {
 }
 
 /**
- * Rename/merge a tag (descendant tags move together, SPEC §7.4).
+ * Rename/merge a tag (descendant tags move together, docs: cli-reference.md).
  * When the destination path already exists, re-point document_tags and merge.
  */
 export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameTagResult {

@@ -5,7 +5,7 @@ import { getLoadablePath } from "sqlite-vec";
 import { embeddedVecLib, embeddedVecLibName } from "../generated/embedded";
 import { libDir } from "./paths";
 
-/** Pinned sqlite-vaporetto release (SPEC §2.1: SHA256 verification required) */
+/** Pinned sqlite-vaporetto release (docs: native-extensions.md: SHA256 verification required) */
 export const VAPORETTO_VERSION = "v0.4.0";
 
 interface VaporettoAsset {
@@ -120,7 +120,7 @@ export async function ensureVaporetto(opts: { download?: boolean } = {}): Promis
 /**
  * Return a loadable path for the sqlite-vec extension.
  * In the compiled binary, extract the embedded asset to ~/.kura/lib/<ver>/ and return it
- * (dlopen cannot load from the embedded FS, SPEC §2.1). In dev, use the node_modules prebuild.
+ * (dlopen cannot load from the embedded FS, docs: native-extensions.md). In dev, use the node_modules prebuild.
  */
 export function vecLoadablePath(): string {
   if (embeddedVecLib && embeddedVecLibName !== "") {

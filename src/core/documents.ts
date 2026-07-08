@@ -76,7 +76,7 @@ export function sha256Hex(text: string): string {
 
 const DOC_KEY_RE = /^[0-9a-f]{8}$/;
 
-/** 8-character short ID (hash of content plus randomness, SPEC §3.1) */
+/** 8-character short ID (hash of content plus randomness, docs: data-model.md) */
 function generateDocKey(db: Database, seed: string): string {
   for (;;) {
     const random = crypto.getRandomValues(new Uint32Array(2)).join("-");
@@ -86,7 +86,7 @@ function generateDocKey(db: Database, seed: string): string {
   }
 }
 
-/** Rebuild chunks (embeddings are backfilled lazily: embedded_at = NULL, SPEC §5.3) */
+/** Rebuild chunks (embeddings are backfilled lazily: embedded_at = NULL, docs: search-pipeline.md) */
 function rebuildChunks(db: Database, docId: number, title: string, content: string): void {
   db.prepare(
     "DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
@@ -107,7 +107,7 @@ interface SyncOptions {
   resolveIncoming: boolean;
 }
 
-/** Sync FTS / links / tags / chunks inside the save transaction (SPEC §3.2) */
+/** Sync FTS / links / tags / chunks inside the save transaction (docs: data-model.md) */
 function syncDerived(db: Database, row: DocRow, opts: SyncOptions): void {
   const extraction =
     row.content_type === "html" ? { links: [], tags: [] } : extractWiki(row.content);
@@ -321,7 +321,7 @@ export function getDocumentById(db: Database, id: number): DocumentRecord {
 }
 
 /**
- * Resolve a document specifier (SPEC §7): doc_key / #key / a title unique within a bucket.
+ * Resolve a document specifier (docs: cli-reference.md): doc_key / #key / a title unique within a bucket.
  * When the title matches in multiple buckets, throws ConflictError listing the candidates.
  */
 export function resolveDoc(db: Database, spec: string, bucketName?: string): DocumentRecord {
@@ -355,7 +355,7 @@ export function resolveDoc(db: Database, spec: string, bucketName?: string): Doc
   return toRecord(db, rows[0]!);
 }
 
-/** Record access from get / MCP get / search-result content fetches (SPEC §3.1) */
+/** Record access from get / MCP get / search-result content fetches (docs: data-model.md) */
 export function touchAccess(db: Database, id: number): void {
   db.prepare(
     "UPDATE documents SET access_count = access_count + 1, last_accessed_at = datetime('now') WHERE id = ?",
@@ -431,7 +431,7 @@ export interface ImportResult {
   action: "created" | "updated";
 }
 
-/** Import Markdown with frontmatter. Updates when kura_key exists, creates otherwise (SPEC §7.2) */
+/** Import Markdown with frontmatter. Updates when kura_key exists, creates otherwise (docs: cli-reference.md) */
 export function importDocument(db: Database, input: ImportInput): ImportResult {
   return db.transaction(() => {
     const fm = input.fm;

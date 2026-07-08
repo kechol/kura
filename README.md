@@ -163,9 +163,8 @@ bun run compile          # single binary for the current platform
 ```
 
 Architecture and subsystem documentation live in
-[.claude/docs/](.claude/docs/README.md) ([SPEC.md](SPEC.md) is the
-design-baseline index). See [CLAUDE.md](CLAUDE.md) for contribution
-conventions, including the bilingual documentation policy.
+[.claude/docs/](.claude/docs/README.md). See [CLAUDE.md](CLAUDE.md) for
+contribution conventions, including the bilingual documentation policy.
 
 ## License
 

@@ -32,7 +32,7 @@ interface Fused {
 
 const CANDIDATE_LIMIT = 50;
 
-/** Position-weighted blend (qmd style, SPEC §5.1): trust RRF more for higher RRF ranks */
+/** Position-weighted blend (qmd style, docs: search-pipeline.md): trust RRF more for higher RRF ranks */
 export function blendScores(rrfNormalized: number, rerank: number, rrfRank: number): number {
   if (rrfRank <= 3) return rrfNormalized * 0.75 + rerank * 0.25;
   if (rrfRank <= 10) return rrfNormalized * 0.6 + rerank * 0.4;
@@ -41,7 +41,7 @@ export function blendScores(rrfNormalized: number, rerank: number, rrfRank: numb
 
 /**
  * Hybrid search pipeline: (expansion) -> FTS + vector -> RRF fusion -> rerank -> blend.
- * Always answers in degraded mode when LLM features are unavailable (never fails hard, SPEC §5.1).
+ * Always answers in degraded mode when LLM features are unavailable (never fails hard, docs: search-pipeline.md).
  */
 export async function hybridQuery(
   db: Database,
@@ -56,7 +56,7 @@ export async function hybridQuery(
   const provider = await resolveProvider(config);
   const rrfK = config.search.rrf_k;
 
-  // Query expansion: original query weight 2, variants weight 1 (SPEC §5.1)
+  // Query expansion: original query weight 2, variants weight 1 (docs: search-pipeline.md)
   const variants: Array<{ q: string; weight: number }> = [{ q: query, weight: 2 }];
   if (opts.expand) {
     if (!provider) {

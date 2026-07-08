@@ -8,7 +8,7 @@ export interface Bucket {
   createdAt: string;
 }
 
-/** Bucket names allow lowercase alphanumerics and '-' only (SPEC §3.1) */
+/** Bucket names allow lowercase alphanumerics and '-' only (docs: data-model.md) */
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export function validateBucketName(name: string): void {

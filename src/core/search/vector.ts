@@ -9,7 +9,7 @@ export interface VectorOptions {
   limit?: number;
 }
 
-/** Auto-backfill before search when the number of un-embedded chunks is at or below this (SPEC §5.3) */
+/** Auto-backfill before search when the number of un-embedded chunks is at or below this (docs: search-pipeline.md) */
 export const AUTO_BACKFILL_LIMIT = 100;
 
 const EMBED_BATCH_SIZE = 16;
@@ -90,7 +90,7 @@ export async function backfillEmbeddings(
 
 /**
  * Pre-search embedding consistency check. Auto-backfills when the backlog is small;
- * otherwise returns a warning string and search continues with existing embeddings (SPEC §5.3).
+ * otherwise returns a warning string and search continues with existing embeddings (docs: search-pipeline.md).
  */
 export async function ensureEmbeddings(
   db: Database,
@@ -121,7 +121,7 @@ function chunkSnippet(text: string): string {
   return body.length > 160 ? `${body.slice(0, 160)}…` : body;
 }
 
-/** Query embedding -> chunks_vec KNN -> aggregate per document by best chunk (SPEC §5.1) */
+/** Query embedding -> chunks_vec KNN -> aggregate per document by best chunk (docs: search-pipeline.md) */
 export async function vectorSearchDetailed(
   db: Database,
   provider: LLMProvider,

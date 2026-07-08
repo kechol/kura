@@ -139,7 +139,7 @@ bun run check            # 型チェック + Lint
 bun run compile          # シングルバイナリ（現在のプラットフォーム向け）
 ```
 
-アーキテクチャとサブシステムの詳細ドキュメントは [.claude/docs/](.claude/docs/README.md) にあります（[SPEC.md](SPEC.md) は設計ベースラインの索引）。コントリビューション規約（二言語ドキュメントポリシー含む）は [CLAUDE.md](CLAUDE.md) を参照してください。
+アーキテクチャとサブシステムの詳細ドキュメントは [.claude/docs/](.claude/docs/README.md) にあります。コントリビューション規約（二言語ドキュメントポリシー含む）は [CLAUDE.md](CLAUDE.md) を参照してください。
 
 ## ライセンス
 

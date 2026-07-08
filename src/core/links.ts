@@ -39,7 +39,7 @@ export function syncLinks(
 }
 
 /**
- * Auto-resolve unresolved links matching a newly created or renamed title (SPEC §10.1).
+ * Auto-resolve unresolved links matching a newly created or renamed title (docs: self-healing.md).
  * Only links from documents in the same bucket are resolved.
  */
 export function resolveUnresolvedLinks(

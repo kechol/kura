@@ -73,7 +73,7 @@ function requireDoc(db: Database, key: string): DocumentRecord {
 
 const STALE_CUTOFF = (days: number): string => `-${days} days`;
 
-/** All REST API routes (SPEC §8.2). Passed to Bun.serve's routes */
+/** All REST API routes (docs: http-api.md). Passed to Bun.serve's routes */
 export function createApiRoutes(
   deps: ApiDeps,
 ): Record<
@@ -267,7 +267,7 @@ interface GraphEdge {
   target: string;
 }
 
-/** Knowledge graph: nodes = documents, edges = resolved links (SPEC §8.2) */
+/** Knowledge graph: nodes = documents, edges = resolved links (docs: http-api.md) */
 function buildGraph(
   db: Database,
   config: KuraConfig,

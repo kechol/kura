@@ -59,7 +59,7 @@ function sliceLines(content: string, lines?: string): string {
   return all.slice(Math.max(0, start - 1), end).join("\n");
 }
 
-/** kura MCP server (SPEC §9). Exposes 8 tools; results are returned as Markdown strings */
+/** kura MCP server (docs: mcp-server.md). Exposes 8 tools; results are returned as Markdown strings */
 export function createMcpServer(deps: McpDeps): McpServer {
   const { db, tokenizer, config } = deps;
   const server = new McpServer({ name: "kura", version: KURA_VERSION });

@@ -18,7 +18,7 @@ function tempConfigPath(): string {
 }
 
 describe("config", () => {
-  test("defaults match SPEC §11", () => {
+  test("defaults match the documented values (docs: configuration.md)", () => {
     const c = defaultConfig();
     expect(c.general.default_bucket).toBe("main");
     expect(c.general.stale_days).toBe(180);

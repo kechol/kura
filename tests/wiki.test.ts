@@ -241,7 +241,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-describe("property-based boundary tests (SPEC §14)", () => {
+describe("property-based boundary tests (docs: testing.md)", () => {
   const PIECES = [
     "[[",
     "]]",

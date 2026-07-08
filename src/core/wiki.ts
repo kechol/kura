@@ -1,4 +1,4 @@
-/** Parser for wiki links and hashtags (SPEC §4) */
+/** Parser for wiki links and hashtags (docs: document-notation.md) */
 
 export interface WikiLink {
   /** Title part inside [[...]] (trimmed, original case preserved) */

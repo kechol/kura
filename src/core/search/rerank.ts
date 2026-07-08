@@ -28,7 +28,7 @@ const CONCURRENCY = 4;
 const MAX_DOC_CHARS = 2000;
 
 /**
- * Yes/no reranking via chat completions (parallel execution + llm_cache, SPEC §5.1).
+ * Yes/no reranking via chat completions (parallel execution + llm_cache, docs: search-pipeline.md).
  * Returns a map of docId to score (1 / 0 / 0.5).
  */
 export async function rerankCandidates(

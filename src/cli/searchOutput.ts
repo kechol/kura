@@ -1,6 +1,6 @@
 import type { SearchHit } from "../core/search/types";
 
-/** Shared search result output (SPEC §7.3: key, title, bucket, tags, score, snippet, source) */
+/** Shared search result output (docs: cli-reference.md: key, title, bucket, tags, score, snippet, source) */
 export function printHits(hits: SearchHit[], json: boolean): void {
   if (json) {
     console.log(

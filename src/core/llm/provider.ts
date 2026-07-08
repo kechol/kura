@@ -10,7 +10,7 @@ export interface ChatOptions {
   temperature?: number;
 }
 
-/** Local LLM provider abstraction (SPEC §6) */
+/** Local LLM provider abstraction (docs: llm-providers.md) */
 export interface LLMProvider {
   name: "ollama" | "lmstudio";
   isAvailable(): Promise<boolean>;
@@ -99,7 +99,7 @@ async function detect(config: KuraConfig): Promise<LLMProvider | null> {
     case "lmstudio":
       return (await lmstudio.isAvailable()) ? lmstudio : null;
     default: {
-      // auto: prefer Ollama, then LM Studio, then none (SPEC §6)
+      // auto: prefer Ollama, then LM Studio, then none (docs: llm-providers.md)
       if (await ollama.isAvailable()) return ollama;
       if (await lmstudio.isAvailable()) return lmstudio;
       return null;

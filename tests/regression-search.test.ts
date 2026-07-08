@@ -13,7 +13,7 @@ import { keywordSearch } from "../src/core/search/keyword";
 import type { SearchHit } from "../src/core/search/types";
 
 /**
- * Japanese search regression tests (SPEC §14).
+ * Japanese search regression tests (docs: testing.md).
  * Loads the 30 Japanese documents in tests/fixtures/docs (tech memos, meeting minutes,
  * clipped articles) into a :memory: DB with the trigram tokenizer, then verifies BM25
  * ranking, snippets, and filters.

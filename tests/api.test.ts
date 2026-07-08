@@ -36,7 +36,7 @@ afterEach(() => {
   db.close();
 });
 
-describe("REST API (SPEC §8.2)", () => {
+describe("REST API (docs: http-api.md)", () => {
   test("GET /api/stats", async () => {
     const { status, body } = await api("/api/stats");
     expect(status).toBe(200);

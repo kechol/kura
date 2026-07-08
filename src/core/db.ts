@@ -8,7 +8,7 @@ import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
 
-/** Homebrew SQLite path on macOS (required because Apple's bundled SQLite cannot load extensions, SPEC §2.1) */
+/** Homebrew SQLite path on macOS (required because Apple's bundled SQLite cannot load extensions, docs: native-extensions.md) */
 export function brewSqlitePath(): string | null {
   if (process.platform !== "darwin") return null;
   return process.arch === "arm64"
@@ -97,7 +97,7 @@ export interface OpenResult {
 
 /**
  * Open the database: load extensions, run migrations, and reconcile meta.
- * For a fresh DB, pick the FTS tokenizer based on whether vaporetto loaded and record it in meta (SPEC §2.1).
+ * For a fresh DB, pick the FTS tokenizer based on whether vaporetto loaded and record it in meta (docs: native-extensions.md).
  */
 export function openDatabase(opts: OpenOptions = {}): OpenResult {
   setupSqlite();

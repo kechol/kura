@@ -56,7 +56,7 @@ const md = new MarkdownIt({
   },
 });
 
-// Inline rule that turns [[links]] into clickable internal links (SPEC §8.3)
+// Inline rule that turns [[links]] into clickable internal links (docs: browser-ui.md)
 md.inline.ruler.before("link", "wikilink", (state, silent) => {
   const { src, pos } = state;
   if (src.charCodeAt(pos) !== 0x5b || src.charCodeAt(pos + 1) !== 0x5b) return false;

@@ -31,7 +31,7 @@ export async function fetchHtml(url: string): Promise<string> {
   return res.text();
 }
 
-/** Extract the article body from HTML with readability + linkedom (SPEC §7.5) */
+/** Extract the article body from HTML with readability + linkedom (docs: cli-reference.md) */
 export function extractContent(url: string, html: string): ExtractedPage {
   const { document } = parseHTML(html);
   // Readability reads document.baseURI to resolve base URLs

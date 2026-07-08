@@ -29,7 +29,7 @@ function parseVariants(answer: string, original: string): string[] {
   }
 }
 
-/** LLM query expansion: returns up to 2 variants (llm_cache required, SPEC §5.1) */
+/** LLM query expansion: returns up to 2 variants (llm_cache required, docs: search-pipeline.md) */
 export async function expandQuery(
   db: Database,
   provider: LLMProvider,

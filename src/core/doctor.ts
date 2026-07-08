@@ -19,7 +19,7 @@ const FTS_REINSERT = `
                    JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id), '')
   FROM documents d`;
 
-/** Detect a row-count mismatch between documents_fts and documents, then rebuild (SPEC §10.2) */
+/** Detect a row-count mismatch between documents_fts and documents, then rebuild (docs: self-healing.md) */
 export function rebuildFtsIfNeeded(db: Database): FixReport | null {
   const docs = count(db, "SELECT COUNT(*) AS n FROM documents");
   const fts = count(db, "SELECT COUNT(*) AS n FROM documents_fts");
@@ -91,7 +91,7 @@ export function fixContentHashes(db: Database): FixReport | null {
     : null;
 }
 
-/** Re-resolve all unresolved links in bulk (within the same bucket, case-insensitive, SPEC §10.1) */
+/** Re-resolve all unresolved links in bulk (within the same bucket, case-insensitive, docs: self-healing.md) */
 export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
   const result = db
     .prepare(
@@ -117,7 +117,7 @@ export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
     : null;
 }
 
-/** Detect embedding model/dimension changes, recreate chunks_vec, and mark all chunks for re-embedding (SPEC §3.2) */
+/** Detect embedding model/dimension changes, recreate chunks_vec, and mark all chunks for re-embedding (docs: data-model.md) */
 export function recreateVecIfModelChanged(db: Database, config: KuraConfig): FixReport | null {
   const storedDims = getMeta(db, "embedding_dimensions");
   const storedModel = getMeta(db, "embedding_model");

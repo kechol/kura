@@ -1,4 +1,4 @@
-/** Chunk splitting for embeddings (SPEC §5.2). */
+/** Chunk splitting for embeddings (docs: search-pipeline.md). */
 
 export interface DocChunk {
   seq: number; // 0-based sequence number

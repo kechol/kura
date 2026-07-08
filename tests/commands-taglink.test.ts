@@ -330,7 +330,7 @@ describe("kura link (e2e)", () => {
     expect(future.stdout).toContain("2-hop:\n  (none)\n");
   }, 30_000);
 
-  test("broken: shows unresolved links; adding the target auto-resolves them (SPEC §10.1)", async () => {
+  test("broken: shows unresolved links; adding the target auto-resolves them (docs: self-healing.md)", async () => {
     const before = await runCli(["link", "broken"], env);
     expect(before.code).toBe(0);
     expect(before.stdout).toMatch(/^\[\[まだ無い記事\]\] <- #[0-9a-f]{8} 未来ノート \(main\)\n$/);

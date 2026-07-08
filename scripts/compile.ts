@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Single-binary build (SPEC §12.1).
+ * Single-binary build (docs: build-and-release.md).
  * 1. Build the SPA (dist/)
  * 2. Place the sqlite-vec prebuilt for the target under vendor/
  * 3. Generate src/generated/embedded.ts (embedding dist assets + the vec extension via imports)

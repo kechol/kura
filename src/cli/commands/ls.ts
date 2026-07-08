@@ -45,7 +45,7 @@ export function run(argv: string[]): number {
     limit: stale ? undefined : intOpt(parsed, "limit"),
   });
   if (stale) {
-    // Filter and sort by staleness score (days elapsed × low access) (SPEC §10.4)
+    // Filter and sort by staleness score (days elapsed × low access) (docs: self-healing.md)
     const scored = staleDocuments(db, config, { bucket: strOpt(parsed, "bucket") });
     const order = new Map(scored.map((s, i) => [s.key, i]));
     docs = docs

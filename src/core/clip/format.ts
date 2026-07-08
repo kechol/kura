@@ -48,7 +48,7 @@ function parseFormatted(
 }
 
 /**
- * Format clipped content (SPEC §7.5). Uses the LLM when available, turndown only otherwise.
+ * Format clipped content (docs: cli-reference.md). Uses the LLM when available, turndown only otherwise.
  * LLM responses are cached in llm_cache (purpose 'clip').
  */
 export async function formatClip(
@@ -102,7 +102,7 @@ const TAG_PROMPT = `あなたはナレッジベースのタグ付けアシスタ
 階層タグは / 区切り（例: tech/db/sqlite）。日本語タグ可。
 出力は JSON の文字列配列のみ（例: ["tech/db", "読書メモ"]）。`;
 
-/** LLM tag suggestions (prefers existing tags, cached under purpose 'tag', SPEC §7.5/§10.3) */
+/** LLM tag suggestions (prefers existing tags, cached under purpose 'tag', docs: cli-reference.md, self-healing.md) */
 export async function suggestTagsForText(
   db: Database,
   provider: LLMProvider,

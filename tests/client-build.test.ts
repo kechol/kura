@@ -9,7 +9,7 @@ import { distAssetResolver, startServer } from "../src/server/http";
 const root = join(import.meta.dir, "..");
 const dist = join(root, "dist");
 
-describe("browser UI build pipeline (SPEC §8)", () => {
+describe("browser UI build pipeline (docs: browser-ui.md)", () => {
   test("bun run build:client generates dist/index.html and dist/index.js", () => {
     const proc = Bun.spawnSync(["bun", "run", "build:client"], { cwd: root });
     expect(proc.exitCode).toBe(0);

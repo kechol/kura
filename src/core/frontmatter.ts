@@ -1,6 +1,6 @@
 import { normalizeTagPath } from "./wiki";
 
-/** Frontmatter for import/export round-trips (SPEC §4) */
+/** Frontmatter for import/export round-trips (docs: document-notation.md) */
 export interface Frontmatter {
   kura_key?: string;
   title?: string;

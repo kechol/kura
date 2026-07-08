@@ -134,7 +134,7 @@ describe("clip extract/format", () => {
   });
 });
 
-describe("gardening (SPEC §10.3)", () => {
+describe("gardening (docs: self-healing.md)", () => {
   test("levenshtein", () => {
     expect(levenshtein("kitten", "sitting")).toBe(3);
     expect(levenshtein("同じ", "同じ")).toBe(0);
@@ -165,7 +165,7 @@ describe("gardening (SPEC §10.3)", () => {
   });
 });
 
-describe("stale (SPEC §10.4)", () => {
+describe("stale (docs: self-healing.md)", () => {
   test("staleScore decays with more usage", () => {
     expect(staleScore(360, 0, 0, 180)).toBeCloseTo(2);
     expect(staleScore(360, 10, 0, 180)).toBeLessThan(1);
@@ -201,7 +201,7 @@ describe("stale (SPEC §10.4)", () => {
   });
 });
 
-describe("doctor fixes (SPEC §10.2)", () => {
+describe("doctor fixes (docs: self-healing.md)", () => {
   test("FTS row-count mismatch triggers a rebuild", () => {
     const doc = createDocument(db, { title: "T", content: "本文テキスト #tag1", bucket: "main" });
     db.prepare("DELETE FROM documents_fts WHERE rowid = ?").run(doc.id);

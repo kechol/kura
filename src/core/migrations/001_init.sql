@@ -1,4 +1,4 @@
--- v1: initial schema (SPEC §3.1)
+-- v1: initial schema (docs: data-model.md)
 -- {{FTS_TOKENIZE}} / {{VEC_DIMENSIONS}} are substituted at runtime by the migration runner
 
 -- Buckets: top-level knowledge categories

@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { UsageError } from "../core/errors";
 
-/** Exit code conventions (SPEC §7) */
+/** Exit code conventions (docs: cli-reference.md) */
 export const EXIT = {
   OK: 0,
   ERROR: 1,
