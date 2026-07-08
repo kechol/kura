@@ -48,9 +48,6 @@ exact wording.
 kura query "SQLite concurrency"
 ```
 
-The fusion + reranking design follows the approach of
-[qmd](https://github.com/tobi/qmd).
-
 ## Which mode to use
 
 | You know… | Use |

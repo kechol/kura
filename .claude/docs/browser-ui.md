@@ -72,7 +72,7 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
 - **Document detail** — rendered body (pipeline below); header with edit /
   delete (confirm dialog) actions; right sidebar with metadata (bucket,
   access count, created/updated, source URL), tag chips, **backlinks**, and
-  **two-hop links grouped by the shared target** (Cosense style), all from
+  **two-hop links grouped by the shared target**, all from
   `/api/docs/:key/related`.
 - **Editor** — deliberately plain (SPEC §8.3): title input, comma-separated
   tags input, `<textarea>` body, save/cancel. Save issues `PUT

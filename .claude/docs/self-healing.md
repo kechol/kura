@@ -91,8 +91,8 @@ Wiki-link health is maintained continuously, not just by doctor
 - **Auto-resolution on create/rename.** `createDocument` and any
   title/bucket-changing `updateDocument` call `resolveUnresolvedLinks`, which
   rewires unresolved links whose `target_title` matches the new title
-  (same bucket, case-insensitive) — Cosense's "write the link first, it
-  connects when the page appears".
+  (same bucket, case-insensitive) — the "write the link first, it
+  connects when the page appears" behavior.
 - **Rename rewires, delete unresolves.** `kura mv` rewrites `[[old title]]`
   occurrences in referrers' bodies inside the same transaction. Deleting a
   document flips incoming links back to unresolved via the schema's

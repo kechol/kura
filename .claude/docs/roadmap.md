@@ -12,12 +12,12 @@ later does not require breaking changes. None of them are commitments.
 - **`kura watch`** — auto-import via filesystem watching. v1 deliberately has
   no implicit ingestion; everything enters through `add` / `import` / `clip` /
   MCP. A watcher would reuse `importDocument` (frontmatter round-trip).
-- **2-hop links in the graph view and tag pages** (Cosense-style tag pages
-  where a tag itself has a description). The 2-hop SQL already exists in
+- **2-hop links in the graph view and tag pages** (tag pages where a tag
+  itself has a description). The 2-hop SQL already exists in
   `src/core/links.ts`; the graph currently renders direct links only.
 - **Homebrew tap distribution.** The release workflow already produces
   per-platform ZIPs; a tap formula would wrap them.
-- **Query-expansion model fine-tuning** (the qmd approach). The expansion
+- **Query-expansion model fine-tuning.** The expansion
   prompt lives in `src/core/search/expand.ts` behind the `llm_cache`, so a
   tuned model would slot in via config without pipeline changes.
 - **Scale beyond ~10k documents** (quantization, partitioning) is a declared

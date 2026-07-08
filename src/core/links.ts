@@ -92,7 +92,7 @@ export function backlinks(db: Database, docId: number): RelatedDoc[] {
     .all(docId) as RelatedDoc[];
 }
 
-/** Two-hop links: other documents sharing a link target (Cosense style, grouped per shared target) */
+/** Two-hop links: other documents sharing a link target (grouped per shared target) */
 export function twoHopLinks(db: Database, docId: number): TwoHopGroup[] {
   const rows = db
     .prepare(

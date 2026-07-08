@@ -7,7 +7,7 @@ Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージ
 📖 **ドキュメント**: <https://kechol.github.io/kura/ja/>
 
 - **日本語対応ハイブリッド検索**: FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)（形態素解析）によるキーワード検索、[sqlite-vec](https://github.com/asg017/sqlite-vec) + ローカル embedding によるセマンティック検索、ローカル LLM によるリランク
-- **自己組織化**: 階層フォルダなし。Bucket + 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）で整理（Cosense 方式）
+- **自己組織化**: 階層フォルダなし。Bucket + 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）で整理
 - **AI エージェント連携**: `kura mcp`（MCP サーバー）と全コマンドの `--json` 出力
 - **ブラウザ UI**: ドキュメント閲覧・編集・ナレッジグラフ可視化（`kura browser`）
 - **ローカル完結**: データは `~/.kura/kura.db` の単一 SQLite。LLM は Ollama / LM Studio を自動検出（無くてもキーワード検索は動作）

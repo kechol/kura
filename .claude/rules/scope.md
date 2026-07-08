@@ -49,7 +49,7 @@ that is the backup and portability story.
 ## R5. No document folder hierarchy
 
 Organization is buckets + hierarchical tags (`tech/db/sqlite`) + wiki
-links (`[[Title]]`) — the Cosense model. Don't propose a directory tree,
+links (`[[Title]]`). Don't propose a directory tree,
 notebooks, or nested collections; those recreate the filing problem kura
 exists to avoid.
 

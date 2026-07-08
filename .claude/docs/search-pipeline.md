@@ -103,7 +103,7 @@ chunks.
 
 ### Position-weighted blend
 
-`blendScores()` trusts RRF more at the top of the RRF ranking (qmd style):
+`blendScores()` trusts RRF more at the top of the RRF ranking:
 
 | RRF rank | final score |
 | --- | --- |

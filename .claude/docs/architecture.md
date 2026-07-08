@@ -15,7 +15,7 @@ search is the core feature. Distribution is a single Bun binary.
 | DB location | **Single global DB** at `~/.kura/kura.db` (`KURA_HOME` / `KURA_DB` override, `src/core/paths.ts`) |
 | Expected scale | **~10k documents**. No ANN index; sqlite-vec brute-force KNN is sufficient |
 | LLM provider | **Ollama first, auto-detected**, LM Studio fallback. Everything still works without any LLM (degraded mode) |
-| Organization | No folders. Self-organizing via **Buckets** (top-level categories) + **hierarchical tags** (`tech/db/sqlite`) + **cross-links** (`[[タイトル]]`, Cosense style) |
+| Organization | No folders. Self-organizing via **Buckets** (top-level categories) + **hierarchical tags** (`tech/db/sqlite`) + **cross-links** (`[[タイトル]]`) |
 | Self-healing | Automatic unresolved-link resolution, index consistency repair (`kura doctor --fix`), tag gardening, staleness detection |
 
 ### Non-goals

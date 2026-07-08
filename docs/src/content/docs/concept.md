@@ -35,9 +35,9 @@ without you choosing which drawer it goes in.
 `[[Title]]` links one document to another by title. The twist that
 makes it work for note-taking: **write the link before the target
 exists.** kura records it as an unresolved link, and the moment a
-document with that title is created, the link connects automatically —
-the [Cosense](https://scrapbox.io/) model. Backlinks and two-hop links
-(documents that share a neighbor) fall out of the same graph for free.
+document with that title is created, the link connects automatically.
+Backlinks and two-hop links (documents that share a neighbor) fall out
+of the same graph for free.
 
 ## Hybrid search, tuned for Japanese
 

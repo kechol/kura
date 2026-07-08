@@ -48,9 +48,6 @@ kura vsearch "書き込み中も読める仕組み"
 kura query "SQLite の並行性"
 ```
 
-融合とリランクの設計は [qmd](https://github.com/tobi/qmd) の
-アプローチに倣っています。
-
 ## どのモードを使うか
 
 | 分かっているもの | 使うモード |

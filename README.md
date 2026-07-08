@@ -14,7 +14,7 @@ and makes them queryable by both humans and AI agents.
   local-LLM reranking
 - **Self-organizing**: no folder hierarchy. Documents organize themselves
   through buckets, hierarchical tags (`tech/db/sqlite`), and wiki links
-  (`[[Title]]`) — the Cosense model
+  (`[[Title]]`)
 - **AI agent integration**: an MCP server (`kura mcp`) and `--json` output on
   every read command
 - **Browser UI**: document viewer/editor and a knowledge graph

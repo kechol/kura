@@ -9,13 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Initial implementation: document CRUD with buckets, hierarchical tags, and
   `[[wiki links]]` (unresolved links auto-resolve when the target page is
-  created, following the Cosense model).
+  created).
 - Japanese-aware hybrid search: FTS5 BM25 keyword search
   ([sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)
   morphological tokenizer with trigram fallback), semantic KNN search
   ([sqlite-vec](https://github.com/asg017/sqlite-vec) + local embeddings), and
-  RRF fusion with local-LLM yes/no reranking. The search pipeline follows the
-  architecture of [qmd](https://github.com/tobi/qmd).
+  RRF fusion with local-LLM yes/no reranking.
 - Local LLM provider abstraction with Ollama-first auto detection and
   LM Studio fallback; every LLM feature degrades gracefully when no provider
   is reachable.

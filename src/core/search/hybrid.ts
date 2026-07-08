@@ -32,7 +32,7 @@ interface Fused {
 
 const CANDIDATE_LIMIT = 50;
 
-/** Position-weighted blend (qmd style, docs: search-pipeline.md): trust RRF more for higher RRF ranks */
+/** Position-weighted blend (docs: search-pipeline.md): trust RRF more for higher RRF ranks */
 export function blendScores(rrfNormalized: number, rerank: number, rrfRank: number): number {
   if (rrfRank <= 3) return rrfNormalized * 0.75 + rerank * 0.25;
   if (rrfRank <= 10) return rrfNormalized * 0.6 + rerank * 0.4;
