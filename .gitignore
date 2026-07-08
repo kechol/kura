@@ -11,6 +11,8 @@ vendor/
 *.db-wal
 *.db-shm
 .DS_Store
+# Claude files that are not meant to be shared with the public
+.claude/scheduled_tasks.lock
 # Local-only working notes (see CLAUDE.md: public OSS policy)
 TODO.md
 .prompt
