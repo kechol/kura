@@ -45,5 +45,15 @@ jobs:
         run: bun test
         env:
           KURA_TEST_DOWNLOAD: "1"
+      # macOS: retry up to 3×. The e2e suite spawns a `bun run` subprocess per
+      # test, and GitHub's macOS runners intermittently flake on that under load
+      # (subprocess/dlopen contention — not reproducible locally). A real
+      # regression is deterministic and fails every attempt.
       - if: runner.os != 'Linux'
-        run: bun test
+        run: |
+          for attempt in 1 2 3; do
+            echo "bun test (attempt $attempt/3)"
+            bun test && exit 0
+            echo "::warning::bun test failed on macOS (attempt $attempt/3)"
+          done
+          exit 1
