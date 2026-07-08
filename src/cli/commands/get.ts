@@ -16,7 +16,7 @@ Options:
   --lines <A:B>     1-based inclusive line range ('50:' and ':100' allowed)
   --bucket <name>   Resolve title within this bucket`;
 
-/** --lines A:B（1 始まり・両端含む）で本文を行スライスする */
+/** Slice the body by lines with --lines A:B (1-based, inclusive) */
 function sliceLines(content: string, range: string | undefined): string {
   if (range === undefined) return content;
   const m = range.match(/^(\d*):(\d*)$/);
@@ -46,7 +46,7 @@ export function run(argv: string[]): number {
   const { db } = getDb();
   const resolved = resolveDoc(db, spec, strOpt(parsed, "bucket"));
   touchAccess(db, resolved.id);
-  // touch 後の access_count / last_accessed_at を出力に反映する
+  // Reflect access_count / last_accessed_at from after the touch in the output
   const doc = getDocumentByKey(db, resolved.key) ?? resolved;
   const content = sliceLines(doc.content, strOpt(parsed, "lines"));
 

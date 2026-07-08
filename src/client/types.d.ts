@@ -1,2 +1,2 @@
-// CSS の side-effect import 用宣言
+// Declaration for CSS side-effect imports
 declare module "*.css" {}

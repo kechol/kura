@@ -7,7 +7,7 @@ import { printHits } from "../searchOutput";
 
 export const summary = "Semantic vector search (KNN)";
 
-export const usage = `Usage: kura vsearch "クエリ" [--bucket b] [--tag t] [--limit 20] [--json]
+export const usage = `Usage: kura vsearch "<query>" [--bucket b] [--tag t] [--limit 20] [--json]
 
 Requires an embedding provider (Ollama / LM Studio).`;
 

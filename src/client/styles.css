@@ -1,4 +1,4 @@
-/* kura ブラウザ UI（SPEC §8.3）— CSS カスタムプロパティによるライト/ダークテーマ */
+/* kura browser UI (SPEC §8.3) — light/dark theming via CSS custom properties */
 
 :root {
   color-scheme: light;
@@ -50,7 +50,7 @@
   --hl-attr: #ffa657;
 }
 
-/* JS 無効時のフォールバック（初期化前は prefers-color-scheme に従う） */
+/* Fallback when JS is disabled (follows prefers-color-scheme before init) */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
@@ -117,7 +117,7 @@ h2 {
   margin: 0 0 0.5rem;
 }
 
-/* ---- フォーム部品（基底） ---- */
+/* ---- Form controls (base) ---- */
 
 input,
 select,
@@ -145,7 +145,7 @@ button:focus-visible {
   outline-offset: 1px;
 }
 
-/* ---- レイアウト ---- */
+/* ---- Layout ---- */
 
 .layout {
   min-height: 100vh;
@@ -246,7 +246,7 @@ button:focus-visible {
   max-width: 1100px;
 }
 
-/* ---- 共通部品 ---- */
+/* ---- Shared components ---- */
 
 .btn {
   display: inline-block;
@@ -354,7 +354,7 @@ mark {
   flex-wrap: wrap;
 }
 
-/* ---- サイドバー: Bucket / タグツリー ---- */
+/* ---- Sidebar: buckets / tag tree ---- */
 
 .bucket-list {
   list-style: none;
@@ -409,7 +409,7 @@ mark {
   padding: 1rem;
 }
 
-/* ---- ホーム ---- */
+/* ---- Home ---- */
 
 .stat-cards {
   display: grid;
@@ -476,7 +476,7 @@ mark {
   white-space: nowrap;
 }
 
-/* ---- 一覧テーブル ---- */
+/* ---- Document list table ---- */
 
 .table-wrap {
   overflow-x: auto;
@@ -523,7 +523,7 @@ mark {
   font-size: 0.9rem;
 }
 
-/* ---- ドキュメント詳細 ---- */
+/* ---- Document detail ---- */
 
 .doc-detail {
   display: flex;
@@ -636,7 +636,7 @@ mark {
   margin-bottom: 0.4rem;
 }
 
-/* ---- 本文レンダリング ---- */
+/* ---- Body rendering ---- */
 
 .doc-content {
   overflow-wrap: anywhere;
@@ -733,7 +733,7 @@ mark {
   max-width: 100%;
 }
 
-/* ---- シンタックスハイライト（highlight.js トークン） ---- */
+/* ---- Syntax highlighting (highlight.js tokens) ---- */
 
 .hljs-comment,
 .hljs-quote {
@@ -787,7 +787,7 @@ mark {
   font-weight: 700;
 }
 
-/* ---- 編集 ---- */
+/* ---- Edit ---- */
 
 .edit-form {
   display: flex;
@@ -816,7 +816,7 @@ mark {
   gap: 0.6rem;
 }
 
-/* ---- 検索 ---- */
+/* ---- Search ---- */
 
 .search-page-form {
   display: flex;
@@ -899,7 +899,7 @@ mark {
   font-size: 0.9rem;
 }
 
-/* ---- ナレッジグラフ ---- */
+/* ---- Knowledge graph ---- */
 
 .graph-page {
   max-width: none;

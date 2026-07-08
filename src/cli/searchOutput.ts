@@ -1,6 +1,6 @@
 import type { SearchHit } from "../core/search/types";
 
-/** 検索結果の共通出力（SPEC §7.3: key, title, bucket, tags, score, snippet, source） */
+/** Shared search result output (SPEC §7.3: key, title, bucket, tags, score, snippet, source) */
 export function printHits(hits: SearchHit[], json: boolean): void {
   if (json) {
     console.log(

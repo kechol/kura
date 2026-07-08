@@ -37,7 +37,7 @@ export async function run(argv: string[]): Promise<number> {
         console.log(JSON.stringify(out, null, 2));
       } else {
         for (const b of buckets) {
-          console.log(`${b.name}  ${b.documents}件  ${b.description ?? ""}`.trimEnd());
+          console.log(`${b.name}  ${b.documents} documents  ${b.description ?? ""}`.trimEnd());
         }
       }
       return EXIT.OK;
@@ -62,7 +62,7 @@ export async function run(argv: string[]): Promise<number> {
           removed++;
         }
       }
-      // 非空のまま（--force なし）なら ConflictError をそのまま伝播させる
+      // Still non-empty (no --force): let the ConflictError propagate as-is
       deleteBucket(db, name);
       console.log(`deleted bucket ${name} (${removed} documents)`);
       return EXIT.OK;

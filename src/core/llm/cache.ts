@@ -37,7 +37,7 @@ export function cacheSet(
   ).run(cacheKey(purpose, model, input), purpose, JSON.stringify(value));
 }
 
-/** read-through キャッシュ: ヒットすればそれを、なければ fn() の結果を保存して返す */
+/** Read-through cache: return a hit, or store and return the result of fn() */
 export async function cached<T>(
   db: Database,
   purpose: CachePurpose,

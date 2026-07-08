@@ -18,7 +18,7 @@ function contentText(result: unknown): string {
 
 beforeEach(async () => {
   db = openDatabase({ path: ":memory:", vaporettoPath: null, dimensions: 4 }).db;
-  // 検索系はプロバイダなしの劣化動作で決定的にテストする
+  // Search tests run deterministically in degraded mode (no LLM provider)
   setProviderForTests(null);
 
   createDocument(db, {
@@ -45,7 +45,7 @@ afterEach(async () => {
 });
 
 describe("kura mcp server", () => {
-  test("8 ツールが公開され、description にガイダンスがある", async () => {
+  test("exposes 8 tools with guidance in descriptions", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
@@ -62,7 +62,7 @@ describe("kura mcp server", () => {
     expect(query?.description).toContain("kura_get");
   });
 
-  test("kura_search → kura_get のフロー（access_count 更新込み）", async () => {
+  test("kura_search → kura_get flow (including access_count update)", async () => {
     const search = await client.callTool({
       name: "kura_search",
       arguments: { query: "トランザクション" },
@@ -81,7 +81,7 @@ describe("kura mcp server", () => {
     expect(row.access_count).toBe(1);
   });
 
-  test("kura_query は劣化動作でも応答する（警告付き）", async () => {
+  test("kura_query responds even in degraded mode (with warnings)", async () => {
     const result = await client.callTool({
       name: "kura_query",
       arguments: { query: "トランザクション", limit: 5 },
@@ -118,25 +118,25 @@ describe("kura mcp server", () => {
     expect(tagsMd).not.toContain("メモ");
   });
 
-  test("kura_related がリンク 3 種を返す", async () => {
+  test("kura_related returns all three link kinds", async () => {
     const result = await client.callTool({
       name: "kura_related",
       arguments: { key: "トランザクション設計" },
     });
     const md = contentText(result);
-    expect(md).toContain("バックリンク");
+    expect(md).toContain("Backlinks");
     expect(md).toContain("SQLite の WAL モード");
   });
 
-  test("kura_status が統計を返す", async () => {
+  test("kura_status returns statistics", async () => {
     const result = await client.callTool({ name: "kura_status", arguments: {} });
     const md = contentText(result);
-    expect(md).toContain("ドキュメント: 2 件");
+    expect(md).toContain("Documents: 2");
     expect(md).toContain("main: 2");
-    expect(md).toContain("トークナイザー: trigram");
+    expect(md).toContain("tokenizer: trigram");
   });
 
-  test("存在しない key はエラー扱い（isError）", async () => {
+  test("unknown key is reported as an error (isError)", async () => {
     const result = (await client.callTool({
       name: "kura_get",
       arguments: { key: "deadbeef" },

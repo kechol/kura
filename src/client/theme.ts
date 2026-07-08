@@ -2,7 +2,7 @@ const STORAGE_KEY = "kura-theme";
 
 export type Theme = "light" | "dark";
 
-/** localStorage → prefers-color-scheme の順で初期テーマを決めて適用する */
+/** Determine and apply the initial theme: localStorage first, then prefers-color-scheme */
 export function initTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
   const theme: Theme =

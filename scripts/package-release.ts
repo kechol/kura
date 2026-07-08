@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * リリース ZIP の作成。scripts/compile.ts で release/<target>/ に置いたバイナリを
- * install.sh / install.ps1 と共に ZIP 化する。
+ * Build release ZIPs. Bundles the binaries that scripts/compile.ts placed under
+ * release/<target>/ together with install.sh / install.ps1.
  *
- * 使い方: bun run scripts/package-release.ts <tag>
- *   （事前に各ターゲットを release/<bun-target>/kura[.exe] へコンパイルしておくこと）
+ * Usage: bun run scripts/package-release.ts <tag>
+ *   (Compile each target to release/<bun-target>/kura[.exe] beforehand)
  */
 import { copyFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";

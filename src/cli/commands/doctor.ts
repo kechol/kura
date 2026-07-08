@@ -18,8 +18,8 @@ export const usage = `Usage: kura doctor [--fix]
 Checks SQLite / native extensions / database integrity / LLM providers.
 
 Options:
-  --fix   修復を実行: 拡張再取得 / FTS リビルド・再トークナイズ / 孤立チャンク GC /
-          content_hash 再計算 / 未解決リンク再解決 / embedding 設定変更の反映`;
+  --fix   Run repairs: re-fetch extensions / rebuild & retokenize FTS / GC orphan chunks /
+          recompute content_hash / re-resolve unresolved links / apply embedding config changes`;
 
 type Status = "ok" | "warn" | "fail";
 
@@ -41,7 +41,7 @@ async function fetchJson(url: string, timeoutMs = 2000): Promise<unknown | null>
   }
 }
 
-/** Ollama のモデル名比較（":latest" と大文字小文字を無視） */
+/** Compare Ollama model names (ignoring ":latest" and case) */
 function normalizeModelName(name: string): string {
   return name.toLowerCase().replace(/:latest$/, "");
 }
@@ -68,7 +68,7 @@ function checkVaporetto(checks: Check[]): boolean {
     checks.push({
       name: "vaporetto",
       status: "warn",
-      detail: `${process.platform}-${process.arch} は未対応（trigram フォールバック）`,
+      detail: `unsupported on ${process.platform}-${process.arch} (trigram fallback)`,
     });
     return false;
   }
@@ -77,7 +77,7 @@ function checkVaporetto(checks: Check[]): boolean {
     checks.push({
       name: "vaporetto",
       status: "warn",
-      detail: "未インストール。'kura init' でダウンロードされます",
+      detail: "not installed; 'kura init' will download it",
     });
     return false;
   }
@@ -92,7 +92,7 @@ function checkVaporetto(checks: Check[]): boolean {
       .get("全文検索") as { n: number };
     db.close();
     if (hit.n !== 1) {
-      checks.push({ name: "vaporetto", status: "fail", detail: "トークナイズ検証に失敗" });
+      checks.push({ name: "vaporetto", status: "fail", detail: "tokenization check failed" });
       return false;
     }
     checks.push({ name: "vaporetto", status: "ok", detail: lib });
@@ -113,7 +113,7 @@ function checkDatabase(checks: Check[], vaporettoOk: boolean): void {
     checks.push({
       name: "database",
       status: "warn",
-      detail: `未作成。'kura init' を実行してください（${path}）`,
+      detail: `not created; run 'kura init' (${path})`,
     });
     return;
   }
@@ -139,14 +139,14 @@ function checkDatabase(checks: Check[], vaporettoOk: boolean): void {
       checks.push({
         name: "fts-sync",
         status: "warn",
-        detail: `documents=${docs} / fts=${fts} が不一致。FTS リビルドが必要です`,
+        detail: `documents=${docs} / fts=${fts} mismatch; FTS rebuild required`,
       });
     }
     if (tokenizer === "trigram" && vaporettoOk) {
       checks.push({
         name: "fts-tokenizer",
         status: "warn",
-        detail: "vaporetto が利用可能ですが DB は trigram で構築されています（再インデックス推奨）",
+        detail: "vaporetto is available but the DB was built with trigram (reindex recommended)",
       });
     }
     const config = loadConfig();
@@ -154,7 +154,7 @@ function checkDatabase(checks: Check[], vaporettoOk: boolean): void {
       checks.push({
         name: "embedding-model",
         status: "warn",
-        detail: `DB=${embModel} / config=${config.llm.models.embedding} が不一致。'kura embed --all' で再生成してください`,
+        detail: `DB=${embModel} / config=${config.llm.models.embedding} mismatch; run 'kura embed --all' to regenerate`,
       });
     }
     for (const w of warnings) {
@@ -190,16 +190,16 @@ async function checkProviders(checks: Check[], config: KuraConfig): Promise<void
       checks.push({
         name: "ollama-models",
         status: "warn",
-        detail: `不足モデルあり: ${missing.map((m) => `ollama pull ${m}`).join(" / ")}`,
+        detail: `missing models: ${missing.map((m) => `ollama pull ${m}`).join(" / ")}`,
       });
     } else {
-      checks.push({ name: "ollama-models", status: "ok", detail: "必要モデルすべて利用可能" });
+      checks.push({ name: "ollama-models", status: "ok", detail: "all required models available" });
     }
   } else {
     checks.push({
       name: "ollama",
       status: "warn",
-      detail: `${config.llm.ollama_url} に到達できません`,
+      detail: `cannot reach ${config.llm.ollama_url}`,
     });
   }
 
@@ -210,7 +210,7 @@ async function checkProviders(checks: Check[], config: KuraConfig): Promise<void
       : {
           name: "lmstudio",
           status: "warn",
-          detail: `${config.llm.lmstudio_url} に到達できません`,
+          detail: `cannot reach ${config.llm.lmstudio_url}`,
         },
   );
 
@@ -227,7 +227,7 @@ async function checkProviders(checks: Check[], config: KuraConfig): Promise<void
     status: resolved === "none" ? "warn" : "ok",
     detail:
       resolved === "none"
-        ? "利用可能なプロバイダなし（キーワード検索のみの劣化動作）"
+        ? "no provider available (degraded mode: keyword search only)"
         : `${resolved}${config.llm.provider === "auto" ? " (auto)" : ""}`,
   });
 }
@@ -245,15 +245,15 @@ async function runFixes(config: KuraConfig): Promise<void> {
 
   const reports: Array<{ action: string; detail: string }> = [];
 
-  // 拡張再取得（対応プラットフォームで未展開のときのみダウンロード）
+  // Re-fetch extensions (download only when missing on a supported platform)
   if (vaporettoSupported() && !existsSync(vaporettoLibPath() ?? "")) {
     try {
       const path = await ensureVaporetto({ download: true });
-      if (path) reports.push({ action: "vaporetto", detail: `拡張を取得しました: ${path}` });
+      if (path) reports.push({ action: "vaporetto", detail: `downloaded extension: ${path}` });
     } catch (e) {
       reports.push({
         action: "vaporetto",
-        detail: `拡張の取得に失敗しました（${e instanceof Error ? e.message : e}）`,
+        detail: `failed to download extension (${e instanceof Error ? e.message : e})`,
       });
     }
   }
@@ -271,7 +271,7 @@ async function runFixes(config: KuraConfig): Promise<void> {
         const report = fix();
         if (report) reports.push(report);
       }
-      // trigram で構築された DB でも vaporetto が使えるようになったら再インデックス
+      // Reindex a trigram-built DB once vaporetto becomes available
       if (tokenizer === "trigram" && vaporettoLoaded) {
         reports.push(retokenizeFts(db, "vaporetto"));
       }
@@ -281,7 +281,7 @@ async function runFixes(config: KuraConfig): Promise<void> {
   }
 
   if (reports.length === 0) {
-    console.log("--fix: 修復対象はありませんでした");
+    console.log("--fix: nothing to repair");
   } else {
     for (const r of reports) console.log(`fixed: ${r.action.padEnd(16)} ${r.detail}`);
   }
@@ -310,7 +310,7 @@ export async function run(argv: string[]): Promise<number> {
         : {
             name: "homebrew-sqlite",
             status: "fail",
-            detail: `${brew} が見つかりません。'brew install sqlite' を実行してください`,
+            detail: `${brew} not found; run 'brew install sqlite'`,
           },
     );
   }
@@ -321,13 +321,13 @@ export async function run(argv: string[]): Promise<number> {
     checks.push({
       name: "config",
       status: "ok",
-      detail: existsSync(configPath()) ? configPath() : "未作成（既定値で動作）",
+      detail: existsSync(configPath()) ? configPath() : "not created (running with defaults)",
     });
   } catch (e) {
     checks.push({
       name: "config",
       status: "fail",
-      detail: `${configPath()} のパースに失敗: ${e instanceof Error ? e.message : e}`,
+      detail: `failed to parse ${configPath()}: ${e instanceof Error ? e.message : e}`,
     });
     config = loadConfig(":missing:");
   }

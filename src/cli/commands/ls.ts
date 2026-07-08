@@ -45,7 +45,7 @@ export function run(argv: string[]): number {
     limit: stale ? undefined : intOpt(parsed, "limit"),
   });
   if (stale) {
-    // 陳腐化スコア（経過日数 × 低参照）でフィルタ・並べ替え（SPEC §10.4）
+    // Filter and sort by staleness score (days elapsed × low access) (SPEC §10.4)
     const scored = staleDocuments(db, config, { bucket: strOpt(parsed, "bucket") });
     const order = new Map(scored.map((s, i) => [s.key, i]));
     docs = docs

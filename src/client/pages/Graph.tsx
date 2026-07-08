@@ -46,7 +46,7 @@ function radiusOf(degree: number): number {
   return 4 + Math.sqrt(degree) * 2.5;
 }
 
-/** d3-force シミュレーションを組み、SVG に直接描画する。戻り値はクリーンアップ関数 */
+/** Set up a d3-force simulation and draw directly into the SVG. Returns a cleanup function */
 function setupGraph(
   svg: SVGSVGElement,
   data: GraphData,
@@ -76,7 +76,7 @@ function setupGraph(
     .filter((e) => keySet.has(e.source) && keySet.has(e.target))
     .map((e) => ({ source: e.source, target: e.target }));
 
-  // トップレベルタグで色分け（出現数の多い順にパレット割当）
+  // Color by top-level tag (palette assigned in descending frequency order)
   const tagCounts = new Map<string, number>();
   for (const n of nodes) tagCounts.set(n.topTag, (tagCounts.get(n.topTag) ?? 0) + 1);
   const sortedTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
@@ -152,7 +152,7 @@ function setupGraph(
     });
   });
 
-  // ズーム（wheel）・パン（背景ドラッグ）・ノードドラッグの簡易実装
+  // Minimal implementation of zoom (wheel), pan (background drag), and node drag
   let scale = 1;
   let tx = 0;
   let ty = 0;

@@ -1,6 +1,6 @@
 import { normalizeTagPath } from "./wiki";
 
-/** import/export ラウンドトリップ用 frontmatter（SPEC §4） */
+/** Frontmatter for import/export round-trips (SPEC §4) */
 export interface Frontmatter {
   kura_key?: string;
   title?: string;
@@ -12,14 +12,14 @@ export interface Frontmatter {
   updated_at?: string;
 }
 
-/** ISO 8601 / Date → SQLite の datetime('now') 形式（UTC "YYYY-MM-DD HH:MM:SS"） */
+/** ISO 8601 / Date to SQLite datetime('now') format (UTC "YYYY-MM-DD HH:MM:SS") */
 export function toSqliteDatetime(value: string | Date): string | null {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-/** SQLite 形式 → ISO 8601（UTC） */
+/** SQLite format to ISO 8601 (UTC) */
 export function toIsoDatetime(sqlite: string): string {
   return `${sqlite.replace(" ", "T")}Z`;
 }
@@ -48,8 +48,8 @@ function asTags(v: unknown): string[] | undefined {
 }
 
 /**
- * 先頭の YAML frontmatter をパースして本文と分離する。
- * frontmatter がない場合は fm: null。YAML として不正な場合は例外を投げる（呼び出し側でファイル名を付与）。
+ * Parse the leading YAML frontmatter and separate it from the body.
+ * fm is null when there is no frontmatter. Throws on invalid YAML (callers attach the file name).
  */
 export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: string } {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/);
@@ -61,7 +61,7 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
   }
   const obj = parsed as Record<string, unknown>;
   const contentType = asString(obj.content_type);
-  // 手書き frontmatter で全数字キーが非クォートの場合も救済する
+  // Also rescue hand-written frontmatter where an all-digit key is unquoted
   const rawKey = obj.kura_key;
   const kuraKey =
     typeof rawKey === "number" && Number.isSafeInteger(rawKey) ? String(rawKey) : asString(rawKey);
@@ -83,7 +83,7 @@ function yamlScalar(s: string): string {
   return JSON.stringify(s);
 }
 
-/** export 用 frontmatter を組み立てる（値は SQLite datetime 形式で受け取り ISO で出力） */
+/** Build frontmatter for export (accepts SQLite datetime values, emits ISO) */
 export function serializeFrontmatter(fm: {
   kura_key: string;
   title: string;
@@ -95,7 +95,7 @@ export function serializeFrontmatter(fm: {
   updated_at: string;
 }): string {
   const lines = ["---"];
-  // doc_key は全数字になり得るため必ずクォートする（YAML の数値化を防ぐ）
+  // Always quote doc_key: it can be all digits (prevents YAML number coercion)
   lines.push(`kura_key: ${yamlScalar(fm.kura_key)}`);
   lines.push(`title: ${yamlScalar(fm.title)}`);
   lines.push(`bucket: ${yamlScalar(fm.bucket)}`);

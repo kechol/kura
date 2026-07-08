@@ -38,7 +38,7 @@ hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("yaml", yaml);
 
-/** [[タイトル]] → doc_key の解決。未解決なら null */
+/** Resolve [[Title]] → doc_key. null when unresolved */
 export type WikiResolver = (title: string) => string | null;
 
 const md = new MarkdownIt({
@@ -49,14 +49,14 @@ const md = new MarkdownIt({
       try {
         return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
       } catch {
-        // ハイライト失敗時は素のコードにフォールバック
+        // Fall back to plain code when highlighting fails
       }
     }
     return "";
   },
 });
 
-// [[リンク]] をクリック可能な内部リンクへ変換する inline ルール（SPEC §8.3）
+// Inline rule that turns [[links]] into clickable internal links (SPEC §8.3)
 md.inline.ruler.before("link", "wikilink", (state, silent) => {
   const { src, pos } = state;
   if (src.charCodeAt(pos) !== 0x5b || src.charCodeAt(pos + 1) !== 0x5b) return false;
@@ -80,16 +80,16 @@ md.renderer.rules.wikilink = (tokens, idx, _options, env) => {
   if (key) {
     return `<a class="wikilink" href="/docs/${encodeURIComponent(key)}">${label}</a>`;
   }
-  // 未解決リンク: タイトル解決ルートへ（赤系表示）
+  // Unresolved link: route to the title-resolution page (rendered in red)
   return `<a class="wikilink wikilink-unresolved" href="/docs/title/${encodeURIComponent(title)}">${label}</a>`;
 };
 
-/** markdown → HTML（最終段で必ず DOMPurify を通す） */
+/** markdown → HTML (always passes through DOMPurify as the final step) */
 export function renderMarkdown(content: string, resolve: WikiResolver): string {
   return DOMPurify.sanitize(md.render(content, { resolve }));
 }
 
-/** content_type=html のドキュメント表示用サニタイズ */
+/** Sanitization for displaying content_type=html documents */
 export function sanitizeHtml(content: string): string {
   return DOMPurify.sanitize(content);
 }
@@ -105,10 +105,10 @@ interface MermaidModule {
 
 let mermaidPromise: Promise<MermaidModule | null> | null = null;
 
-/** mermaid を CDN から遅延ロードする。失敗時は null（コードブロックのまま表示） */
+/** Lazily load mermaid from the CDN. null on failure (shown as a plain code block) */
 export function loadMermaid(): Promise<MermaidModule | null> {
   if (!mermaidPromise) {
-    // バンドラに解決させないため Function 経由で dynamic import する
+    // Dynamic import via Function so the bundler does not try to resolve it
     const dynImport = new Function("u", "return import(u)") as (
       u: string,
     ) => Promise<MermaidModule>;

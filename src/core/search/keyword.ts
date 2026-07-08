@@ -5,12 +5,12 @@ import type { SearchHit } from "./types";
 export interface KeywordOptions {
   bucket?: string;
   tag?: string;
-  /** AND 検索（`search --all`） */
+  /** AND search (`search --all`) */
   all?: boolean;
   limit?: number;
 }
 
-/** trigram フォールバック時のクエリ組み立て: 各語をフレーズ化して OR/AND 結合（SPEC §5.4） */
+/** Query building for the trigram fallback: phrase-quote each term and join with OR/AND (SPEC §5.4) */
 export function buildTrigramQuery(query: string, all: boolean): string {
   const terms = query.split(/\s+/).filter((t) => t !== "");
   return terms.map((t) => `"${t.replaceAll('"', '""')}"`).join(all ? " AND " : " OR ");
@@ -33,7 +33,7 @@ function toHit(row: HitRow): SearchHit {
     title: row.title,
     bucket: row.bucket,
     tags: row.tag_paths ? row.tag_paths.split(" ") : [],
-    // bm25() は小さいほど良いので符号反転して「大きいほど良い」に揃える
+    // bm25() is lower-is-better; negate so that higher is better
     score: -row.rank_score,
     snippet: row.snip,
     source: "keyword",
@@ -46,7 +46,7 @@ const TAG_FILTER = `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id =
 const TAGS_SELECT = `(SELECT group_concat(t.path, ' ') FROM document_tags dt
   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id)`;
 
-/** FTS5 BM25 キーワード検索。title/content/tags を 5.0/1.0/3.0 で重み付け（SPEC §5.4） */
+/** FTS5 BM25 keyword search. Weights title/content/tags at 5.0/1.0/3.0 (SPEC §5.4) */
 export function keywordSearch(
   db: Database,
   tokenizer: FtsTokenizer,
@@ -96,13 +96,13 @@ export function keywordSearch(
     const message = e instanceof Error ? e.message : String(e);
     if (/no such function: vaporetto|no such tokenizer/.test(message)) {
       throw new Error(
-        `FTS クエリに失敗しました（${message}）。vaporetto 拡張が見つかりません。'kura doctor' を実行してください`,
+        `FTS query failed (${message}). The vaporetto extension is missing; run 'kura doctor'`,
       );
     }
     throw e;
   }
 
-  // trigram は 3 文字未満の語にマッチしないため、ヒット 0 かつ短い語を含む場合は LIKE で代替
+  // trigram cannot match terms shorter than 3 characters; fall back to LIKE when there are no hits and a short term exists
   const terms = query.split(/\s+/).filter((t) => t !== "");
   if (rows.length === 0 && tokenizer === "trigram" && terms.some((t) => t.length < 3)) {
     return likeFallback(db, terms, opts, limit);

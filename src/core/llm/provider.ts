@@ -10,7 +10,7 @@ export interface ChatOptions {
   temperature?: number;
 }
 
-/** ローカル LLM プロバイダ抽象（SPEC §6） */
+/** Local LLM provider abstraction (SPEC §6) */
 export interface LLMProvider {
   name: "ollama" | "lmstudio";
   isAvailable(): Promise<boolean>;
@@ -19,7 +19,7 @@ export interface LLMProvider {
   chat(messages: Message[], model: string, opts?: ChatOptions): Promise<string>;
 }
 
-/** OpenAI 互換 API（/v1/embeddings, /v1/chat/completions）ベースの実装 */
+/** Implementation based on OpenAI-compatible APIs (/v1/embeddings, /v1/chat/completions) */
 export abstract class OpenAICompatProvider implements LLMProvider {
   abstract name: "ollama" | "lmstudio";
 
@@ -79,7 +79,7 @@ interface CacheEntry {
 let detectionCache: CacheEntry | null = null;
 let testOverride: { provider: LLMProvider | null } | null = null;
 
-/** テスト用: プロバイダを固定する（null で「プロバイダなし」、undefined で解除） */
+/** For tests: pin the provider (null means "no provider", undefined clears the override) */
 export function setProviderForTests(provider: LLMProvider | null | undefined): void {
   testOverride = provider === undefined ? null : { provider };
   detectionCache = null;
@@ -99,7 +99,7 @@ async function detect(config: KuraConfig): Promise<LLMProvider | null> {
     case "lmstudio":
       return (await lmstudio.isAvailable()) ? lmstudio : null;
     default: {
-      // auto: Ollama 優先 → LM Studio → none（SPEC §6）
+      // auto: prefer Ollama, then LM Studio, then none (SPEC §6)
       if (await ollama.isAvailable()) return ollama;
       if (await lmstudio.isAvailable()) return lmstudio;
       return null;
@@ -109,7 +109,7 @@ async function detect(config: KuraConfig): Promise<LLMProvider | null> {
 
 const DETECTION_TTL_MS = 60_000;
 
-/** プロバイダ解決（検出結果はプロセス内 60 秒キャッシュ）。不在なら null */
+/** Resolve the provider (detection cached in-process for 60 seconds). null when unavailable */
 export async function resolveProvider(config: KuraConfig): Promise<LLMProvider | null> {
   if (testOverride) return testOverride.provider;
   const now = Date.now();
@@ -119,12 +119,12 @@ export async function resolveProvider(config: KuraConfig): Promise<LLMProvider |
   return provider;
 }
 
-/** プロバイダ必須の機能で使う。不在なら LLMUnavailableError（exit 4） */
+/** For features that require a provider. Throws LLMUnavailableError when absent (exit 4) */
 export async function requireProvider(config: KuraConfig): Promise<LLMProvider> {
   const provider = await resolveProvider(config);
   if (!provider) {
     throw new LLMUnavailableError(
-      "LLM プロバイダ（Ollama / LM Studio）に接続できません。起動状態を確認するか 'kura config set llm.provider none' 以外の設定を見直してください",
+      "cannot connect to an LLM provider (Ollama / LM Studio). Check that one is running, or review your settings other than 'kura config set llm.provider none'",
     );
   }
   return provider;

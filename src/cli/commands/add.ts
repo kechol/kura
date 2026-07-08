@@ -18,7 +18,7 @@ Options:
   --type <type>     markdown | html (overrides frontmatter content_type)
   --json            Print created documents as JSON`;
 
-/** frontmatter 直後の区切り空行 1 行を本文から除く */
+/** Strip the single separator blank line right after the frontmatter from the body */
 function stripLeadingBlank(body: string): string {
   return body.replace(/^\r?\n/, "");
 }
@@ -66,11 +66,11 @@ export async function run(argv: string[]): Promise<number> {
     }
     if (fm?.kura_key) {
       console.error(
-        `warning: ${label}: frontmatter の kura_key は無視して新規作成します。更新には 'kura import' を使ってください`,
+        `warning: ${label}: ignoring kura_key in frontmatter and creating a new document; use 'kura import' to update`,
       );
     }
 
-    // title 決定順: frontmatter.title → --title → ファイル名（拡張子除去）
+    // Title precedence: frontmatter.title → --title → file name (extension stripped)
     const fallback = stdin ? undefined : basename(file, extname(file));
     const title = fm?.title ?? titleOpt ?? fallback;
     if (title === undefined) throw new UsageError(`${label}: could not determine title`);

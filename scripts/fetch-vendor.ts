@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * クロスコンパイル用の sqlite-vec プリビルドを npm レジストリから vendor/ へ取得する。
- * bun install は実行プラットフォームの optional dependency しか展開しないため、
- * リリースビルド（5 ターゲット）では全プラットフォーム分を事前取得する。
+ * Fetch sqlite-vec prebuilts for cross-compilation from the npm registry into vendor/.
+ * bun install only unpacks the optional dependency for the running platform, so
+ * release builds (5 targets) prefetch the prebuilts for every platform.
  *
- * 使い方: bun run scripts/fetch-vendor.ts [target...]
- *   target 省略時は全ターゲット。例: bun-darwin-arm64 bun-linux-x64
+ * Usage: bun run scripts/fetch-vendor.ts [target...]
+ *   All targets when omitted. Example: bun-darwin-arm64 bun-linux-x64
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { join } from "node:path";
 const VEC_VERSION = "0.1.9";
 
 interface VendorTarget {
-  /** bun build --compile の --target 名 */
+  /** --target name for bun build --compile */
   bunTarget: string;
   npmPackage: string;
   lib: string;
@@ -38,7 +38,7 @@ export function vendorLibPath(bunTarget: string): string {
 async function fetchTarget(target: VendorTarget): Promise<void> {
   const dest = vendorLibPath(target.bunTarget);
   if (existsSync(dest)) {
-    console.error(`vendor: ${target.bunTarget} は取得済み (${dest})`);
+    console.error(`vendor: ${target.bunTarget} already fetched (${dest})`);
     return;
   }
   const url = `https://registry.npmjs.org/${target.npmPackage}/-/${target.npmPackage}-${VEC_VERSION}.tgz`;
@@ -50,7 +50,7 @@ async function fetchTarget(target: VendorTarget): Promise<void> {
   mkdirSync(dir, { recursive: true });
   const tgz = join(dir, "package.tgz");
   await Bun.write(tgz, res);
-  // npm tarball は package/ プレフィックス。ライブラリだけ展開する
+  // npm tarballs use a package/ prefix; extract only the library
   const proc = Bun.spawnSync([
     "tar",
     "-xzf",

@@ -4,7 +4,7 @@ export interface SearchHit {
   title: string;
   bucket: string;
   tags: string[];
-  /** 大きいほど関連が高い（方式ごとに正規化） */
+  /** Higher means more relevant (normalized per method) */
   score: number;
   snippet: string;
   source: "keyword" | "vector" | "hybrid";

@@ -26,7 +26,7 @@ Files whose frontmatter has a known kura_key update the existing document.`;
 
 const MD_EXTS = new Set([".md", ".markdown"]);
 
-/** ディレクトリ再帰で Markdown ファイルを収集する（名前順） */
+/** Collect Markdown files recursively from a directory (sorted by name) */
 function collectMarkdown(dir: string, out: string[]): void {
   const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -105,6 +105,6 @@ export async function run(argv: string[]): Promise<number> {
   } else {
     console.log(`imported: ${created} created, ${updated} updated, ${skipped.length} skipped`);
   }
-  // skip があっても一部成功なら 0、全滅なら 1
+  // Exit 0 when anything succeeded despite skips; 1 when everything failed
   return created + updated > 0 ? EXIT.OK : EXIT.ERROR;
 }

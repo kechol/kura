@@ -113,7 +113,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 }
 
-/** TTY での y/N 確認。非 TTY は既定値を返す */
+/** y/N confirmation on a TTY. Returns the default when not a TTY */
 async function confirm(prompt: string, nonTtyDefault: boolean): Promise<boolean> {
   if (process.stdout.isTTY !== true || process.stdin.isTTY !== true) return nonTtyDefault;
   process.stdout.write(`${prompt} [y/N] `);
@@ -123,7 +123,7 @@ async function confirm(prompt: string, nonTtyDefault: boolean): Promise<boolean>
   return /^y(es)?$/i.test(answer.trim());
 }
 
-/** kura tag suggest: LLM によるタグ提案（既存タグ体系を最優先で再利用、SPEC §10.3） */
+/** kura tag suggest: LLM tag suggestions (reusing the existing tag taxonomy first, SPEC §10.3) */
 async function runSuggest(parsed: Parsed): Promise<number> {
   const docSpec = strOpt(parsed, "doc");
   if (!docSpec && !boolOpt(parsed, "untagged")) {
@@ -142,7 +142,7 @@ async function runSuggest(parsed: Parsed): Promise<number> {
     targets = untaggedDocuments(db, bucket);
   }
   if (targets.length === 0) {
-    console.log("対象ドキュメントはありません");
+    console.log("no target documents");
     return EXIT.OK;
   }
 
@@ -157,40 +157,40 @@ async function runSuggest(parsed: Parsed): Promise<number> {
       existing,
     );
     if (suggested.length === 0) {
-      console.log(`#${doc.key}  ${doc.title}: 提案なし`);
+      console.log(`#${doc.key}  ${doc.title}: no suggestions`);
       continue;
     }
     console.log(`#${doc.key}  ${doc.title}: ${suggested.join(", ")}`);
-    if (apply && (await confirm(`  適用しますか?`, true))) {
+    if (apply && (await confirm("  apply?", true))) {
       const added = addTagsToDoc(db, doc.id, suggested, "auto");
       applied += added.length;
       if (added.length > 0) console.log(`  applied: ${added.join(", ")}`);
     }
   }
   if (apply) console.log(`${applied} tags applied`);
-  else console.log("(--apply で適用できます)");
+  else console.log("(use --apply to apply)");
   return EXIT.OK;
 }
 
-/** kura tag audit: 類似タグの統合提案と巨大タグの細分化指摘（SPEC §10.3） */
+/** kura tag audit: merge proposals for similar tags and warnings about oversized tags (SPEC §10.3) */
 async function runAudit(parsed: Parsed): Promise<number> {
   const config = loadConfig();
   const { db } = getDb();
   const provider = await resolveProvider(config);
   if (!provider) {
-    console.error("warning: LLM プロバイダ不在のため編集距離のみで監査します");
+    console.error("warning: no LLM provider available; auditing with edit distance only");
   }
   const result = await auditTags(db, provider, config);
 
   if (result.merges.length === 0 && result.oversized.length === 0) {
-    console.log("問題は見つかりませんでした");
+    console.log("no issues found");
     return EXIT.OK;
   }
 
   let merged = 0;
   for (const m of result.merges) {
-    console.log(`merge: ${m.from} -> ${m.to}  （${m.reason}）`);
-    if (boolOpt(parsed, "apply") && (await confirm("  統合しますか?", true))) {
+    console.log(`merge: ${m.from} -> ${m.to}  (${m.reason})`);
+    if (boolOpt(parsed, "apply") && (await confirm("  merge?", true))) {
       renameTag(db, m.from, m.to);
       merged++;
       console.log("  merged");
@@ -198,10 +198,10 @@ async function runAudit(parsed: Parsed): Promise<number> {
   }
   for (const o of result.oversized) {
     console.log(
-      `oversized: ${o.path} は全体の ${(o.share * 100).toFixed(0)}% (${o.count} 件) に付与されています。細分化を検討してください`,
+      `oversized: ${o.path} is attached to ${(o.share * 100).toFixed(0)}% of documents (${o.count}); consider splitting it`,
     );
   }
   if (boolOpt(parsed, "apply")) console.log(`${merged} merges applied`);
-  else if (result.merges.length > 0) console.log("(--apply で対話的に統合できます)");
+  else if (result.merges.length > 0) console.log("(use --apply to merge interactively)");
   return EXIT.OK;
 }

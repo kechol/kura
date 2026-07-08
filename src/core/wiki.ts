@@ -1,20 +1,20 @@
-/** Wiki リンク・ハッシュタグのパーサ（SPEC §4） */
+/** Parser for wiki links and hashtags (SPEC §4) */
 
 export interface WikiLink {
-  /** [[...]] 内のタイトル部（trim 済み、生のケース保持） */
+  /** Title part inside [[...]] (trimmed, original case preserved) */
   target: string;
-  /** [[タイトル|表示]] の表示部。無ければ null */
+  /** Display part of [[title|display]]; null when absent */
   display: string | null;
 }
 
 export interface WikiExtraction {
-  /** 出現順。target の小文字比較で重複除去（最初の出現を保持） */
+  /** In order of appearance. Deduplicated by lowercase target (first occurrence kept) */
   links: WikiLink[];
-  /** normalizeTagPath 適用済み・重複除去済み・出現順 */
+  /** normalizeTagPath applied, deduplicated, in order of appearance */
   tags: string[];
 }
 
-/** タグパスの正規化: 小文字化・前後スラッシュ除去・連続スラッシュ圧縮・各セグメント trim。空になれば null */
+/** Normalize a tag path: lowercase, strip leading/trailing slashes, collapse repeated slashes, trim each segment. null when empty */
 export function normalizeTagPath(raw: string): string | null {
   const segments = raw
     .toLowerCase()
@@ -24,21 +24,21 @@ export function normalizeTagPath(raw: string): string | null {
   return segments.length > 0 ? segments.join("/") : null;
 }
 
-/** [[タイトル]] / [[タイトル|表示]]。タイトル部に [ ] | は含められない */
+/** [[title]] / [[title|display]]. The title part cannot contain [ ] | */
 const LINK_RE = /\[\[([^[\]|\n]*)(?:\|([^[\]\n]*))?\]\]/g;
 
-/** # の直前が行頭・空白・開き括弧のときのみタグ。タグ文字は Unicode 文字・数字・-・_、階層区切りは / */
+/** A tag only when # is preceded by line start, whitespace, or an opening bracket. Tag characters are Unicode letters/digits/-/_, hierarchy separator is / */
 const TAG_RE = /(?<=^|[\s([{（「『【〔〈《])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu;
 
-/** フェンス開始行: インデント3以内 + ``` / ~~~ 3個以上 + 情報文字列 */
+/** Fence opening line: up to 3 spaces of indent + 3+ backticks or tildes + info string */
 const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-/** フェンス終了行: フェンス文字の連続のみ（後続は空白可） */
+/** Fence closing line: only a run of fence characters (trailing whitespace allowed) */
 const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 
 const LINE_SPLIT_RE = /\r?\n/;
 
-/** フェンスコードブロック外の行を、インラインコードをマスクした状態で列挙する */
+/** Enumerate lines outside fenced code blocks, with inline code masked */
 function* visibleLines(content: string): Generator<string> {
   let fenceChar = "";
   let fenceLen = 0;
@@ -52,7 +52,7 @@ function* visibleLines(content: string): Generator<string> {
     if (open) {
       const marker = open[1] ?? "";
       const info = open[2] ?? "";
-      // バッククォートフェンスの情報文字列に ` は置けない（CommonMark）
+      // A backtick fence's info string cannot contain ` (CommonMark)
       if (marker.startsWith("~") || !info.includes("`")) {
         fenceChar = marker.charAt(0);
         fenceLen = marker.length;
@@ -63,7 +63,7 @@ function* visibleLines(content: string): Generator<string> {
   }
 }
 
-/** インラインコードスパン（同数のバッククォート対）を ` でマスクする。対にならない ` はそのまま */
+/** Mask inline code spans (pairs of equal-length backtick runs) with `. Unpaired backticks stay as-is */
 function maskInlineCode(line: string): string {
   let out = "";
   let i = 0;
@@ -89,7 +89,7 @@ function maskInlineCode(line: string): string {
   return out;
 }
 
-/** from 以降で長さ n ちょうどのバッククォート連続の開始位置を探す（CommonMark の閉じ規則） */
+/** Find the start of a backtick run of exactly length n at or after from (CommonMark closing rule) */
 function findClosingRun(line: string, from: number, n: number): number {
   let k = from;
   while (k < line.length) {
@@ -106,8 +106,8 @@ function findClosingRun(line: string, from: number, n: number): number {
 }
 
 /**
- * [[oldTitle]] / [[oldTitle|表示]] のタイトル部を newTitle に置き換える（kura mv のリンク張り替え用）。
- * 大文字小文字を無視して照合し、コードブロック・インラインコード内は変更しない。
+ * Replace the title part of [[oldTitle]] / [[oldTitle|display]] with newTitle (link rewriting for kura mv).
+ * Matches case-insensitively; code blocks and inline code are left untouched.
  */
 export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitle: string): string {
   const oldKey = oldTitle.trim().toLowerCase();
@@ -135,7 +135,7 @@ export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitl
         continue;
       }
     }
-    // マスクは長さ保存なので、マスク行のマッチ位置を元の行にそのまま適用できる
+    // Masking preserves length, so match positions on the masked line apply directly to the original
     const masked = maskInlineCode(line);
     let rewritten = "";
     let last = 0;
@@ -152,7 +152,7 @@ export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitl
   return out.join("");
 }
 
-/** 本文から [[リンク]] と #タグ を抽出する（frontmatter 除去済み Markdown 前提） */
+/** Extract [[links]] and #tags from the body (expects Markdown with frontmatter already removed) */
 export function extractWiki(content: string): WikiExtraction {
   const links: WikiLink[] = [];
   const seenTargets = new Set<string>();

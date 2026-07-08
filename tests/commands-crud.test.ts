@@ -32,7 +32,7 @@ async function runCli(
 
 const homes: string[] = [];
 
-/** シナリオごとの独立した KURA_HOME を作り、kura init で DB を用意する */
+/** Create an isolated KURA_HOME per scenario and set up the DB with kura init */
 async function makeHome(): Promise<{ home: string; env: Record<string, string> }> {
   const home = mkdtempSync(join(tmpdir(), "kura-crud-test-"));
   homes.push(home);
@@ -53,7 +53,7 @@ function keyOf(stdout: string): string {
 }
 
 describe("kura CRUD commands (e2e)", () => {
-  test("add: 日本語 frontmatter 付きファイル → ls / get --raw / --json / --lines", async () => {
+  test("add: file with Japanese frontmatter → ls / get --raw / --json / --lines", async () => {
     const { home, env } = await makeHome();
     const body = [
       "WAL モードは読み取りと書き込みを並行できる。",
@@ -113,7 +113,7 @@ describe("kura CRUD commands (e2e)", () => {
     );
   }, 30_000);
 
-  test("add -: stdin から --title 付きで追加 / --title なしは exit 2", async () => {
+  test("add -: adds from stdin with --title / exits 2 without --title", async () => {
     const { env } = await makeHome();
 
     const ok = await runCli(
@@ -132,7 +132,7 @@ describe("kura CRUD commands (e2e)", () => {
     expect(noTitle.code).toBe(2);
   }, 30_000);
 
-  test("mv: リネームで参照元本文の [[リンク]] が張り替わる", async () => {
+  test("mv: rename rewrites [[links]] in referring documents", async () => {
     const { home, env } = await makeHome();
     const fileA = join(home, "a.md");
     writeFileSync(fileA, "リンクされる側の本文。");
@@ -155,7 +155,7 @@ describe("kura CRUD commands (e2e)", () => {
     expect(referrer.stdout).not.toContain("[[旧ドキュメント]]");
   }, 30_000);
 
-  test("rm: 非 TTY で --force なしは exit 2 / --force で削除され ls から消える", async () => {
+  test("rm: exits 2 without --force on non-TTY / --force deletes and removes from ls", async () => {
     const { env } = await makeHome();
     const added = await runCli(["add", "-", "--title", "削除対象メモ"], env, "消される本文。");
     expect(added.code).toBe(0);
@@ -175,13 +175,13 @@ describe("kura CRUD commands (e2e)", () => {
     expect(ls.stdout.trim().endsWith("0 documents")).toBe(true);
   }, 30_000);
 
-  test("edit: EDITOR スクリプトによる本文書き換え / 変更なしは no changes", async () => {
+  test("edit: rewrites the body via an EDITOR script / prints no changes when unchanged", async () => {
     const { home, env } = await makeHome();
     const added = await runCli(["add", "-", "--title", "編集メモ"], env, "編集前の本文です。");
     expect(added.code).toBe(0);
     const key = keyOf(added.stdout);
 
-    // 引数のファイルの本文部分を置換して保存する疑似エディタ
+    // Fake editor that replaces part of the body of the given file and saves it
     const editor = join(home, "editor.ts");
     writeFileSync(
       editor,
@@ -199,7 +199,7 @@ describe("kura CRUD commands (e2e)", () => {
     const raw = await runCli(["get", `#${key}`, "--raw"], env);
     expect(raw.stdout).toContain("編集後の本文です。");
 
-    // 何もしないエディタ → no changes
+    // Editor that does nothing → no changes
     const noop = join(home, "noop.ts");
     writeFileSync(noop, "");
     const unchanged = await runCli(["edit", `#${key}`], { ...env, EDITOR: `bun ${noop}` });
@@ -207,7 +207,7 @@ describe("kura CRUD commands (e2e)", () => {
     expect(unchanged.stdout).toContain("no changes");
   }, 30_000);
 
-  test("存在しない doc の指定は exit 3", async () => {
+  test("referencing a nonexistent doc exits 3", async () => {
     const { env } = await makeHome();
     const byTitle = await runCli(["get", "存在しないメモ"], env);
     expect(byTitle.code).toBe(3);

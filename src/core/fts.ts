@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 
 /**
- * documents_fts の同期ヘルパー。rowid = documents.id。
- * SQL トリガーではなくリポジトリ層が同一トランザクション内で呼ぶ（tags 列の合成があるため）。
+ * Sync helpers for documents_fts. rowid = documents.id.
+ * Called by the repository layer inside the same transaction, not by SQL triggers
+ * (the tags column is composed at write time).
  */
 
 function currentTagsText(db: Database, docId: number): string {
@@ -30,7 +31,7 @@ export function ftsDelete(db: Database, docId: number): void {
   db.prepare("DELETE FROM documents_fts WHERE rowid = ?").run(docId);
 }
 
-/** タグ操作後に tags 列のみ更新する（documents 本体は変更なし） */
+/** Refresh only the tags column after tag operations (documents itself is unchanged) */
 export function ftsRefreshTags(db: Database, docId: number): void {
   db.prepare("UPDATE documents_fts SET tags = ? WHERE rowid = ?").run(
     currentTagsText(db, docId),

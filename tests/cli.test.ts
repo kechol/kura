@@ -21,32 +21,32 @@ async function runCli(
 }
 
 describe("cli dispatch", () => {
-  test("--version がバージョンを出力する", async () => {
+  test("--version prints the version", async () => {
     const r = await runCli(["--version"]);
     expect(r.code).toBe(0);
     expect(r.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  test("--help がコマンド一覧を出力する", async () => {
+  test("--help prints the command list", async () => {
     const r = await runCli(["--help"]);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("Usage: kura <command>");
     expect(r.stdout).toContain("config");
   });
 
-  test("引数なしはヘルプを出して 0 で終了する", async () => {
+  test("no arguments prints help and exits 0", async () => {
     const r = await runCli([]);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("Usage: kura <command>");
   });
 
-  test("未知コマンドは exit 2", async () => {
+  test("unknown command exits 2", async () => {
     const r = await runCli(["nope"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("unknown command");
   });
 
-  test("不正なオプションは exit 2 で usage を表示する", async () => {
+  test("invalid options exit 2 and print usage", async () => {
     const r = await runCli(["config", "--bogus"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("Usage:");

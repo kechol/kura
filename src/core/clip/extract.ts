@@ -4,9 +4,9 @@ import { KURA_VERSION } from "../paths";
 
 export interface ExtractedPage {
   url: string;
-  /** ページタイトル（readability > <title> の順で採用） */
+  /** Page title (readability result preferred over <title>) */
   title: string;
-  /** 本文抽出後の HTML */
+  /** Extracted article HTML */
   contentHtml: string;
   excerpt: string | null;
   siteName: string | null;
@@ -31,19 +31,19 @@ export async function fetchHtml(url: string): Promise<string> {
   return res.text();
 }
 
-/** HTML から readability + linkedom で本文を抽出する（SPEC §7.5） */
+/** Extract the article body from HTML with readability + linkedom (SPEC §7.5) */
 export function extractContent(url: string, html: string): ExtractedPage {
   const { document } = parseHTML(html);
-  // Readability は base URL 解決に document.baseURI を参照する
+  // Readability reads document.baseURI to resolve base URLs
   const article = new Readability(document as unknown as Document, {
     charThreshold: 100,
   }).parse();
 
   const fallbackTitle = document.querySelector("title")?.textContent?.trim() ?? url;
   if (!article || !article.content) {
-    // 抽出失敗時は body 全体を対象にする（劣化動作）
+    // On extraction failure, fall back to the whole body (degraded operation)
     const body = document.querySelector("body");
-    if (!body) throw new Error(`本文を抽出できませんでした: ${url}`);
+    if (!body) throw new Error(`failed to extract content: ${url}`);
     return {
       url,
       title: fallbackTitle,

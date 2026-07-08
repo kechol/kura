@@ -7,14 +7,14 @@ export interface AsyncState<T> {
   reload: () => void;
 }
 
-/** deps が変わるたびに fn を実行する汎用フェッチフック */
+/** Generic fetch hook that re-runs fn whenever deps change */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
-  // deps は呼び出し側指定の配列 + reload 用 tick
+  // deps = caller-provided array + tick for reload
   useEffect(() => {
     let alive = true;
     setLoading(true);

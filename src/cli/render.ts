@@ -1,23 +1,23 @@
 /**
- * Markdown → ANSI ターミナルレンダラ（SPEC §7: 自前実装の軽量レンダラ）。
- * 見出し・強調・コードブロック・リスト・引用・リンクを装飾し、テーブル等はパススルー。
+ * Markdown → ANSI terminal renderer (SPEC §7: lightweight in-house implementation).
+ * Decorates headings, emphasis, code blocks, lists, quotes, and links; tables etc. pass through.
  */
 
 export interface RenderOptions {
-  /** false なら ANSI エスケープなしの整形テキスト（既定 true） */
+  /** When false, formatted text without ANSI escapes (default true) */
   color?: boolean;
-  /** 折り返し幅（既定 80）。コードブロックは折り返さない */
+  /** Wrap width (default 80). Code blocks are never wrapped */
   width?: number;
 }
 
-/** 色出力すべきか判定: NO_COLOR が設定されていれば false、stream が TTY でなければ false */
+/** Whether to emit color: false when NO_COLOR is set or the stream is not a TTY */
 export function isColorEnabled(stream: { isTTY?: boolean } = process.stdout): boolean {
   const noColor = process.env.NO_COLOR;
   if (noColor !== undefined && noColor !== "") return false;
   return stream.isTTY === true;
 }
 
-// ANSI SGR コード（外部依存なしの自前定数）
+// ANSI SGR codes (in-house constants, no external dependency)
 const ESC = "\x1b";
 const RESET = `${ESC}[0m`;
 const SGR = {
@@ -33,18 +33,18 @@ const SGR = {
 type StyleName = keyof typeof SGR;
 type Styler = (text: string, ...styles: StyleName[]) => string;
 
-/** color: false 時は装飾を一切付けない identity スタイラーを返す */
+/** With color: false, returns an identity styler that applies no decoration */
 function makeStyler(color: boolean): Styler {
   if (!color) return (text) => text;
   return (text, ...styles) => {
     if (styles.length === 0) return text;
     const open = styles.map((s) => SGR[s]).join("");
-    // 内側の RESET で外側スタイルが途切れないよう再適用する
+    // Re-apply the outer style after inner RESETs so it is not cut off
     return open + text.replaceAll(RESET, RESET + open) + RESET;
   };
 }
 
-/** 全角（East Asian Wide/Fullwidth の簡易判定）なら 2、それ以外は 1 */
+/** 2 for full-width characters (rough East Asian Wide/Fullwidth check), otherwise 1 */
 function charWidth(cp: number): number {
   if (
     (cp >= 0x1100 && cp <= 0x115f) ||
@@ -71,7 +71,7 @@ interface Token {
   space: boolean;
 }
 
-/** 折り返し単位に分解する。ANSI エスケープは幅 0、全角文字は単独で折り返し可能 */
+/** Split into wrap units. ANSI escapes have width 0; full-width chars can wrap individually */
 function tokenize(line: string): Token[] {
   const tokens: Token[] = [];
   let word = "";
@@ -87,7 +87,7 @@ function tokenize(line: string): Token[] {
   while (i < line.length) {
     const ch = line[i] ?? "";
     if (ch === ESC && line[i + 1] === "[") {
-      // SGR シーケンス（`ESC [ ... m`）を幅 0 で直前の語に付ける
+      // Attach SGR sequences (`ESC [ ... m`) to the preceding word with width 0
       let j = i + 2;
       while (j < line.length && !/[a-z]/i.test(line[j] ?? "")) j++;
       word += line.slice(i, j + 1);
@@ -115,7 +115,7 @@ function tokenize(line: string): Token[] {
   return tokens;
 }
 
-/** ANSI を幅 0 として width で折り返す。折り返し位置と継続行頭の空白は捨てる */
+/** Wrap at width, counting ANSI as width 0. Whitespace at wrap points and continuation line starts is dropped */
 function wrapPlain(line: string, width: number): string[] {
   const lines: string[] = [];
   let current = "";
@@ -135,7 +135,7 @@ function wrapPlain(line: string, width: number): string[] {
   return lines;
 }
 
-/** content を折り返し、先頭行に firstPrefix、継続行に contPrefix を付ける */
+/** Wrap content, prefixing the first line with firstPrefix and continuation lines with contPrefix */
 function wrapWithPrefix(
   content: string,
   width: number,
@@ -147,42 +147,42 @@ function wrapWithPrefix(
   return wrapPlain(content, available).map((l, i) => (i === 0 ? firstPrefix : contPrefix) + l);
 }
 
-/** インライン記法（コード・リンク・強調）を装飾する */
+/** Decorate inline syntax (code, links, emphasis) */
 function renderInline(text: string, style: Styler): string {
-  // 装飾済みスパンを私用領域文字で退避し、後続の置換から保護する
+  // Stash decorated spans behind private-use characters to protect them from later replacements
   const stash: string[] = [];
   const keep = (rendered: string): string => {
     stash.push(rendered);
     return `\uE000${stash.length - 1}\uE001`;
   };
   let out = text;
-  // inline code（コード内の強調記法は無視される）
+  // Inline code (emphasis syntax inside code is ignored)
   out = out.replace(/`([^`]+)`/g, (_, code: string) => keep(style(code, "yellow")));
-  // Wiki リンク: [[タイトル|表示]] / [[タイトル]]
+  // Wiki links: [[title|display]] / [[title]]
   out = out.replace(/\[\[([^\][|]+)\|([^\][|]+)\]\]/g, (_, _title: string, disp: string) =>
     keep(style(`[[${disp}]]`, "cyan")),
   );
   out = out.replace(/\[\[([^\][|]+)\]\]/g, (_, title: string) =>
     keep(style(`[[${title}]]`, "cyan")),
   );
-  // リンク: [text](url) → 下線 text + (url)
+  // Links: [text](url) → underlined text + (url)
   out = out.replace(/\[([^\][]+)\]\(([^()\s]+)\)/g, (_, label: string, url: string) =>
     keep(`${style(label, "underline")} (${url})`),
   );
-  // 強調
+  // Emphasis
   out = out.replace(/\*\*([^*]+)\*\*/g, (_, s: string) => keep(style(s, "bold")));
   out = out.replace(/__([^_]+)__/g, (_, s: string) => keep(style(s, "bold")));
   out = out.replace(/\*([^*]+)\*/g, (_, s: string) => keep(style(s, "italic")));
   out = out.replace(/(?<![\w`])_([^_]+)_(?!\w)/g, (_, s: string) => keep(style(s, "italic")));
   out = out.replace(/~~([^~]+)~~/g, (_, s: string) => keep(style(s, "strike")));
-  // 退避したスパンを復元（ネストした退避があるため解決するまで繰り返す）
+  // Restore stashed spans (repeat until resolved because stashes can nest)
   while (/\uE000\d+\uE001/.test(out)) {
     out = out.replace(/\uE000(\d+)\uE001/g, (_, i: string) => stash[Number(i)] ?? "");
   }
   return out;
 }
 
-/** 見出しレベルごとの装飾（H1/H2 はシアン太字、下位は控えめに） */
+/** Decoration per heading level (H1/H2 cyan bold, lower levels more subdued) */
 const HEADING_STYLES: StyleName[][] = [
   ["bold", "cyan"],
   ["bold", "cyan"],
@@ -192,7 +192,7 @@ const HEADING_STYLES: StyleName[][] = [
   ["bold", "dim"],
 ];
 
-/** Markdown を ANSI 装飾付きテキストにレンダリングする */
+/** Render Markdown to ANSI-decorated text */
 export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
   const color = opts.color ?? true;
   const width = opts.width ?? 80;
@@ -201,7 +201,7 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
   let inCodeBlock = false;
 
   for (const line of md.split(/\r?\n/)) {
-    // フェンスコードブロック（言語名は無視、開始/終了行は出力しない）
+    // Fenced code blocks (language name is ignored; fence lines are not emitted)
     if (/^\s*(```|~~~)/.test(line)) {
       inCodeBlock = !inCodeBlock;
       continue;
@@ -214,12 +214,12 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
       out.push("");
       continue;
     }
-    // 水平線
+    // Horizontal rules
     if (/^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
       out.push(style("─".repeat(width), "dim"));
       continue;
     }
-    // 見出し
+    // Headings
     const heading = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
     if (heading) {
       const level = (heading[1] ?? "#").length;
@@ -228,12 +228,12 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
       for (const l of wrapPlain(text, width)) out.push(style(l, ...styles));
       continue;
     }
-    // テーブルはパススルー（整形・折り返しなし）
+    // Tables pass through (no formatting or wrapping)
     if (/^\s*\|/.test(line)) {
       out.push(line);
       continue;
     }
-    // 引用
+    // Quotes
     const quote = line.match(/^\s*((?:>\s?)+)(.*)$/);
     if (quote) {
       const depth = ((quote[1] ?? "").match(/>/g) ?? []).length;
@@ -242,7 +242,7 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
       out.push(...wrapWithPrefix(content, width, prefix, prefix, depth * 2));
       continue;
     }
-    // リスト（ネストはインデント保持、ビュレットは • に置換）
+    // Lists (nesting keeps indentation; bullets become •)
     const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
     if (bullet) {
       const indent = bullet[1] ?? "";
@@ -260,7 +260,7 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
       out.push(...wrapWithPrefix(content, width, first, cont, indent.length + marker.length + 1));
       continue;
     }
-    // 通常段落（未知記法はそのままパススルー）
+    // Regular paragraphs (unknown syntax passes through as-is)
     out.push(...wrapPlain(renderInline(line, style), width));
   }
 

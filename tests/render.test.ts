@@ -4,7 +4,7 @@ import { isColorEnabled, renderMarkdown } from "../src/cli/render";
 const ESC = "\x1b";
 
 describe("renderMarkdown", () => {
-  test("color: false で ANSI エスケープを一切含まない", () => {
+  test("color: false emits no ANSI escapes at all", () => {
     const md = [
       "# 見出し",
       "",
@@ -25,7 +25,7 @@ describe("renderMarkdown", () => {
     expect(out).not.toContain(ESC);
   });
 
-  test("color: true で見出しに太字 + シアンが付き # は除去される", () => {
+  test("color: true decorates headings bold + cyan and strips #", () => {
     const out = renderMarkdown("# 大見出し", { color: true });
     expect(out).toContain(`${ESC}[1m`);
     expect(out).toContain(`${ESC}[36m`);
@@ -33,7 +33,7 @@ describe("renderMarkdown", () => {
     expect(out).not.toContain("#");
   });
 
-  test("H3 以降は色なし太字、H5/H6 は dim 併用", () => {
+  test("H3 and below are bold without color; H5/H6 also use dim", () => {
     const h3 = renderMarkdown("### 小見出し", { color: true });
     expect(h3).toContain(`${ESC}[1m`);
     expect(h3).not.toContain(`${ESC}[36m`);
@@ -41,7 +41,7 @@ describe("renderMarkdown", () => {
     expect(h5).toContain(`${ESC}[1m${ESC}[2m`);
   });
 
-  test("強調記法が装飾される", () => {
+  test("emphasis syntax is decorated", () => {
     const out = renderMarkdown("**太字**と*斜体*と_下線斜体_と~~取り消し~~", { color: true });
     expect(out).toContain(`${ESC}[1m太字`);
     expect(out).toContain(`${ESC}[3m斜体`);
@@ -51,19 +51,19 @@ describe("renderMarkdown", () => {
     expect(out).not.toContain("~~");
   });
 
-  test("インラインコードは黄色で装飾され、内部の強調記法は無視される", () => {
+  test("inline code is decorated yellow and emphasis inside it is ignored", () => {
     const out = renderMarkdown("実行は `bun run **dev**` を使う", { color: true });
     expect(out).toContain(`${ESC}[33mbun run **dev**${ESC}[0m`);
     expect(out).not.toContain("`");
   });
 
-  test("コードブロックの内容が加工されない（強調記法もそのまま）", () => {
+  test("code block content is untouched (emphasis syntax kept as-is)", () => {
     const md = ["```ts", 'const msg = "**強調ではない** _そのまま_";', "```"].join("\n");
     const out = renderMarkdown(md, { color: false });
     expect(out).toBe('  const msg = "**強調ではない** _そのまま_";');
   });
 
-  test("コードブロックは 2 スペースインデント + dim 装飾、フェンス行は出力しない", () => {
+  test("code blocks get 2-space indent + dim; fence lines are not emitted", () => {
     const md = ["```python", "print('こんにちは')", "```"].join("\n");
     const out = renderMarkdown(md, { color: true });
     expect(out).toBe(`  ${ESC}[2mprint('こんにちは')${ESC}[0m`);
@@ -71,19 +71,19 @@ describe("renderMarkdown", () => {
     expect(out).not.toContain("python");
   });
 
-  test("コードブロックは width を超えても折り返さない", () => {
+  test("code blocks are not wrapped even beyond width", () => {
     const longLine = "const 長い変数名 = 1; // とても長いコメントをここに書いておく";
     const out = renderMarkdown(`\`\`\`\n${longLine}\n\`\`\``, { color: false, width: 20 });
     expect(out).toBe(`  ${longLine}`);
   });
 
-  test("リストのビュレットが • に置換されネストのインデントが保持される", () => {
+  test("list bullets become • and nesting indentation is preserved", () => {
     const md = ["- 親項目", "  - 子項目", "* アスタリスク", "1. 番号付き"].join("\n");
     const out = renderMarkdown(md, { color: false });
     expect(out).toBe(["• 親項目", "  • 子項目", "• アスタリスク", "1. 番号付き"].join("\n"));
   });
 
-  test("引用は │ プレフィックスに変換される", () => {
+  test("quotes are converted to a │ prefix", () => {
     const out = renderMarkdown("> 引用された文章", { color: false });
     expect(out).toBe("│ 引用された文章");
     const colored = renderMarkdown("> 引用された文章", { color: true });
@@ -91,12 +91,12 @@ describe("renderMarkdown", () => {
     expect(colored).toContain("│ ");
   });
 
-  test("水平線は width 分の ─ になる", () => {
+  test("horizontal rules become ─ repeated to width", () => {
     const out = renderMarkdown("---", { color: false, width: 10 });
     expect(out).toBe("─".repeat(10));
   });
 
-  test("リンクは下線 + URL 併記、Wiki リンクは [[表示]] のままシアン強調", () => {
+  test("links are underlined with the URL appended; wiki links stay [[display]] in cyan", () => {
     const out = renderMarkdown("[検索](https://example.com) と [[メモ|覚え書き]] と [[日記]]", {
       color: true,
     });
@@ -109,17 +109,17 @@ describe("renderMarkdown", () => {
     expect(plain).toBe("検索 (https://example.com) と [[覚え書き]]");
   });
 
-  test("テーブルはパススルーされる", () => {
+  test("tables pass through", () => {
     const md = ["| 列A | 列B |", "| --- | --- |", "| **あ** | い |"].join("\n");
     expect(renderMarkdown(md, { color: false })).toBe(md);
   });
 
-  test("width で折り返され全角文字は幅 2 として数えられる", () => {
+  test("wraps at width, counting full-width characters as width 2", () => {
     const out = renderMarkdown("あいうえおかきくけこ", { color: false, width: 10 });
     expect(out).toBe("あいうえお\nかきくけこ");
   });
 
-  test("リストの折り返し行はぶら下げインデントされる", () => {
+  test("wrapped list lines get a hanging indent", () => {
     const out = renderMarkdown("- あいうえおかきくけこ", { color: false, width: 12 });
     expect(out).toBe("• あいうえお\n  かきくけこ");
   });
@@ -140,22 +140,22 @@ describe("isColorEnabled", () => {
     }
   });
 
-  test("NO_COLOR 設定時は TTY でも false", () => {
+  test("false even on a TTY when NO_COLOR is set", () => {
     process.env.NO_COLOR = "1";
     expect(isColorEnabled({ isTTY: true })).toBe(false);
   });
 
-  test("NO_COLOR が空文字なら無効扱いで TTY に従う", () => {
+  test("empty NO_COLOR counts as unset and follows the TTY", () => {
     process.env.NO_COLOR = "";
     expect(isColorEnabled({ isTTY: true })).toBe(true);
   });
 
-  test("isTTY: false なら false", () => {
+  test("false when isTTY: false", () => {
     expect(isColorEnabled({ isTTY: false })).toBe(false);
     expect(isColorEnabled({})).toBe(false);
   });
 
-  test("isTTY: true + NO_COLOR なしなら true", () => {
+  test("true when isTTY: true and NO_COLOR is unset", () => {
     expect(isColorEnabled({ isTTY: true })).toBe(true);
   });
 });

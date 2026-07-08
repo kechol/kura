@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter-preact";
 import { searchDocs } from "../api";
 import { useAsync } from "../hooks";
 
-/** [[リンク]] のタイトル → key 解決ルート。完全一致があれば詳細へリダイレクトする */
+/** [[link]] title → key resolution route. Redirects to the detail page on an exact match */
 export function DocByTitle({ title }: { title: string }) {
   const [, navigate] = useLocation();
   const state = useAsync(async () => {

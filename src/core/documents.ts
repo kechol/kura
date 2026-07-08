@@ -76,7 +76,7 @@ export function sha256Hex(text: string): string {
 
 const DOC_KEY_RE = /^[0-9a-f]{8}$/;
 
-/** 8文字の短縮 ID（内容+乱数の hash、SPEC §3.1） */
+/** 8-character short ID (hash of content plus randomness, SPEC §3.1) */
 function generateDocKey(db: Database, seed: string): string {
   for (;;) {
     const random = crypto.getRandomValues(new Uint32Array(2)).join("-");
@@ -86,7 +86,7 @@ function generateDocKey(db: Database, seed: string): string {
   }
 }
 
-/** チャンクを再生成する（embedding は遅延バックフィル: embedded_at = NULL、SPEC §5.3） */
+/** Rebuild chunks (embeddings are backfilled lazily: embedded_at = NULL, SPEC §5.3) */
 function rebuildChunks(db: Database, docId: number, title: string, content: string): void {
   db.prepare(
     "DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
@@ -107,7 +107,7 @@ interface SyncOptions {
   resolveIncoming: boolean;
 }
 
-/** 保存トランザクション内で FTS / links / tags / chunks を同期する（SPEC §3.2） */
+/** Sync FTS / links / tags / chunks inside the save transaction (SPEC §3.2) */
 function syncDerived(db: Database, row: DocRow, opts: SyncOptions): void {
   const extraction =
     row.content_type === "html" ? { links: [], tags: [] } : extractWiki(row.content);
@@ -133,7 +133,7 @@ export interface CreateDocumentInput {
   sourceUrl?: string | null;
   tags?: string[];
   tagSource?: "manual" | "auto";
-  /** import ラウンドトリップ用（未使用なら採番） */
+  /** For import round-trips (a new key is generated when unused) */
   docKey?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -208,7 +208,7 @@ export interface UpdateDocumentInput {
 
 export interface UpdateResult {
   record: DocumentRecord;
-  /** リネームで本文を書き換えた被リンク元ドキュメント数 */
+  /** Number of referring documents whose bodies were rewritten by the rename */
   relinked: number;
 }
 
@@ -225,7 +225,7 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
     const titleChanged = newTitle !== oldTitle;
     const bucketChanged = newBucketId !== row.bucket_id;
 
-    // 自分の本文中の自己リンクも張り替える
+    // Also rewrite self-links in the document's own body
     if (titleChanged && row.content_type !== "html") {
       content = replaceWikiLinkTarget(content, oldTitle, newTitle);
     }
@@ -261,11 +261,11 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
     );
 
     if (bucketChanged) {
-      // リンク解決は Bucket 内スコープのため、旧 Bucket からの被リンクは未解決に戻す
+      // Link resolution is scoped per bucket, so incoming links from the old bucket become unresolved
       db.prepare("UPDATE links SET target_id = NULL WHERE target_id = ?").run(id);
     }
 
-    // 被リンク元の [[旧タイトル]] を張り替え（同一 Bucket 内、kura mv 挙動）
+    // Rewrite [[old title]] in referring documents (same bucket, kura mv behavior)
     let relinked = 0;
     if (titleChanged && !bucketChanged) {
       const referrers = db
@@ -286,7 +286,7 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
     syncDerived(db, updatedRow, {
       tags: input.tags,
       tagSource: input.tagSource,
-      // チャンクのコンテキストヘッダにタイトルを含むためリネーム時も再構築
+      // Chunk context headers include the title, so rebuild on rename as well
       rebuildChunks: contentChanged || titleChanged,
       resolveIncoming: titleChanged || bucketChanged,
     });
@@ -294,7 +294,7 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
   })();
 }
 
-/** kura mv: リネーム + 被リンク元の [[旧タイトル]] 張り替え */
+/** kura mv: rename and rewrite [[old title]] in referring documents */
 export function renameDocument(db: Database, id: number, newTitle: string): UpdateResult {
   return updateDocument(db, id, { title: newTitle });
 }
@@ -306,7 +306,7 @@ export function deleteDocument(db: Database, id: number): void {
       "DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
     ).run(id);
     ftsDelete(db, id);
-    // chunks / document_tags / links(source) は CASCADE、被リンクは SET NULL で未解決に戻る
+    // chunks / document_tags / links(source) CASCADE; incoming links go back to unresolved via SET NULL
     db.prepare("DELETE FROM documents WHERE id = ?").run(id);
   })();
 }
@@ -321,8 +321,8 @@ export function getDocumentById(db: Database, id: number): DocumentRecord {
 }
 
 /**
- * ドキュメント指定子の解決（SPEC §7）: doc_key / #key / Bucket 内で一意なタイトル。
- * タイトルが複数 Bucket で一致する場合は候補を示して ConflictError。
+ * Resolve a document specifier (SPEC §7): doc_key / #key / a title unique within a bucket.
+ * When the title matches in multiple buckets, throws ConflictError listing the candidates.
  */
 export function resolveDoc(db: Database, spec: string, bucketName?: string): DocumentRecord {
   const trimmed = spec.trim();
@@ -355,7 +355,7 @@ export function resolveDoc(db: Database, spec: string, bucketName?: string): Doc
   return toRecord(db, rows[0]!);
 }
 
-/** get / MCP get / 検索結果本文取得での参照記録（SPEC §3.1） */
+/** Record access from get / MCP get / search-result content fetches (SPEC §3.1) */
 export function touchAccess(db: Database, id: number): void {
   db.prepare(
     "UPDATE documents SET access_count = access_count + 1, last_accessed_at = datetime('now') WHERE id = ?",
@@ -364,7 +364,7 @@ export function touchAccess(db: Database, id: number): void {
 
 export interface ListFilter {
   bucket?: string;
-  /** タグ（子孫タグも含む） */
+  /** Tag (descendant tags included) */
   tag?: string;
   sort?: "updated" | "created" | "accessed" | "title";
   stale?: boolean;
@@ -419,9 +419,9 @@ function sqliteNow(d: Date): string {
 export interface ImportInput {
   fm: Frontmatter | null;
   body: string;
-  /** frontmatter に title がないときのフォールバック（ファイル名など） */
+  /** Fallback when frontmatter has no title (e.g. the file name) */
   fallbackTitle: string;
-  /** --bucket 指定（frontmatter より優先） */
+  /** --bucket flag (takes precedence over frontmatter) */
   bucketOverride?: string;
   defaultBucket: string;
 }
@@ -431,7 +431,7 @@ export interface ImportResult {
   action: "created" | "updated";
 }
 
-/** frontmatter 付き Markdown の取り込み。kura_key が既存なら更新、無ければ新規（SPEC §7.2） */
+/** Import Markdown with frontmatter. Updates when kura_key exists, creates otherwise (SPEC §7.2) */
 export function importDocument(db: Database, input: ImportInput): ImportResult {
   return db.transaction(() => {
     const fm = input.fm;

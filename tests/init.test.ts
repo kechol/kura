@@ -23,7 +23,7 @@ async function runCli(
 }
 
 describe("kura init (e2e)", () => {
-  test("--no-download で config と DB を作成し、再実行は冪等", async () => {
+  test("--no-download creates config and DB; rerunning is idempotent", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-init-test-"));
     const env = { KURA_HOME: home };
 
@@ -40,7 +40,7 @@ describe("kura init (e2e)", () => {
     expect(second.stdout).toContain("0 documents");
   });
 
-  test("init 前の DB 依存コマンドは...(現時点で対象コマンドなし、doctor が警告を出す)", async () => {
+  test("before init, doctor warns and suggests 'kura init'", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-doctor-test-"));
     const r = await runCli(["doctor"], { KURA_HOME: home });
     expect(r.stdout).toContain("kura init");

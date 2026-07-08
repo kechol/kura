@@ -8,7 +8,7 @@ export interface KuraStats {
   tags: number;
   chunks: number;
   embeddedChunks: number;
-  /** 0〜1。チャンクが無ければ 1 */
+  /** 0-1; 1 when there are no chunks */
   embeddingCoverage: number;
   staleDocuments: number;
   unresolvedLinks: number;

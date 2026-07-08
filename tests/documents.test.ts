@@ -35,7 +35,7 @@ function ftsRow(id: number): { title: string; tags: string } | null {
 }
 
 describe("createDocument", () => {
-  test("本文からタグ・リンクを抽出し FTS/chunks を同期する", () => {
+  test("extracts tags/links from the body and syncs FTS/chunks", () => {
     const doc = createDocument(db, {
       title: "SQLite の WAL モード",
       content:
@@ -63,14 +63,14 @@ describe("createDocument", () => {
     expect(chunks[0]?.text).toContain("# SQLite の WAL モード");
     expect(chunks[0]?.embedded_at).toBeNull();
 
-    // FTS 検索可能（trigram: 3文字以上）
+    // Searchable via FTS (trigram: 3+ characters)
     const hit = db
       .prepare("SELECT rowid FROM documents_fts WHERE documents_fts MATCH ?")
       .all('"トランザクション"');
     expect(hit.length).toBe(1);
   });
 
-  test("先にリンクを書いた後からページを作ると自動解決される（SPEC §10.1）", () => {
+  test("a link written first auto-resolves when the page is created later (SPEC §10.1)", () => {
     const a = createDocument(db, {
       title: "リンク元",
       content: "[[未来のページ]] を参照",
@@ -88,13 +88,13 @@ describe("createDocument", () => {
     expect(backlinks(db, b.id).map((d) => d.key)).toEqual([a.key]);
   });
 
-  test("大文字小文字を無視してリンク解決する", () => {
+  test("resolves links case-insensitively", () => {
     createDocument(db, { title: "Bun Runtime", content: "本文", bucket: "main" });
     const src = createDocument(db, { title: "メモ", content: "[[bun runtime]]", bucket: "main" });
     expect(outlinks(db, src.id)[0]?.target).not.toBeNull();
   });
 
-  test("同一 Bucket 内のタイトル重複は拒否、別 Bucket は許可", () => {
+  test("rejects duplicate titles within a bucket, allows them across buckets", () => {
     createBucket(db, "work");
     createDocument(db, { title: "重複", content: "1", bucket: "main" });
     expect(() => createDocument(db, { title: "重複", content: "2", bucket: "main" })).toThrow(
@@ -103,7 +103,7 @@ describe("createDocument", () => {
     expect(() => createDocument(db, { title: "重複", content: "3", bucket: "work" })).not.toThrow();
   });
 
-  test("リンク解決は Bucket を跨がない", () => {
+  test("link resolution does not cross buckets", () => {
     createBucket(db, "work");
     createDocument(db, { title: "対象", content: "本文", bucket: "work" });
     const src = createDocument(db, { title: "元", content: "[[対象]]", bucket: "main" });
@@ -112,18 +112,18 @@ describe("createDocument", () => {
 });
 
 describe("updateDocument", () => {
-  test("本文変更時のみチャンク再構築（embedded_at リセット）", () => {
+  test("rebuilds chunks only when the content changes (embedded_at reset)", () => {
     const doc = createDocument(db, { title: "T", content: "最初の本文", bucket: "main" });
     db.prepare("UPDATE chunks SET embedded_at = datetime('now') WHERE document_id = ?").run(doc.id);
 
-    // 本文以外の更新はチャンクを保持
+    // Updates other than the content keep the chunks
     updateDocument(db, doc.id, { sourceUrl: "https://example.com" });
     const kept = db
       .prepare("SELECT embedded_at FROM chunks WHERE document_id = ?")
       .all(doc.id) as Array<{ embedded_at: string | null }>;
     expect(kept.every((c) => c.embedded_at !== null)).toBe(true);
 
-    // 本文変更で再構築
+    // Content change triggers a rebuild
     updateDocument(db, doc.id, { content: "書き換えた本文" });
     const rebuilt = db
       .prepare("SELECT text, embedded_at FROM chunks WHERE document_id = ?")
@@ -134,7 +134,7 @@ describe("updateDocument", () => {
 });
 
 describe("renameDocument (kura mv)", () => {
-  test("被リンク元の [[旧タイトル]] を書き換えて解決を維持する", () => {
+  test("rewrites [[old title]] in referrers and keeps links resolved", () => {
     const target = createDocument(db, { title: "旧タイトル", content: "本文", bucket: "main" });
     const ref = createDocument(db, {
       title: "参照元",
@@ -156,11 +156,11 @@ describe("renameDocument (kura mv)", () => {
     expect(links[0]?.targetTitle).toBe("新タイトル");
     expect(links[0]?.target?.key).toBe(target.key);
 
-    // FTS のタイトルも更新される
+    // FTS title is updated too
     expect(ftsRow(target.id)?.title).toBe("新タイトル");
   });
 
-  test("リネーム先タイトルへの既存未解決リンクも解決する", () => {
+  test("existing unresolved links to the new title are resolved on rename", () => {
     const src = createDocument(db, { title: "元", content: "[[将来の名前]]", bucket: "main" });
     const doc = createDocument(db, { title: "いまの名前", content: "x", bucket: "main" });
     renameDocument(db, doc.id, "将来の名前");
@@ -169,7 +169,7 @@ describe("renameDocument (kura mv)", () => {
 });
 
 describe("deleteDocument", () => {
-  test("FTS/chunks/vec を掃除し、被リンクは未解決に戻る", () => {
+  test("cleans up FTS/chunks/vec; incoming links become unresolved", () => {
     const target = createDocument(db, { title: "消える", content: "本文", bucket: "main" });
     const src = createDocument(db, { title: "残る", content: "[[消える]]", bucket: "main" });
     expect(outlinks(db, src.id)[0]?.target).not.toBeNull();
@@ -186,7 +186,7 @@ describe("deleteDocument", () => {
 });
 
 describe("resolveDoc", () => {
-  test("doc_key / #key / タイトルで解決し、曖昧なら例外", () => {
+  test("resolves by doc_key / #key / title, throws when ambiguous", () => {
     createBucket(db, "work");
     const a = createDocument(db, { title: "ノート", content: "a", bucket: "main" });
     createDocument(db, { title: "ノート", content: "b", bucket: "work" });
@@ -198,7 +198,7 @@ describe("resolveDoc", () => {
     expect(() => resolveDoc(db, "存在しない")).toThrow(/not found/);
   });
 
-  test("touchAccess が参照情報を更新する", () => {
+  test("touchAccess updates access tracking", () => {
     const doc = createDocument(db, { title: "T", content: "c", bucket: "main" });
     touchAccess(db, doc.id);
     touchAccess(db, doc.id);
@@ -211,7 +211,7 @@ describe("resolveDoc", () => {
 });
 
 describe("listDocuments", () => {
-  test("bucket / tag（子孫含む）/ limit でフィルタする", () => {
+  test("filters by bucket / tag (descendants included) / limit", () => {
     createBucket(db, "work");
     createDocument(db, { title: "A", content: "#tech/db", bucket: "main" });
     createDocument(db, { title: "B", content: "#tech/db/sqlite", bucket: "main" });
@@ -229,7 +229,7 @@ describe("listDocuments", () => {
 });
 
 describe("import / export round-trip", () => {
-  test("全数字・指数表記風の doc_key もラウンドトリップする（YAML 数値化の回帰）", () => {
+  test("all-digit and exponent-like doc_keys round-trip (YAML number-coercion regression)", () => {
     for (const key of ["16052989", "12e45678", "0012ab34"]) {
       const fmText = serializeFrontmatter({
         kura_key: key,
@@ -242,19 +242,19 @@ describe("import / export round-trip", () => {
       const { fm } = parseFrontmatter(`${fmText}\n本文`);
       expect(fm?.kura_key).toBe(key);
     }
-    // 手書きの非クォート全数字キーも文字列として救済される
+    // Hand-written unquoted all-digit keys are rescued as strings too
     const hand = parseFrontmatter("---\nkura_key: 16052989\ntitle: t\n---\n本文");
     expect(hand.fm?.kura_key).toBe("16052989");
   });
 
-  test("kura_key ありは更新、なしは新規", () => {
+  test("updates with kura_key, creates without", () => {
     const doc = createDocument(db, {
       title: "元タイトル",
       content: "元本文 #tag1",
       bucket: "main",
     });
 
-    // export 相当
+    // Equivalent of export
     const fmText = serializeFrontmatter({
       kura_key: doc.key,
       title: "変更後タイトル",
@@ -289,7 +289,7 @@ describe("import / export round-trip", () => {
 });
 
 describe("tags", () => {
-  test("renameTag は子孫ごと移動し、既存タグへは merge する", () => {
+  test("renameTag moves descendants and merges into existing tags", () => {
     const a = createDocument(db, {
       title: "A",
       content: "#tech/db #tech/db/sqlite",
@@ -306,7 +306,7 @@ describe("tags", () => {
     expect(paths).toContain("dev/db/sqlite");
     expect(paths).not.toContain("tech/db");
 
-    // FTS の tags 列も更新済み
+    // FTS tags column is refreshed too
     expect(ftsRow(a.id)?.tags).toContain("dev/db/sqlite");
   });
 
@@ -318,7 +318,7 @@ describe("tags", () => {
     expect(listTags(db).length).toBe(0);
   });
 
-  test("buildTagTree が階層と件数を集計する", () => {
+  test("buildTagTree aggregates hierarchy and counts", () => {
     createDocument(db, { title: "A", content: "#tech/db/sqlite #tech/perf", bucket: "main" });
     createDocument(db, { title: "B", content: "#tech/db", bucket: "main" });
     const tree = buildTagTree(listTags(db));
@@ -331,7 +331,7 @@ describe("tags", () => {
 });
 
 describe("links 2-hop", () => {
-  test("共通リンク先を持つ文書をグループ化する", () => {
+  test("groups documents sharing a link target", () => {
     createDocument(db, { title: "共通先", content: "hub", bucket: "main" });
     const a = createDocument(db, { title: "A", content: "[[共通先]]", bucket: "main" });
     const b = createDocument(db, { title: "B", content: "[[共通先]]", bucket: "main" });
@@ -345,7 +345,7 @@ describe("links 2-hop", () => {
 });
 
 describe("buckets", () => {
-  test("不正な名前を拒否し、非空 Bucket は削除できない", () => {
+  test("rejects invalid names; non-empty buckets cannot be deleted", () => {
     expect(() => createBucket(db, "Invalid_Name")).toThrow();
     createBucket(db, "work", "仕事用");
     createDocument(db, { title: "A", content: "x", bucket: "work" });

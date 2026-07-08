@@ -12,7 +12,7 @@ export interface HybridOptions {
   bucket?: string;
   tag?: string;
   limit?: number;
-  /** LLM クエリ展開を有効化（`query --expand`） */
+  /** Enable LLM query expansion (`query --expand`) */
   expand?: boolean;
 }
 
@@ -32,7 +32,7 @@ interface Fused {
 
 const CANDIDATE_LIMIT = 50;
 
-/** ポジション加重ブレンド（qmd 方式、SPEC §5.1）: RRF 上位ほど RRF を信頼する */
+/** Position-weighted blend (qmd style, SPEC §5.1): trust RRF more for higher RRF ranks */
 export function blendScores(rrfNormalized: number, rerank: number, rrfRank: number): number {
   if (rrfRank <= 3) return rrfNormalized * 0.75 + rerank * 0.25;
   if (rrfRank <= 10) return rrfNormalized * 0.6 + rerank * 0.4;
@@ -40,8 +40,8 @@ export function blendScores(rrfNormalized: number, rerank: number, rrfRank: numb
 }
 
 /**
- * ハイブリッド検索パイプライン: (展開) → FTS + ベクトル → RRF 融合 → リランク → ブレンド。
- * LLM 系が使えない場合は劣化動作で必ず応答する（エラーで落とさない、SPEC §5.1）。
+ * Hybrid search pipeline: (expansion) -> FTS + vector -> RRF fusion -> rerank -> blend.
+ * Always answers in degraded mode when LLM features are unavailable (never fails hard, SPEC §5.1).
  */
 export async function hybridQuery(
   db: Database,
@@ -56,18 +56,18 @@ export async function hybridQuery(
   const provider = await resolveProvider(config);
   const rrfK = config.search.rrf_k;
 
-  // クエリ展開: 元クエリ重み 2 + バリアント重み 1（SPEC §5.1）
+  // Query expansion: original query weight 2, variants weight 1 (SPEC §5.1)
   const variants: Array<{ q: string; weight: number }> = [{ q: query, weight: 2 }];
   if (opts.expand) {
     if (!provider) {
-      warnings.push("LLM プロバイダ不在のため --expand をスキップしました");
+      warnings.push("skipped --expand because no LLM provider is available");
     } else {
       try {
         for (const v of await expandQuery(db, provider, config, query)) {
           variants.push({ q: v, weight: 1 });
         }
       } catch (e) {
-        warnings.push(`クエリ展開に失敗しました（${e instanceof Error ? e.message : e}）`);
+        warnings.push(`query expansion failed (${e instanceof Error ? e.message : e})`);
       }
     }
   }
@@ -124,12 +124,12 @@ export async function hybridQuery(
       usedVector = true;
     } catch (e) {
       warnings.push(
-        `ベクトル検索を利用できません（${e instanceof Error ? e.message : e}）。キーワード検索のみで応答します`,
+        `vector search is unavailable (${e instanceof Error ? e.message : e}); answering with keyword search only`,
       );
     }
   } else {
     warnings.push(
-      "LLM プロバイダに接続できないため、キーワード検索のみで応答します（'kura doctor' で確認できます）",
+      "cannot connect to an LLM provider; answering with keyword search only (run 'kura doctor' to check)",
     );
   }
 
@@ -137,7 +137,7 @@ export async function hybridQuery(
   const candidates = ranked.slice(0, config.search.rerank_top_k);
   const maxRrf = candidates[0]?.rrfScore ?? 1;
 
-  // リランク（プロバイダ不在・失敗時は RRF 順のまま返す）
+  // Rerank (falls back to RRF order when the provider is absent or the call fails)
   let usedRerank = false;
   let finalOrder = candidates.map((c, i) => ({
     ...c,
@@ -159,7 +159,7 @@ export async function hybridQuery(
       usedRerank = true;
     } catch (e) {
       warnings.push(
-        `リランクに失敗しました（${e instanceof Error ? e.message : e}）。RRF 順で返します`,
+        `rerank failed (${e instanceof Error ? e.message : e}); returning results in RRF order`,
       );
     }
   }
@@ -174,7 +174,7 @@ export async function hybridQuery(
   };
 }
 
-/** キーワード検索のみでヒットした候補のリランク用テキスト（先頭チャンク → 本文先頭） */
+/** Rerank text for candidates hit only by keyword search (first chunk, else start of the body) */
 function candidateText(db: Database, docId: number): string {
   const chunk = db
     .prepare("SELECT text FROM chunks WHERE document_id = ? ORDER BY seq LIMIT 1")

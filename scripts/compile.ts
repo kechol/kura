@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * シングルバイナリのビルド（SPEC §12.1）。
- * 1. SPA をビルド（dist/）
- * 2. ターゲット用の sqlite-vec プリビルドを vendor/ に用意
- * 3. src/generated/embedded.ts を生成（dist アセット + vec 拡張を埋め込み import）
+ * Single-binary build (SPEC §12.1).
+ * 1. Build the SPA (dist/)
+ * 2. Place the sqlite-vec prebuilt for the target under vendor/
+ * 3. Generate src/generated/embedded.ts (embedding dist assets + the vec extension via imports)
  * 4. bun build --compile
- * 5. embedded.ts をスタブへ復元
+ * 5. Restore embedded.ts to the stub
  *
- * 使い方: bun run scripts/compile.ts [--target bun-darwin-arm64] [--outfile path]
+ * Usage: bun run scripts/compile.ts [--target bun-darwin-arm64] [--outfile path]
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -17,16 +17,16 @@ import { VENDOR_TARGETS, vendorLibPath } from "./fetch-vendor";
 const root = join(import.meta.dir, "..");
 const GENERATED = join(root, "src", "generated", "embedded.ts");
 
-const STUB = `// scripts/compile.ts がコンパイル時に上書きする埋め込みアセット表。
-// 開発時（bun run）はこのスタブのまま = 埋め込みなしで、dist/ と node_modules から解決する。
+const STUB = `// Embedded asset table, overwritten by scripts/compile.ts at compile time.
+// During development (bun run) this stub stays as-is = nothing embedded; assets resolve from dist/ and node_modules.
 
-/** SPA アセット: URL パス → バイナリ埋め込みファイルのパス */
+/** SPA assets: URL path → path of the file embedded in the binary */
 export const embeddedAssets: Record<string, string> = {};
 
-/** sqlite-vec 拡張の埋め込みパス（null なら node_modules から解決） */
+/** Embedded path of the sqlite-vec extension (null = resolve from node_modules) */
 export const embeddedVecLib: string | null = null;
 
-/** 展開先ファイル名（vec0.dylib / vec0.so / vec0.dll） */
+/** Extraction file name (vec0.dylib / vec0.so / vec0.dll) */
 export const embeddedVecLibName = "";
 `;
 
@@ -108,7 +108,7 @@ if (import.meta.main) {
       `--outfile=${outfile}`,
     ]);
   } finally {
-    // スタブに復元（backup が既に生成物だった場合もスタブへ戻す）
+    // Restore the stub (also fall back to the stub if the backup was itself a generated file)
     writeFileSync(GENERATED, backup.includes("DO NOT EDIT") ? STUB : backup);
   }
   console.error(`compiled: ${outfile} (${bunTarget})`);

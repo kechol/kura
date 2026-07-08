@@ -2,133 +2,133 @@ import { describe, expect, test } from "bun:test";
 import { extractWiki, normalizeTagPath } from "../src/core/wiki";
 
 describe("normalizeTagPath", () => {
-  test("小文字化する", () => {
+  test("lowercases", () => {
     expect(normalizeTagPath("Tech/DB/SQLite")).toBe("tech/db/sqlite");
   });
 
-  test("前後スラッシュを除去し連続スラッシュを圧縮する", () => {
+  test("strips leading/trailing slashes and collapses repeated slashes", () => {
     expect(normalizeTagPath("/tech//db/")).toBe("tech/db");
     expect(normalizeTagPath("///a////b///")).toBe("a/b");
   });
 
-  test("各セグメントを trim する", () => {
+  test("trims each segment", () => {
     expect(normalizeTagPath(" Tech / DB ")).toBe("tech/db");
     expect(normalizeTagPath("a/　日本語　/b")).toBe("a/日本語/b");
   });
 
-  test("空になる入力は null", () => {
+  test("input that normalizes to empty returns null", () => {
     expect(normalizeTagPath("")).toBeNull();
     expect(normalizeTagPath("   ")).toBeNull();
     expect(normalizeTagPath("///")).toBeNull();
     expect(normalizeTagPath("/ / /")).toBeNull();
   });
 
-  test("日本語タグを保持する", () => {
+  test("preserves Japanese tags", () => {
     expect(normalizeTagPath("技術/データベース")).toBe("技術/データベース");
   });
 });
 
-describe("extractWiki: Wiki リンク", () => {
-  test("基本形 [[タイトル]] を抽出する", () => {
+describe("extractWiki: wiki links", () => {
+  test("extracts the basic [[title]] form", () => {
     const { links } = extractWiki("[[SQLite の WAL モード]] を参照。");
     expect(links).toEqual([{ target: "SQLite の WAL モード", display: null }]);
   });
 
-  test("[[タイトル|表示テキスト]] の表示部を抽出する", () => {
+  test("extracts the display part of [[title|display text]]", () => {
     const { links } = extractWiki("詳細は [[SQLite 公式ドキュメント|公式]] へ。");
     expect(links).toEqual([{ target: "SQLite 公式ドキュメント", display: "公式" }]);
   });
 
-  test("タイトル・表示は trim される", () => {
+  test("title and display are trimmed", () => {
     const { links } = extractWiki("[[ 議事録 2026-07-07 | 昨日の議事録 ]]");
     expect(links).toEqual([{ target: "議事録 2026-07-07", display: "昨日の議事録" }]);
   });
 
-  test("空タイトルは無視する", () => {
+  test("ignores empty titles", () => {
     expect(extractWiki("[[]]").links).toEqual([]);
     expect(extractWiki("[[  ]]").links).toEqual([]);
     expect(extractWiki("[[ | x]]").links).toEqual([]);
   });
 
-  test("表示部が空なら display は null", () => {
+  test("display is null when the display part is empty", () => {
     expect(extractWiki("[[メモ|]]").links).toEqual([{ target: "メモ", display: null }]);
     expect(extractWiki("[[メモ| ]]").links).toEqual([{ target: "メモ", display: null }]);
   });
 
-  test("]] を含まない開き括弧は無視する", () => {
+  test("ignores opening brackets without a closing ]]", () => {
     expect(extractWiki("[[未クローズ").links).toEqual([]);
     const { links } = extractWiki("あ [[閉じた]] と [[未クローズ");
     expect(links).toEqual([{ target: "閉じた", display: null }]);
   });
 
-  test("ネスト風は内側だけがリンクになる", () => {
+  test("nested-looking links: only the inner one becomes a link", () => {
     const { links } = extractWiki("[[外側[[内側]]]]");
     expect(links).toEqual([{ target: "内側", display: null }]);
   });
 
-  test("表示部の 2 個目以降の | は表示テキストに含める", () => {
+  test("second and later | characters stay in the display text", () => {
     const { links } = extractWiki("[[A|B|C]]");
     expect(links).toEqual([{ target: "A", display: "B|C" }]);
   });
 
-  test("target の小文字比較で重複除去し最初の出現を保持する", () => {
+  test("deduplicates by lowercase target, keeping the first occurrence", () => {
     const { links } = extractWiki("[[SQLite]] と [[sqlite]] と [[SQLITE|別名]]");
     expect(links).toEqual([{ target: "SQLite", display: null }]);
   });
 
-  test("複数リンクは出現順に並ぶ", () => {
+  test("multiple links keep their order of appearance", () => {
     const { links } = extractWiki("[[う]] [[あ]]\n[[い]]");
     expect(links.map((l) => l.target)).toEqual(["う", "あ", "い"]);
   });
 });
 
-describe("extractWiki: ハッシュタグ", () => {
-  test("階層タグを抽出する", () => {
+describe("extractWiki: hashtags", () => {
+  test("extracts hierarchical tags", () => {
     expect(extractWiki("#tech/db/sqlite").tags).toEqual(["tech/db/sqlite"]);
   });
 
-  test("日本語タグを抽出する", () => {
+  test("extracts Japanese tags", () => {
     const { tags } = extractWiki("メモ: #技術/データベース と #アイデア");
     expect(tags).toEqual(["技術/データベース", "アイデア"]);
   });
 
-  test("数字・ハイフン・アンダースコアを含むタグ", () => {
+  test("tags with digits, hyphens, and underscores", () => {
     expect(extractWiki("#web-dev_2 #2026").tags).toEqual(["web-dev_2", "2026"]);
   });
 
-  test("開き括弧の直後のタグを抽出する", () => {
+  test("extracts tags right after opening brackets", () => {
     const { tags } = extractWiki("結論（#メモ）と補足「#アイデア」と英語(#note)");
     expect(tags).toEqual(["メモ", "アイデア", "note"]);
   });
 
-  test("URL フラグメントや文中の # は拾わない", () => {
+  test("does not pick up URL fragments or mid-word #", () => {
     expect(extractWiki("https://example.com/index.html#section").tags).toEqual([]);
     expect(extractWiki("foo#bar と issue#123").tags).toEqual([]);
     expect(extractWiki("[[リンク]]#直後 はタグではない").tags).toEqual([]);
   });
 
-  test("Markdown 見出しはタグではない", () => {
+  test("Markdown headings are not tags", () => {
     expect(extractWiki("# 見出し\n## 見出し2").tags).toEqual([]);
-    // # の直後に空白がなければ行頭でもタグ
+    // Without a space after #, it is a tag even at line start
     expect(extractWiki("#見出しではなくタグ").tags).toEqual(["見出しではなくタグ"]);
   });
 
-  test("normalizeTagPath 適用後の値で重複除去する", () => {
+  test("deduplicates on the normalizeTagPath result", () => {
     const { tags } = extractWiki("#Tech/DB #tech/db #TECH/DB/sqlite");
     expect(tags).toEqual(["tech/db", "tech/db/sqlite"]);
   });
 
-  test("末尾のスラッシュはタグに含めない", () => {
+  test("trailing slashes are not part of the tag", () => {
     expect(extractWiki("#tech/ です").tags).toEqual(["tech"]);
   });
 
-  test("タグは出現順に並ぶ", () => {
+  test("tags keep their order of appearance", () => {
     expect(extractWiki("#b #a\n#c #b").tags).toEqual(["b", "a", "c"]);
   });
 });
 
-describe("extractWiki: コードブロック無視", () => {
-  test("フェンスコードブロック内のリンク・タグは無視する", () => {
+describe("extractWiki: code blocks are ignored", () => {
+  test("links and tags inside fenced code blocks are ignored", () => {
     const doc = ["前 [[A]] #before", "```sql", "-- [[B]] #inside", "```", "後 [[C]] #after"].join(
       "\n",
     );
@@ -137,62 +137,62 @@ describe("extractWiki: コードブロック無視", () => {
     expect(tags).toEqual(["before", "after"]);
   });
 
-  test("~~~ フェンスと情報文字列に対応する", () => {
+  test("supports ~~~ fences and info strings", () => {
     const doc = ["~~~markdown 例", "[[中身]] #中身", "~~~", "#外side"].join("\n");
     const { links, tags } = extractWiki(doc);
     expect(links).toEqual([]);
     expect(tags).toEqual(["外side"]);
   });
 
-  test("フェンス開始行の情報文字列はタグとして拾わない", () => {
+  test("info strings on fence-opening lines are not tags", () => {
     const doc = ["```js #not-a-tag", "code", "```"].join("\n");
     expect(extractWiki(doc).tags).toEqual([]);
   });
 
-  test("インデントされたフェンス（3 スペース以内）に対応する", () => {
+  test("supports indented fences (up to 3 spaces)", () => {
     const doc = ["  ```", "  [[中]] #中", "  ```", "[[外]]"].join("\n");
     const { links, tags } = extractWiki(doc);
     expect(links.map((l) => l.target)).toEqual(["外"]);
     expect(tags).toEqual([]);
   });
 
-  test("閉じないフェンスは末尾まで無視する", () => {
+  test("unclosed fences are ignored to the end", () => {
     const doc = ["#先頭", "```", "[[中]] #中", "まだコード"].join("\n");
     const { links, tags } = extractWiki(doc);
     expect(links).toEqual([]);
     expect(tags).toEqual(["先頭"]);
   });
 
-  test("開始より多い本数のフェンスで閉じられる", () => {
+  test("a longer fence run can close a shorter opening", () => {
     const doc = ["```", "#中", "`````", "#外"].join("\n");
     expect(extractWiki(doc).tags).toEqual(["外"]);
   });
 
-  test("インラインコード内は無視する", () => {
+  test("ignores inline code", () => {
     const { links, tags } = extractWiki("行内の `#tag` や `[[link]]` は無視。 #残る は残る。");
     expect(links).toEqual([]);
     expect(tags).toEqual(["残る"]);
   });
 
-  test("二重バッククォートスパン（` を内包）内も無視する", () => {
+  test("ignores double-backtick spans (containing `) too", () => {
     const { tags } = extractWiki("``code ` #inner`` の後の #outer");
     expect(tags).toEqual(["outer"]);
   });
 
-  test("インラインコードの後のリンク・タグは抽出する", () => {
+  test("extracts links and tags after inline code", () => {
     const { links, tags } = extractWiki("`PRAGMA` の説明は [[WAL]] と #sqlite を参照");
     expect(links.map((l) => l.target)).toEqual(["WAL"]);
     expect(tags).toEqual(["sqlite"]);
   });
 
-  test("対にならないバッククォートはコードにしない", () => {
+  test("unpaired backticks do not start code", () => {
     const { tags } = extractWiki("これは ` 単独。 #タグ は生きる");
     expect(tags).toEqual(["タグ"]);
   });
 });
 
-describe("extractWiki: 統合", () => {
-  test("日本語ドキュメントからリンクとタグを抽出する", () => {
+describe("extractWiki: integration", () => {
+  test("extracts links and tags from a Japanese document", () => {
     const doc = [
       "# SQLite の WAL モード",
       "",
@@ -216,20 +216,20 @@ describe("extractWiki: 統合", () => {
     expect(tags).toEqual(["技術/データベース", "tech/db/sqlite", "性能"]);
   });
 
-  test("空文字列・記号のみの入力でも壊れない", () => {
+  test("does not break on empty or symbol-only input", () => {
     for (const doc of ["", "\n\n", "[[", "]]", "#", "|", "`", "```", "\r\n"]) {
       expect(extractWiki(doc)).toEqual({ links: [], tags: [] });
     }
   });
 
-  test("CRLF 改行でも動作する", () => {
+  test("works with CRLF line endings", () => {
     const { links, tags } = extractWiki("#a\r\n[[B]]\r\n```\r\n#c\r\n```\r\n");
     expect(tags).toEqual(["a"]);
     expect(links.map((l) => l.target)).toEqual(["B"]);
   });
 });
 
-/** 再現可能な擬似乱数（プロパティテスト用） */
+/** Reproducible pseudo-random generator (for property tests) */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -241,7 +241,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-describe("プロパティベース境界値テスト（SPEC §14）", () => {
+describe("property-based boundary tests (SPEC §14)", () => {
   const PIECES = [
     "[[",
     "]]",
@@ -266,7 +266,7 @@ describe("プロパティベース境界値テスト（SPEC §14）", () => {
     "WAL",
   ];
 
-  test("extractWiki は任意入力で例外を投げず不変条件を満たす", () => {
+  test("extractWiki never throws and upholds invariants on arbitrary input", () => {
     const rand = mulberry32(20260708);
     for (let iter = 0; iter < 300; iter++) {
       let doc = "";
@@ -290,7 +290,7 @@ describe("プロパティベース境界値テスト（SPEC §14）", () => {
 
       const seenTags = new Set<string>();
       for (const tag of tags) {
-        // 正規化済み（冪等）かつ一意
+        // Already normalized (idempotent) and unique
         expect(normalizeTagPath(tag)).toBe(tag);
         expect(seenTags.has(tag)).toBe(false);
         seenTags.add(tag);
@@ -298,7 +298,7 @@ describe("プロパティベース境界値テスト（SPEC §14）", () => {
     }
   });
 
-  test("normalizeTagPath は正規形か null を返す（冪等）", () => {
+  test("normalizeTagPath returns a normal form or null (idempotent)", () => {
     const rand = mulberry32(42);
     const chars = ["/", " ", "　", "A", "b", "テ", "-", "_", "9"];
     for (let iter = 0; iter < 300; iter++) {
@@ -320,7 +320,7 @@ describe("プロパティベース境界値テスト（SPEC §14）", () => {
     }
   });
 
-  test("極端な入力（長大・タグのみ・リンクのみ）", () => {
+  test("extreme inputs (very long, tags only, links only)", () => {
     const longTag = `#${"a/".repeat(500)}z`;
     expect(extractWiki(longTag).tags).toEqual([`${"a/".repeat(500)}z`]);
 

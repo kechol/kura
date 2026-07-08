@@ -18,7 +18,7 @@ function tempConfigPath(): string {
 }
 
 describe("config", () => {
-  test("既定値が SPEC §11 と一致する", () => {
+  test("defaults match SPEC §11", () => {
     const c = defaultConfig();
     expect(c.general.default_bucket).toBe("main");
     expect(c.general.stale_days).toBe(180);
@@ -30,7 +30,7 @@ describe("config", () => {
     expect(c.browser.port).toBe(7578);
   });
 
-  test("serialize → parse でラウンドトリップする", () => {
+  test("round-trips through serialize -> parse", () => {
     const c = defaultConfig();
     c.general.stale_days = 90;
     c.llm.models.generation = "llama3:8b";
@@ -39,20 +39,20 @@ describe("config", () => {
     expect(parsed).toEqual(JSON.parse(JSON.stringify(c)));
   });
 
-  test("ファイルから読み込んで既定値とマージする", () => {
+  test("loads from a file and merges with defaults", () => {
     const path = tempConfigPath();
     writeFileSync(path, '[general]\nstale_days = 30\n\n[llm.models]\ngeneration = "qwen3:8b"\n');
     resetConfigCache();
     const c = loadConfig(path);
     expect(c.general.stale_days).toBe(30);
     expect(c.llm.models.generation).toBe("qwen3:8b");
-    // 未指定キーは既定値のまま
+    // Unspecified keys keep their defaults
     expect(c.general.default_bucket).toBe("main");
     expect(c.search.rrf_k).toBe(60);
     resetConfigCache();
   });
 
-  test("未知キー・型不一致は無視して既定値を守る", () => {
+  test("ignores unknown keys and type mismatches, keeping defaults", () => {
     const path = tempConfigPath();
     writeFileSync(path, '[general]\nstale_days = "not-a-number"\nunknown_key = 1\n');
     resetConfigCache();
@@ -62,7 +62,7 @@ describe("config", () => {
     resetConfigCache();
   });
 
-  test("saveConfig がファイルに書き出す", () => {
+  test("saveConfig writes to a file", () => {
     const path = tempConfigPath();
     const c = defaultConfig();
     c.browser.port = 8080;
@@ -70,7 +70,7 @@ describe("config", () => {
     expect(readFileSync(path, "utf-8")).toContain("port = 8080");
   });
 
-  test("getConfigValue / setConfigValue がドット区切りキーを扱う", () => {
+  test("getConfigValue / setConfigValue handle dotted keys", () => {
     const c = defaultConfig();
     expect(getConfigValue(c, "llm.models.embedding_dimensions")).toBe(1024);
     expect(getConfigValue(c, "nope.nope")).toBeUndefined();
@@ -83,7 +83,7 @@ describe("config", () => {
     expect(setConfigValue(c, "unknown.key", "v")).toBe(false);
   });
 
-  test("listConfigEntries が平坦なキー一覧を返す", () => {
+  test("listConfigEntries returns a flat key list", () => {
     const keys = listConfigEntries(defaultConfig()).map(([k]) => k);
     expect(keys).toContain("general.default_bucket");
     expect(keys).toContain("llm.models.reranker");

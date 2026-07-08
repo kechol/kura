@@ -17,8 +17,8 @@ general.editor (config) → $EDITOR → vi. Changes to title / tags / bucket
 in the frontmatter are applied on save. kura_key must not be changed.`;
 
 /**
- * YAML が kura_key を数値として解釈するケース（全桁数字の hex キー）を
- * 生テキストから救済する。
+ * Recover kura_key from raw text when YAML parses it as a number
+ * (hex keys made up entirely of digits).
  */
 function rawFrontmatterKey(raw: string): string | undefined {
   const block = raw.match(/^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)/)?.[1] ?? "";
@@ -82,13 +82,13 @@ export function run(argv: string[]): number {
     );
   }
 
-  // fm の tags を正とし、現在のタグとの差分で追加/削除する
+  // Treat the frontmatter tags as authoritative; add/remove by diff against current tags
   const fmTags = fm?.tags ?? [];
   const removed = doc.tags.filter((t) => !fmTags.includes(t));
   const newTitle = fm?.title ?? doc.title;
   const { record, relinked } = updateDocument(db, doc.id, {
     title: newTitle,
-    // frontmatter 直後の区切り空行 1 行を本文から除く
+    // Strip the single separator blank line right after the frontmatter
     content: body.replace(/^\r?\n/, ""),
     bucket: fm?.bucket ?? doc.bucket,
     tags: fmTags,

@@ -129,7 +129,7 @@ export function SearchPage() {
                 <span class="score">score {h.score.toFixed(3)}</span>
                 <span class="count">{h.bucket}</span>
               </div>
-              {/* snippetHtml はエスケープ後に <mark> のみ挿入する */}
+              {/* snippetHtml escapes first and only inserts <mark> */}
               <p class="snippet" dangerouslySetInnerHTML={{ __html: snippetHtml(h.snippet) }} />
               {h.tags.length > 0 && (
                 <div class="tag-cell">

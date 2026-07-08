@@ -32,7 +32,7 @@ const fixtureDir = join(work, "fixtures");
 const exportDir = join(work, "export1");
 const tagExportDir = join(work, "export-tag");
 
-/** 日本語ドキュメントの fixture（frontmatter 付き、kura_key なし） */
+/** Japanese document fixtures (with frontmatter, no kura_key) */
 const FIXTURES: Record<string, string> = {
   "wal.md": `---
 title: SQLite の WAL モード
@@ -71,13 +71,13 @@ describe("kura export / import / bucket (e2e)", () => {
     }
   }, 60_000);
 
-  test("import: 日本語ドキュメント 3 件を新規取り込みする", async () => {
+  test("import: creates 3 new Japanese documents", async () => {
     const r = await runCli(["import", fixtureDir, "--json"], envA);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({ created: 3, updated: 0, skipped: [] });
   }, 20_000);
 
-  test("export: frontmatter 付きで書き出し、タイトルはサニタイズされる", async () => {
+  test("export: writes files with frontmatter and sanitizes titles", async () => {
     const r = await runCli(["export", "--dir", exportDir], envA);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain(`exported 3 documents to ${exportDir}`);
@@ -92,17 +92,17 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(wal).toContain("tech/sqlite");
     expect(wal).toContain("チェックポイントの調整");
 
-    // タイトル中の / は - に置換される
+    // / in titles is replaced with -
     expect(existsSync(join(exportDir, "main", "設計-実装メモ.md"))).toBe(true);
   }, 20_000);
 
-  test("export --dir なしは UsageError (exit 2)", async () => {
+  test("export without --dir is a UsageError (exit 2)", async () => {
     const r = await runCli(["export"], envA);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("--dir");
   }, 20_000);
 
-  test("export --tag で絞り込める", async () => {
+  test("export --tag filters documents", async () => {
     const r = await runCli(["export", "--tag", "技術/検索", "--dir", tagExportDir, "--json"], envA);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({ exported: 1, dir: tagExportDir });
@@ -110,20 +110,20 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(existsSync(join(tagExportDir, "main", "SQLite の WAL モード.md"))).toBe(false);
   }, 20_000);
 
-  test("import: 別 KURA_HOME への取り込みと kura_key ラウンドトリップ", async () => {
+  test("import: into another KURA_HOME with kura_key round-trip", async () => {
     const first = await runCli(["import", exportDir], envB);
-    // skip が起きた場合は stderr に理由が出る（失敗時の診断用に先に検証）
+    // Skips report their reason on stderr (checked first to diagnose failures)
     expect(first.stderr).toBe("");
     expect(first.code).toBe(0);
     expect(first.stdout).toContain("imported: 3 created, 0 updated, 0 skipped");
 
-    // 同じ export を再 import すると kura_key 一致で全件 updated になる
+    // Re-importing the same export updates every document via matching kura_key
     const second = await runCli(["import", exportDir], envB);
     expect(second.stderr).toBe("");
     expect(second.code).toBe(0);
     expect(second.stdout).toContain("imported: 0 created, 3 updated, 0 skipped");
 
-    // 再 export しても kura_key が維持されている
+    // kura_key survives a re-export
     const reExportDir = join(work, "export2");
     const r = await runCli(["export", "--dir", reExportDir], envB);
     expect(r.code).toBe(0);
@@ -133,7 +133,7 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(keyOf(join(reExportDir, "main", name))).toBe(keyOf(join(exportDir, "main", name)));
   }, 30_000);
 
-  test("import: 不正 frontmatter は skip して継続する", async () => {
+  test("import: skips invalid frontmatter and continues", async () => {
     const mixedDir = join(work, "mixed");
     mkdirSync(mixedDir, { recursive: true });
     const badPath = join(mixedDir, "bad.md");
@@ -148,7 +148,7 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(r.stdout).toContain("imported: 1 created, 0 updated, 1 skipped");
     expect(r.stderr).toContain(`skip ${badPath}`);
 
-    // kura_key なしのタイトル重複（ConflictError）も skip。全滅なら exit 1
+    // Duplicate titles without kura_key (ConflictError) are also skipped; exit 1 when all fail
     const again = await runCli(["import", join(mixedDir, "good.md")], envA);
     expect(again.code).toBe(1);
     expect(again.stdout).toContain("imported: 0 created, 0 updated, 1 skipped");
@@ -173,7 +173,7 @@ describe("kura export / import / bucket (e2e)", () => {
 
     const plain = await runCli(["bucket", "ls"], envA);
     expect(plain.code).toBe(0);
-    expect(plain.stdout).toContain("notes  0件  メモ用");
+    expect(plain.stdout).toContain("notes  0 documents  メモ用");
 
     const mv = await runCli(["bucket", "mv", "notes", "notes2"], envA);
     expect(mv.code).toBe(0);
@@ -184,7 +184,7 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(names).not.toContain("notes");
   }, 30_000);
 
-  test("bucket rm: 非空は失敗、--force で削除、default bucket は拒否", async () => {
+  test("bucket rm: fails when non-empty, deletes with --force, refuses the default bucket", async () => {
     const docPath = join(work, "議事録.md");
     writeFileSync(docPath, "---\ntitle: 定例会議の議事録\n---\n\n次回までの宿題を確認した。\n");
     const imp = await runCli(["import", docPath, "--bucket", "notes2"], envA);

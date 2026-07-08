@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { UsageError } from "../core/errors";
 
-/** 終了コード規約（SPEC §7） */
+/** Exit code conventions (SPEC §7) */
 export const EXIT = {
   OK: 0,
   ERROR: 1,
@@ -28,8 +28,8 @@ export interface Parsed {
 }
 
 /**
- * util.parseArgs の薄いラッパー。不正なオプションは UsageError に変換する。
- * すべてのコマンドで `--json` / `--help` を受け付ける。
+ * Thin wrapper around util.parseArgs. Invalid options are converted to UsageError.
+ * Every command accepts `--json` / `--help`.
  */
 export function parseCommandArgs(argv: string[], options: OptionSpec = {}): Parsed {
   const merged: OptionSpec = {
@@ -50,18 +50,18 @@ export function parseCommandArgs(argv: string[], options: OptionSpec = {}): Pars
   }
 }
 
-/** 文字列オプションの取り出し（未指定は undefined） */
+/** Read a string option (undefined when not given) */
 export function strOpt(parsed: Parsed, name: string): string | undefined {
   const v = parsed.values[name];
   return typeof v === "string" ? v : undefined;
 }
 
-/** 真偽オプションの取り出し */
+/** Read a boolean option */
 export function boolOpt(parsed: Parsed, name: string): boolean {
   return parsed.values[name] === true;
 }
 
-/** 数値オプションの取り出し（parse 不能は UsageError） */
+/** Read an integer option (UsageError when unparsable) */
 export function intOpt(parsed: Parsed, name: string): number | undefined {
   const v = strOpt(parsed, name);
   if (v === undefined) return undefined;
@@ -70,7 +70,7 @@ export function intOpt(parsed: Parsed, name: string): number | undefined {
   return n;
 }
 
-/** カンマ区切りリストオプション（`--tags a,b`）の取り出し */
+/** Read a comma-separated list option (`--tags a,b`) */
 export function listOpt(parsed: Parsed, name: string): string[] {
   const v = strOpt(parsed, name);
   if (!v) return [];

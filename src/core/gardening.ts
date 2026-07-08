@@ -4,9 +4,9 @@ import type { LLMProvider } from "./llm/provider";
 import { listTags } from "./tags";
 
 export interface TagMergeCandidate {
-  /** 統合元（少数派 or 長い方） */
+  /** Merge source (the less-used or longer tag) */
   from: string;
-  /** 統合先 */
+  /** Merge destination */
   to: string;
   reason: string;
   similarity: number;
@@ -15,18 +15,18 @@ export interface TagMergeCandidate {
 export interface OversizedTag {
   path: string;
   count: number;
-  /** 全ドキュメントに対する付与率（0〜1） */
+  /** Share of all documents carrying this tag (0-1) */
   share: number;
 }
 
 export interface TagAuditResult {
   merges: TagMergeCandidate[];
   oversized: OversizedTag[];
-  /** embedding 類似度を使えたか */
+  /** Whether embedding similarity was available */
   usedEmbeddings: boolean;
 }
 
-/** レーベンシュタイン距離（タグ名の表記ゆれ検出用） */
+/** Levenshtein distance (used to detect tag-name spelling variants) */
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const m = a.length;
@@ -56,7 +56,7 @@ function isAncestor(a: string, b: string): boolean {
   return b.startsWith(`${a}/`) || a.startsWith(`${b}/`);
 }
 
-/** 単数/複数形の単純な表記ゆれ（英語タグ向け） */
+/** Simple singular/plural variants (for English tags) */
 function isPluralVariant(a: string, b: string): boolean {
   return a === `${b}s` || b === `${a}s` || a === `${b}es` || b === `${a}es`;
 }
@@ -79,9 +79,10 @@ const EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
 const OVERSIZED_SHARE = 0.3;
 
 /**
- * タグ・ガーデニング監査（SPEC §10.3）:
- * 正規化編集距離 + （プロバイダがあれば）タグ名 embedding の cos 類似度で統合候補を列挙し、
- * 全体の 30% 超に付くタグへ細分化を提案する。
+ * Tag gardening audit (SPEC §10.3):
+ * list merge candidates via normalized edit distance plus, when a provider is available,
+ * cosine similarity of tag-name embeddings, and flag tags attached to more than 30% of
+ * all documents as candidates for splitting.
  */
 export async function auditTags(
   db: Database,
@@ -93,7 +94,7 @@ export async function auditTags(
 
   const merges = new Map<string, TagMergeCandidate>();
   const pairKey = (a: string, b: string): string => [a, b].sort().join("\x00");
-  // 統合方向: 付与数が多い方へ（同数なら短い方へ）
+  // Merge direction: into the more-used tag (into the shorter path on a tie)
   const direction = (
     a: (typeof tags)[number],
     b: (typeof tags)[number],
@@ -116,14 +117,14 @@ export async function auditTags(
       if (dist <= EDIT_DISTANCE_THRESHOLD || plural) {
         merges.set(pairKey(a.path, b.path), {
           ...direction(a, b),
-          reason: plural ? "単数/複数の表記ゆれ" : `編集距離が近い (${dist.toFixed(2)})`,
+          reason: plural ? "singular/plural variant" : `close edit distance (${dist.toFixed(2)})`,
           similarity: 1 - dist,
         });
       }
     }
   }
 
-  // embedding 類似（意味的な重複: 例 "db" と "database"）
+  // Embedding similarity (semantic duplicates, e.g. "db" and "database")
   let usedEmbeddings = false;
   if (provider && tags.length >= 2) {
     try {
@@ -144,7 +145,7 @@ export async function auditTags(
           if (sim > EMBEDDING_SIMILARITY_THRESHOLD) {
             merges.set(key, {
               ...direction(a, b),
-              reason: `embedding 類似度が高い (${sim.toFixed(2)})`,
+              reason: `high embedding similarity (${sim.toFixed(2)})`,
               similarity: sim,
             });
           }
@@ -177,7 +178,7 @@ export interface UntaggedDoc {
   content: string;
 }
 
-/** タグなしドキュメントの列挙（tag suggest --untagged 用） */
+/** List untagged documents (for tag suggest --untagged) */
 export function untaggedDocuments(db: Database, bucket?: string): UntaggedDoc[] {
   const params: string[] = [];
   let where = "NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)";

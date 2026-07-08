@@ -7,7 +7,7 @@ export type TagSource = "manual" | "auto";
 
 export interface TagEntry {
   path: string;
-  /** 直接付与されているドキュメント数 */
+  /** Number of documents directly tagged */
   count: number;
 }
 
@@ -44,7 +44,7 @@ export function docTags(db: Database, docId: number): string[] {
   return rows.map((r) => r.path);
 }
 
-/** タグを付与して FTS の tags 列を更新する。戻り値は正規化済みで実際に新規付与されたタグ */
+/** Add tags and refresh the FTS tags column. Returns the normalized tags that were actually added */
 export function addTagsToDoc(
   db: Database,
   docId: number,
@@ -66,7 +66,7 @@ export function addTagsToDoc(
   return added;
 }
 
-/** タグを外して FTS を更新する。戻り値は実際に外れた数 */
+/** Remove tags and refresh FTS. Returns the number actually removed */
 export function removeTagsFromDoc(db: Database, docId: number, rawPaths: string[]): number {
   let removed = 0;
   for (const raw of rawPaths) {
@@ -84,17 +84,17 @@ export function removeTagsFromDoc(db: Database, docId: number, rawPaths: string[
 }
 
 export interface RenameTagResult {
-  /** 移動または統合された旧タグパス */
+  /** Old tag paths that were moved or merged */
   moved: string[];
-  /** 統合が発生したか */
+  /** Whether a merge occurred */
   merged: boolean;
-  /** タグ集合が変わったドキュメント（FTS 更新済み） */
+  /** Documents whose tag sets changed (FTS already refreshed) */
   affectedDocs: number[];
 }
 
 /**
- * タグのリネーム/統合（子孫タグも一括移動、SPEC §7.4）。
- * 統合先パスが既存なら document_tags を付け替えて merge する。
+ * Rename/merge a tag (descendant tags move together, SPEC §7.4).
+ * When the destination path already exists, re-point document_tags and merge.
  */
 export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameTagResult {
   const oldPath = requireNormalized(oldRaw);
@@ -128,7 +128,7 @@ export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameT
     for (const r of docRows) affected.add(r.document_id);
 
     if (existing && existing.id !== tag.id) {
-      // 統合: 既存タグへ付け替え（重複は無視）て旧タグを削除
+      // Merge: re-point to the existing tag (ignoring duplicates) and delete the old tag
       merged = true;
       db.prepare("UPDATE OR IGNORE document_tags SET tag_id = ? WHERE tag_id = ?").run(
         existing.id,
@@ -146,7 +146,7 @@ export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameT
   return { moved, merged, affectedDocs: [...affected] };
 }
 
-/** どのドキュメントにも付いていないタグを削除する */
+/** Delete tags not attached to any document */
 export function gcTags(db: Database): string[] {
   const orphans = db
     .prepare(
@@ -164,14 +164,14 @@ export function gcTags(db: Database): string[] {
 export interface TagTreeNode {
   segment: string;
   path: string;
-  /** 直接付与件数（タグ実体がない中間ノードは 0） */
+  /** Direct tag count (0 for intermediate nodes without a tag entity) */
   count: number;
-  /** 子孫を含む合計件数 */
+  /** Total count including descendants */
   total: number;
   children: TagTreeNode[];
 }
 
-/** タグ一覧を階層ツリーに組み立てる（--tree 表示用） */
+/** Build the tag list into a hierarchy tree (for --tree display) */
 export function buildTagTree(entries: TagEntry[]): TagTreeNode[] {
   const roots: TagTreeNode[] = [];
   const index = new Map<string, TagTreeNode>();

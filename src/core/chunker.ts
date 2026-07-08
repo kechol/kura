@@ -1,14 +1,14 @@
-/** embedding 用チャンク分割（SPEC §5.2）。 */
+/** Chunk splitting for embeddings (SPEC §5.2). */
 
 export interface DocChunk {
-  seq: number; // 0 始まり連番
-  text: string; // コンテキストヘッダ付きの最終テキスト（embedding 入力）
-  startOffset: number; // 本文中の生チャンク開始位置（UTF-16 文字オフセット）
+  seq: number; // 0-based sequence number
+  text: string; // final text with context header prepended (embedding input)
+  startOffset: number; // raw chunk start position in the body (UTF-16 offset)
 }
 
 const TARGET_SIZE = 1600;
 const OVERLAP = 240; // 15%
-const WINDOW = 400; // 探索窓 ±400
+const WINDOW = 400; // search window +-400
 
 const HEADING_SCORES = [100, 90, 80] as const; // H1 / H2 / H3
 const SCORE_FENCE = 80;
@@ -23,13 +23,13 @@ const FENCE_CLOSE_RE = /^ {0,3}(`{3,})\s*$/;
 
 interface Line {
   start: number;
-  next: number; // 次行の開始位置（最終行は content.length）
+  next: number; // start of the next line (content.length for the last line)
   text: string;
 }
 
 interface FenceRange {
-  start: number; // 開始フェンス行の行頭
-  end: number; // 終了フェンス行の次行頭（未閉鎖なら content.length）
+  start: number; // start of the opening fence line
+  end: number; // start of the line after the closing fence (content.length when unclosed)
 }
 
 interface Heading {
@@ -38,8 +38,8 @@ interface Heading {
 }
 
 interface Analysis {
-  positions: number[]; // ブレークポイント候補位置（昇順）
-  scores: number[]; // 対応するベーススコア
+  positions: number[]; // breakpoint candidate positions (ascending)
+  scores: number[]; // corresponding base scores
   headings: Heading[];
   fences: FenceRange[];
 }
@@ -92,7 +92,7 @@ function analyze(content: string): Analysis {
   for (const line of lines) {
     while (fi < fences.length && fences[fi]!.end <= line.start) fi++;
     const fence = fi < fences.length ? fences[fi]! : null;
-    if (fence && fence.start <= line.start && line.start < fence.end) continue; // フェンス内では候補を作らない
+    if (fence && fence.start <= line.start && line.start < fence.end) continue; // no candidates inside fences
     add(line.next, SCORE_LINE_END);
     const h = HEADING_RE.exec(line.text);
     if (h) {
@@ -114,7 +114,7 @@ function analyze(content: string): Analysis {
   return { positions, scores, headings, fences };
 }
 
-/** pos を厳密に内包するフェンスブロックを返す（境界上は null） */
+/** Return the fence block strictly containing pos (null when on a boundary) */
 function fenceContaining(pos: number, fences: FenceRange[]): FenceRange | null {
   let lo = 0;
   let hi = fences.length - 1;
@@ -139,13 +139,13 @@ function lowerBound(arr: number[], value: number): number {
   return lo;
 }
 
-/** サロゲートペアの途中かどうか（強制分割位置の補正用） */
+/** Whether pos falls inside a surrogate pair (used to adjust forced-split positions) */
 function isLowSurrogate(content: string, pos: number): boolean {
   const c = content.charCodeAt(pos);
   return c >= 0xdc00 && c <= 0xdfff;
 }
 
-/** チャンク終端位置を決定する。必ず start より前進した位置を返す */
+/** Decide the chunk end position. Always returns a position that advances past start */
 function findCut(content: string, start: number, analysis: Analysis): number {
   const target = start + TARGET_SIZE;
   const lo = Math.max(start + 1, target - WINDOW);
@@ -166,11 +166,11 @@ function findCut(content: string, start: number, analysis: Analysis): number {
   }
   if (best >= 0) return best;
 
-  // 窓内に候補なし: 目標位置で強制分割
+  // No candidate inside the window: force a split at the target position
   let cut = target;
   const fence = fenceContaining(cut, analysis.fences);
   if (fence) {
-    // ブロック内なら前進可能な直近境界へずらす
+    // Inside a block, shift to the nearest boundary that still advances
     const before = fence.start > start ? fence.start : -1;
     cut = before >= 0 && target - before <= fence.end - target ? before : fence.end;
   } else if (isLowSurrogate(content, cut)) {
@@ -179,7 +179,7 @@ function findCut(content: string, start: number, analysis: Analysis): number {
   return cut;
 }
 
-/** 生チャンク開始位置以前で最も近い見出しからコンテキストヘッダを組み立てる */
+/** Build the context header from the nearest heading at or before the raw chunk start */
 function contextHeader(title: string, headings: Heading[], chunkStart: number): string {
   let lo = 0;
   let hi = headings.length - 1;
@@ -198,7 +198,7 @@ function contextHeader(title: string, headings: Heading[], chunkStart: number): 
   return `# ${title} > ${heading.text}\n\n`;
 }
 
-/** Markdown 本文を embedding 単位のチャンクに分割する */
+/** Split a Markdown body into embedding-sized chunks */
 export function chunkDocument(content: string, title: string): DocChunk[] {
   if (content.trim() === "") return [];
   const analysis = analyze(content);
@@ -213,15 +213,15 @@ export function chunkDocument(content: string, title: string): DocChunk[] {
       startOffset: start,
     });
     if (end >= content.length) break;
-    // オーバーラップ: 次チャンクの開始を約 240 文字戻す
+    // Overlap: move the next chunk start back by about 240 characters
     let next = end - OVERLAP;
     if (next > start) {
       const fence = fenceContaining(next, analysis.fences);
       if (fence)
-        next = fence.end; // ブロック内に落ちたら境界へ（フェンス対を壊さない）
+        next = fence.end; // if it lands inside a block, snap to the boundary (keep fence pairs intact)
       else if (isLowSurrogate(content, next)) next += 1;
     }
-    if (next <= start || next > end) next = end; // 前進保証
+    if (next <= start || next > end) next = end; // guarantee forward progress
     start = next;
   }
   return chunks;

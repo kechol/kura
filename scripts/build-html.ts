@@ -1,7 +1,7 @@
 /**
- * ブラウザ UI のビルドパイプライン（SPEC §8.1）。
- * src/client/index.tsx を dist/ にバンドルし、index.html をコピーする。
- * 成果物はハッシュなしの固定名 index.js / index.css / index.html。
+ * Browser UI build pipeline (SPEC §8.1).
+ * Bundles src/client/index.tsx into dist/ and copies index.html.
+ * Artifacts use fixed, hash-free names: index.js / index.css / index.html.
  */
 import { copyFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -24,7 +24,7 @@ if (!result.success) {
   process.exit(1);
 }
 
-// CSS 成果物を index.css に正規化（Bun が出力しない場合は styles.css をコピー）
+// Normalize the CSS artifact to index.css (copy styles.css when Bun emits none)
 const cssArtifact = result.outputs.find((o) => o.path.endsWith(".css"));
 const cssPath = join(dist, "index.css");
 if (cssArtifact && basename(cssArtifact.path) !== "index.css") {
@@ -38,7 +38,7 @@ copyFileSync(join(root, "src", "client", "index.html"), join(dist, "index.html")
 for (const name of ["index.html", "index.js", "index.css"]) {
   const path = join(dist, name);
   if (!existsSync(path)) {
-    console.error(`ビルド成果物がありません: ${path}`);
+    console.error(`build artifact missing: ${path}`);
     process.exit(1);
   }
   console.log(`dist/${name}  ${(statSync(path).size / 1024).toFixed(1)} KB`);

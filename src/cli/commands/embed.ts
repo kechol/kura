@@ -9,7 +9,7 @@ export const summary = "Generate embeddings for pending chunks";
 export const usage = `Usage: kura embed [--all]
 
 Options:
-  --all   既存を破棄して全チャンクを再 embedding（モデル変更後などに使用）`;
+  --all   Discard existing embeddings and re-embed all chunks (e.g. after a model change)`;
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {
@@ -38,7 +38,7 @@ export async function run(argv: string[]): Promise<number> {
     },
   });
 
-  // 再 embedding 完了時に使用モデルを meta に記録（doctor の変更検知用）
+  // Record the model used in meta after embedding (for doctor's change detection)
   setMeta(db, "embedding_model", config.llm.models.embedding);
   setMeta(db, "embedding_dimensions", String(config.llm.models.embedding_dimensions));
 

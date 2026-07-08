@@ -1,11 +1,11 @@
-// scripts/compile.ts がコンパイル時に上書きする埋め込みアセット表。
-// 開発時（bun run）はこのスタブのまま = 埋め込みなしで、dist/ と node_modules から解決する。
+// Embedded asset table, overwritten by scripts/compile.ts at compile time.
+// During development (bun run) this stub stays as-is = nothing embedded; assets resolve from dist/ and node_modules.
 
-/** SPA アセット: URL パス → バイナリ埋め込みファイルのパス */
+/** SPA assets: URL path → path of the file embedded in the binary */
 export const embeddedAssets: Record<string, string> = {};
 
-/** sqlite-vec 拡張の埋め込みパス（null なら node_modules から解決） */
+/** Embedded path of the sqlite-vec extension (null = resolve from node_modules) */
 export const embeddedVecLib: string | null = null;
 
-/** 展開先ファイル名（vec0.dylib / vec0.so / vec0.dll） */
+/** Extraction file name (vec0.dylib / vec0.so / vec0.dll) */
 export const embeddedVecLibName = "";

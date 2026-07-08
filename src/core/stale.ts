@@ -8,14 +8,14 @@ export interface StaleDoc {
   daysSinceUpdate: number;
   accessCount: number;
   backlinkCount: number;
-  /** 1.0 以上で陳腐化候補。大きいほど優先的にレビューすべき */
+  /** 1.0 or higher marks a staleness candidate; higher values deserve review first */
   staleScore: number;
 }
 
 /**
- * 陳腐化スコア = f(最終更新からの日数, access_count, バックリンク数)（SPEC §10.4）。
- * 経過日数を stale_days で正規化し、参照が多いほど減衰させる。
- * 削除ではなくレビュー促進が目的（自動削除はしない）。
+ * Staleness score = f(days since last update, access_count, backlink count) (SPEC §10.4).
+ * Normalizes elapsed days by stale_days and dampens with usage.
+ * The goal is to prompt review, not deletion (nothing is auto-deleted).
  */
 export function staleScore(
   daysSinceUpdate: number,

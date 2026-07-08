@@ -50,7 +50,7 @@ describe("REST API (SPEC §8.2)", () => {
     expect(body[0].documents).toBe(2);
   });
 
-  test("GET /api/docs のフィルタとページング", async () => {
+  test("GET /api/docs filtering and pagination", async () => {
     const all = await api("/api/docs");
     expect(all.body.total).toBe(2);
     expect(all.body.docs.length).toBe(2);
@@ -89,7 +89,7 @@ describe("REST API (SPEC §8.2)", () => {
     expect(put.body.content).toContain("更新済み");
     expect(put.body.tags).toContain("レビュー済み");
 
-    // タグ差分同期: 外したタグは消える
+    // Tag diff sync: tags removed in the editor are deleted
     const put2 = await api(`/api/docs/${key}`, {
       method: "PUT",
       body: JSON.stringify({ tags: ["tech/db"] }),
@@ -112,7 +112,7 @@ describe("REST API (SPEC §8.2)", () => {
     expect(body.backlinks[0].title).toBe("SQLite の WAL モード");
   });
 
-  test("GET /api/search（keyword / hybrid / 不正 mode / vector は 4xx 系）", async () => {
+  test("GET /api/search (keyword / hybrid / invalid mode / vector error)", async () => {
     const kw = await api(`/api/search?q=${encodeURIComponent("トランザクション")}`);
     expect(kw.status).toBe(200);
     expect(kw.body.hits[0].title).toBe("トランザクション設計");
@@ -124,12 +124,12 @@ describe("REST API (SPEC §8.2)", () => {
     const bad = await api("/api/search?q=x&mode=bogus");
     expect(bad.status).toBe(400);
 
-    // プロバイダ不在の vector は 500（LLMUnavailable）
+    // vector mode without a provider returns 500 (LLMUnavailable)
     const vec = await api(`/api/search?q=${encodeURIComponent("トランザクション")}&mode=vector`);
     expect(vec.status).toBe(500);
   });
 
-  test("GET /api/tags と /api/tags?tree=1", async () => {
+  test("GET /api/tags and /api/tags?tree=1", async () => {
     const flat = await api("/api/tags");
     expect(flat.body.map((t: { path: string }) => t.path)).toContain("tech/db/sqlite");
 
@@ -147,13 +147,13 @@ describe("REST API (SPEC §8.2)", () => {
     expect(typeof body.nodes[0].stale).toBe("boolean");
   });
 
-  test("SPA フォールバック（dist 不在時はプレースホルダ）", async () => {
+  test("SPA fallback (placeholder when dist is absent)", async () => {
     const res = await fetch(`${server.url}/some/client/route`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
   });
 
-  test("未知の /api パスは 404 JSON", async () => {
+  test("unknown /api paths return 404 JSON", async () => {
     const { status, body } = await api("/api/nope");
     expect(status).toBe(404);
     expect(body.error).toBeTruthy();

@@ -9,8 +9,8 @@ import { distAssetResolver, startServer } from "../src/server/http";
 const root = join(import.meta.dir, "..");
 const dist = join(root, "dist");
 
-describe("ブラウザ UI ビルドパイプライン (SPEC §8)", () => {
-  test("bun run build:client が dist/index.html と dist/index.js を生成する", () => {
+describe("browser UI build pipeline (SPEC §8)", () => {
+  test("bun run build:client generates dist/index.html and dist/index.js", () => {
     const proc = Bun.spawnSync(["bun", "run", "build:client"], { cwd: root });
     expect(proc.exitCode).toBe(0);
     expect(existsSync(join(dist, "index.html"))).toBe(true);
@@ -18,7 +18,7 @@ describe("ブラウザ UI ビルドパイプライン (SPEC §8)", () => {
     expect(existsSync(join(dist, "index.css"))).toBe(true);
   });
 
-  test("startServer + distAssetResolver が dist を配信し SPA フォールバックする", async () => {
+  test("startServer + distAssetResolver serves dist with SPA fallback", async () => {
     const { db } = openDatabase({ path: ":memory:", vaporettoPath: null, dimensions: 4 });
     setProviderForTests(null);
     const server = startServer({
@@ -41,7 +41,7 @@ describe("ブラウザ UI ビルドパイプライン (SPEC §8)", () => {
       expect(css.status).toBe(200);
       expect(css.headers.get("content-type")).toContain("text/css");
 
-      // 未知のクライアントルートは index.html にフォールバック
+      // Unknown client routes fall back to index.html
       const fallback = await fetch(`${server.url}/docs/abc12345`);
       expect(fallback.status).toBe(200);
       expect(fallback.headers.get("content-type")).toContain("text/html");

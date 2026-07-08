@@ -9,11 +9,11 @@ import type { ExtractedPage } from "./extract";
 export interface FormattedClip {
   title: string;
   markdown: string;
-  /** LLM 整形を使ったか（false = turndown 機械変換） */
+  /** Whether LLM formatting was used (false = mechanical turndown conversion) */
   llmFormatted: boolean;
 }
 
-/** turndown による機械変換（--no-llm / プロバイダ不在時のフォールバック） */
+/** Mechanical conversion via turndown (fallback for --no-llm / no provider) */
 export function htmlToMarkdown(html: string): string {
   const turndown = new TurndownService({
     headingStyle: "atx",
@@ -24,6 +24,7 @@ export function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).trim();
 }
 
+// Intentionally Japanese — kura is a Japanese-first knowledge tool; this prompt is tuned for Japanese content.
 const FORMAT_PROMPT = `あなたは Web 記事をナレッジベース用の Markdown に整形するアシスタントです。
 入力は Web ページから機械変換した Markdown です。以下を行ってください:
 - 広告・ナビゲーション・SNS ボタン・購読案内などの残骸を除去する
@@ -47,8 +48,8 @@ function parseFormatted(
 }
 
 /**
- * clip 本文の整形（SPEC §7.5）。LLM があれば整形、なければ turndown のみ。
- * LLM 応答は llm_cache（purpose 'clip'）にキャッシュされる。
+ * Format clipped content (SPEC §7.5). Uses the LLM when available, turndown only otherwise.
+ * LLM responses are cached in llm_cache (purpose 'clip').
  */
 export async function formatClip(
   db: Database,
@@ -63,7 +64,7 @@ export async function formatClip(
   }
 
   const model = config.llm.models.generation;
-  // 長大な記事はコンテキストに収まる範囲へ切り詰めて整形する
+  // Trim very long articles so the input fits into the model context
   const input = raw.slice(0, 24_000);
   const cacheInput = `${page.url}\x00${sha256Hex(raw)}`;
   try {
@@ -85,7 +86,7 @@ export async function formatClip(
       },
     );
     if (result.markdown.length < 40) {
-      // LLM が本文を落とした場合は機械変換を採用
+      // If the LLM dropped the body, keep the mechanical conversion
       return { title: result.title, markdown: raw, llmFormatted: false };
     }
     return { ...result, llmFormatted: true };
@@ -94,13 +95,14 @@ export async function formatClip(
   }
 }
 
+// Intentionally Japanese — kura is a Japanese-first knowledge tool; this prompt is tuned for Japanese content.
 const TAG_PROMPT = `あなたはナレッジベースのタグ付けアシスタントです。
 記事に付けるタグを最大 5 つ提案してください。
 **既存タグ一覧にあるタグを最優先で再利用**し、どうしても該当がない場合のみ新しいタグを作ってください。
 階層タグは / 区切り（例: tech/db/sqlite）。日本語タグ可。
 出力は JSON の文字列配列のみ（例: ["tech/db", "読書メモ"]）。`;
 
-/** LLM によるタグ提案（既存タグ優先、purpose 'tag' でキャッシュ、SPEC §7.5/§10.3） */
+/** LLM tag suggestions (prefers existing tags, cached under purpose 'tag', SPEC §7.5/§10.3) */
 export async function suggestTagsForText(
   db: Database,
   provider: LLMProvider,

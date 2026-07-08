@@ -24,7 +24,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
   const doc = useAsync(() => fetchDoc(docKey), [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
 
-  // [[リンク]] のタイトル → key 解決マップ（outlinks の解決結果を利用）
+  // [[link]] title → key resolution map (reuses the resolved outlinks)
   const resolve = useMemo(() => {
     const map = new Map<string, string>();
     for (const o of related.data?.outlinks ?? []) {

@@ -19,7 +19,7 @@ const FTS_REINSERT = `
                    JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id), '')
   FROM documents d`;
 
-/** FTS 行数と documents 行数の不一致を検出してリビルドする（SPEC §10.2） */
+/** Detect a row-count mismatch between documents_fts and documents, then rebuild (SPEC §10.2) */
 export function rebuildFtsIfNeeded(db: Database): FixReport | null {
   const docs = count(db, "SELECT COUNT(*) AS n FROM documents");
   const fts = count(db, "SELECT COUNT(*) AS n FROM documents_fts");
@@ -28,10 +28,10 @@ export function rebuildFtsIfNeeded(db: Database): FixReport | null {
     db.exec("DELETE FROM documents_fts");
     db.exec(FTS_REINSERT);
   })();
-  return { action: "fts-rebuild", detail: `documents=${docs} / fts=${fts} の不一致を解消` };
+  return { action: "fts-rebuild", detail: `resolved mismatch: documents=${docs} / fts=${fts}` };
 }
 
-/** FTS テーブルを指定トークナイザーで再作成する（trigram → vaporetto の再インデックス） */
+/** Recreate the FTS table with the given tokenizer (reindex, e.g. trigram to vaporetto) */
 export function retokenizeFts(db: Database, tokenizer: FtsTokenizer): FixReport {
   db.transaction(() => {
     db.exec("DROP TABLE documents_fts");
@@ -41,10 +41,10 @@ export function retokenizeFts(db: Database, tokenizer: FtsTokenizer): FixReport 
     db.exec(FTS_REINSERT);
     setMeta(db, "fts_tokenizer", tokenizer);
   })();
-  return { action: "fts-retokenize", detail: `FTS を ${tokenizer} で再構築しました` };
+  return { action: "fts-retokenize", detail: `rebuilt FTS with ${tokenizer}` };
 }
 
-/** 孤立チャンク / 孤立 vec 行の GC（vec0 は changes が不正確なため事前カウント） */
+/** GC orphaned chunks / vec rows (counted up front because vec0 reports inaccurate changes) */
 export function gcOrphans(db: Database): FixReport | null {
   const orphanChunks = count(
     db,
@@ -63,11 +63,11 @@ export function gcOrphans(db: Database): FixReport | null {
   if (orphanChunks === 0 && orphanVec === 0) return null;
   return {
     action: "gc-orphans",
-    detail: `孤立チャンク ${orphanChunks} 件 / 孤立ベクトル ${orphanVec} 件を削除`,
+    detail: `deleted ${orphanChunks} orphaned chunk(s) / ${orphanVec} orphaned vector(s)`,
   };
 }
 
-/** content_hash と実本文の不一致を再計算 + 再チャンク（updateDocument が hash 差分で同期する） */
+/** Recompute content_hash values that no longer match the content, then re-chunk (updateDocument syncs on hash difference) */
 export function fixContentHashes(db: Database): FixReport | null {
   const rows = db
     .prepare("SELECT id, content, content_hash, updated_at FROM documents")
@@ -84,11 +84,14 @@ export function fixContentHashes(db: Database): FixReport | null {
     fixed++;
   }
   return fixed > 0
-    ? { action: "content-hash", detail: `${fixed} 件の content_hash を再計算し再チャンクしました` }
+    ? {
+        action: "content-hash",
+        detail: `recomputed content_hash and re-chunked ${fixed} document(s)`,
+      }
     : null;
 }
 
-/** 未解決リンクの一括再解決（Bucket 内・大文字小文字無視、SPEC §10.1） */
+/** Re-resolve all unresolved links in bulk (within the same bucket, case-insensitive, SPEC §10.1) */
 export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
   const result = db
     .prepare(
@@ -110,11 +113,11 @@ export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
     )
     .run();
   return result.changes > 0
-    ? { action: "resolve-links", detail: `${result.changes} 件の未解決リンクを解決しました` }
+    ? { action: "resolve-links", detail: `resolved ${result.changes} unresolved link(s)` }
     : null;
 }
 
-/** embedding モデル・次元の変更検知 → chunks_vec 再作成 + 全チャンク再 embedding 対象化（SPEC §3.2） */
+/** Detect embedding model/dimension changes, recreate chunks_vec, and mark all chunks for re-embedding (SPEC §3.2) */
 export function recreateVecIfModelChanged(db: Database, config: KuraConfig): FixReport | null {
   const storedDims = getMeta(db, "embedding_dimensions");
   const storedModel = getMeta(db, "embedding_model");
@@ -133,6 +136,6 @@ export function recreateVecIfModelChanged(db: Database, config: KuraConfig): Fix
   })();
   return {
     action: "vec-recreate",
-    detail: `embedding 設定の変更（${storedModel}/${storedDims} → ${model}/${dims}）を検知し chunks_vec を再作成しました。'kura embed' で再生成してください`,
+    detail: `detected embedding config change (${storedModel}/${storedDims} -> ${model}/${dims}); recreated chunks_vec. Run 'kura embed' to regenerate`,
   };
 }

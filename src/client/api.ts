@@ -1,4 +1,4 @@
-/** REST API クライアント（src/server/api.ts のレスポンス形状に対応） */
+/** REST API client (mirrors the response shapes of src/server/api.ts) */
 
 export interface Stats {
   documents: number;

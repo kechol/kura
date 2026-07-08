@@ -51,7 +51,7 @@ function titleExists(env: TestEnv, title: string): boolean {
   }
 }
 
-/** ドキュメント投入手段。add / import が並行実装中のため、動くものを検出して使う */
+/** How documents are inserted. add / import are being implemented in parallel, so detect what works */
 type AddMode = "add" | "import" | "direct";
 let addMode: AddMode = "direct";
 
@@ -121,19 +121,19 @@ describe("kura tag ls (e2e)", () => {
     await addDoc(env, { title: "読書記録", content: "#趣味/読書 の記録。" });
   });
 
-  test("path 昇順で件数付き一覧を表示する", async () => {
+  test("lists tags with counts in ascending path order", async () => {
     const r = await runCli(["tag", "ls"], env);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe("技術/データベース  2\n技術/データベース/sqlite  1\n趣味/読書  1\n");
   }, 30_000);
 
-  test("--tree で中間ノードを含む階層表示をする", async () => {
+  test("--tree shows the hierarchy including intermediate nodes", async () => {
     const r = await runCli(["tag", "ls", "--tree"], env);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe("技術 (3)\n  データベース (3)\n    sqlite (1)\n趣味 (1)\n  読書 (1)\n");
   }, 30_000);
 
-  test("--json は [{path, count}] を返す", async () => {
+  test("--json returns [{path, count}]", async () => {
     const r = await runCli(["tag", "ls", "--json"], env);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual([
@@ -143,7 +143,7 @@ describe("kura tag ls (e2e)", () => {
     ]);
   }, 30_000);
 
-  test("--tree --json は buildTagTree の結果をそのまま返す", async () => {
+  test("--tree --json returns the buildTagTree result as-is", async () => {
     const r = await runCli(["tag", "ls", "--tree", "--json"], env);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual([
@@ -194,7 +194,7 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     await addDoc(env, { title: "アーキ記事", content: "#技術/データベース を参照。" });
   });
 
-  test("add: 新規タグを付与し、全部重複なら no tags added", async () => {
+  test("add: attaches new tags; all duplicates yields no tags added", async () => {
     const first = await runCli(["tag", "add", "設計メモ", "技術/アーキテクチャ", "重要"], env);
     expect(first.code).toBe(0);
     expect(first.stdout).toBe("added: 技術/アーキテクチャ, 重要\n");
@@ -208,7 +208,7 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     expect(mixed.stdout).toBe("added: レビュー済\n");
   }, 30_000);
 
-  test("rm: 付いているタグだけ外れる", async () => {
+  test("rm: only removes tags that are attached", async () => {
     const r = await runCli(["tag", "rm", "設計メモ", "重要", "メモ", "レビュー済"], env);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe("removed 3 tags\n");
@@ -218,12 +218,12 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     expect(again.stdout).toBe("removed 0 tags\n");
   }, 30_000);
 
-  test("mv: リネームと、子孫込みの移動 + 既存タグへの merge", async () => {
+  test("mv: rename, and moving with descendants + merge into an existing tag", async () => {
     const rename = await runCli(["tag", "mv", "技術/アーキテクチャ", "技術/設計"], env);
     expect(rename.code).toBe(0);
     expect(rename.stdout).toBe("moved 1 tags\n");
 
-    // 旧分類/データベース は既存の 技術/データベース へ merge、子孫 索引 は付いて移動する
+    // 旧分類/データベース merges into the existing 技術/データベース; descendant 索引 moves along
     const merge = await runCli(["tag", "mv", "旧分類", "技術"], env);
     expect(merge.code).toBe(0);
     expect(merge.stdout).toBe("moved 2 tags (merged into existing)\n");
@@ -239,7 +239,7 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     ]);
   }, 30_000);
 
-  test("gc: 孤立タグを削除し、2回目は no orphan tags", async () => {
+  test("gc: removes orphan tags; the second run reports no orphan tags", async () => {
     const r = await runCli(["tag", "gc"], env);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe("removed 3 orphan tags: メモ, レビュー済, 重要\n");
@@ -249,7 +249,7 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     expect(again.stdout).toBe("no orphan tags\n");
   }, 30_000);
 
-  test("suggest は --doc / --untagged なしで exit 2", async () => {
+  test("suggest exits 2 without --doc / --untagged", async () => {
     const suggest = await runCli(["tag", "suggest"], env);
     expect(suggest.code).toBe(2);
     expect(suggest.stderr).toContain("--doc <doc> or --untagged");
@@ -272,7 +272,7 @@ describe("kura link (e2e)", () => {
     await addDoc(env, { title: "未来ノート", content: "[[まだ無い記事]] を書く予定。" });
   });
 
-  test("ls: outlinks / backlinks / 2-hop の 3 セクションを表示する", async () => {
+  test("ls: shows the three sections outlinks / backlinks / 2-hop", async () => {
     const r = await runCli(["link", "ls", "データベース設計"], env);
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/^outlinks:\n/);
@@ -285,7 +285,7 @@ describe("kura link (e2e)", () => {
     expect(r.stdout).not.toContain("(none)");
   }, 30_000);
 
-  test("ls --json: {outlinks, backlinks, twoHop} を返す", async () => {
+  test("ls --json: returns {outlinks, backlinks, twoHop}", async () => {
     const r = await runCli(["link", "ls", "データベース設計", "--bucket", "main", "--json"], env);
     expect(r.code).toBe(0);
     const j = JSON.parse(r.stdout);
@@ -312,11 +312,11 @@ describe("kura link (e2e)", () => {
         docs: [{ key: expect.stringMatching(KEY_RE), title: "クエリ最適化", bucket: "main" }],
       },
     ]);
-    // 2-hop の共通リンク先はアウトリンク先と同一ドキュメント
+    // The shared 2-hop target is the same document as the outlink target
     expect(j.twoHop[0].via.key).toBe(j.outlinks[0].key);
   }, 30_000);
 
-  test("ls: 空セクションは (none)、未解決リンクは (unresolved)", async () => {
+  test("ls: empty sections show (none), unresolved links show (unresolved)", async () => {
     const normalized = await runCli(["link", "ls", "正規化"], env);
     expect(normalized.code).toBe(0);
     expect(normalized.stdout).toContain("outlinks:\n  (none)\n");
@@ -330,7 +330,7 @@ describe("kura link (e2e)", () => {
     expect(future.stdout).toContain("2-hop:\n  (none)\n");
   }, 30_000);
 
-  test("broken: 未解決リンクを表示し、リンク先の追加で自動解決される (SPEC §10.1)", async () => {
+  test("broken: shows unresolved links; adding the target auto-resolves them (SPEC §10.1)", async () => {
     const before = await runCli(["link", "broken"], env);
     expect(before.code).toBe(0);
     expect(before.stdout).toMatch(/^\[\[まだ無い記事\]\] <- #[0-9a-f]{8} 未来ノート \(main\)\n$/);
@@ -347,7 +347,7 @@ describe("kura link (e2e)", () => {
     const badBucket = await runCli(["link", "broken", "--bucket", "nonexistent"], env);
     expect(badBucket.code).toBe(3);
 
-    // リンク先を作成すると未解決リンクが自動解決される
+    // Creating the link target auto-resolves the unresolved link
     await addDoc(env, { title: "まだ無い記事", content: "追記予定。" });
     const after = await runCli(["link", "broken"], env);
     expect(after.code).toBe(0);

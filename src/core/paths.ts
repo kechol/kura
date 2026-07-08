@@ -2,29 +2,29 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../../package.json";
 
-/** kura のバージョン（package.json と同期） */
+/** kura version (kept in sync with package.json) */
 export const KURA_VERSION: string = pkg.version;
 
-/** データディレクトリ。`KURA_HOME` 環境変数で上書き可（既定 `~/.kura`） */
+/** Data directory. Overridable via the `KURA_HOME` env var (default `~/.kura`) */
 export function kuraHome(): string {
   const env = process.env.KURA_HOME;
   if (env && env.trim() !== "") return env;
   return join(homedir(), ".kura");
 }
 
-/** DB ファイルパス。`KURA_DB` で個別上書き可（テスト用。`:memory:` も可） */
+/** DB file path. Overridable via `KURA_DB` (for tests; `:memory:` is allowed) */
 export function dbPath(): string {
   const env = process.env.KURA_DB;
   if (env && env.trim() !== "") return env;
   return join(kuraHome(), "kura.db");
 }
 
-/** ネイティブ拡張・形態素モデルの展開先（バージョン別） */
+/** Extraction destination for native extensions and morphological models (per version) */
 export function libDir(version: string = KURA_VERSION): string {
   return join(kuraHome(), "lib", version);
 }
 
-/** 設定ファイルパス */
+/** Config file path */
 export function configPath(): string {
   return join(kuraHome(), "config.toml");
 }

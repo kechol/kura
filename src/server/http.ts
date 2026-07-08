@@ -5,8 +5,8 @@ import type { ApiDeps } from "./api";
 import { createApiRoutes } from "./api";
 
 /**
- * SPA アセットの解決。開発時はリポジトリの dist/ から配信する。
- * コンパイル済みバイナリでは M7 のビルドパイプラインが埋め込みアセットに差し替える。
+ * SPA asset resolution. In development, assets are served from the repo's dist/.
+ * In the compiled binary, the M7 build pipeline swaps in the embedded assets.
  */
 export type AssetResolver = (path: string) => Promise<Response | null>;
 
@@ -21,7 +21,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".map": "application/json",
 };
 
-/** コンパイル済みバイナリ用: 埋め込みアセットから配信（埋め込みが無ければ null） */
+/** For compiled binaries: serve from embedded assets (null when nothing is embedded) */
 export function embeddedAssetResolver(): AssetResolver | null {
   if (Object.keys(embeddedAssets).length === 0) return null;
   return async (path: string): Promise<Response | null> => {
@@ -53,8 +53,8 @@ const PLACEHOLDER_HTML = `<!doctype html>
 <title>kura</title>
 <body style="font-family: sans-serif; padding: 2rem;">
 <h1>kura browser</h1>
-<p>SPA アセットが見つかりません。<code>bun run build</code> を実行してから再起動してください。</p>
-<p>REST API は <code>/api/stats</code> などで利用できます。</p>
+<p>SPA assets not found. Run <code>bun run build</code> and restart the server.</p>
+<p>The REST API is available at endpoints such as <code>/api/stats</code>.</p>
 </body>`;
 
 export interface ServeOptions extends ApiDeps {
@@ -69,8 +69,8 @@ export interface KuraServer {
 }
 
 /**
- * ブラウザ UI / REST API サーバー（SPEC §8.1）。
- * 127.0.0.1 のみにバインドし、EADDRINUSE 時はポートを +1 しながら最大 10 回リトライする。
+ * Browser UI / REST API server (SPEC §8.1).
+ * Binds to 127.0.0.1 only; on EADDRINUSE, retries up to 10 times, incrementing the port.
  */
 export function startServer(opts: ServeOptions): KuraServer {
   const routes = createApiRoutes(opts);
@@ -84,7 +84,7 @@ export function startServer(opts: ServeOptions): KuraServer {
     if (url.pathname.startsWith("/api/")) {
       return Response.json({ error: "not found" }, { status: 404 });
     }
-    // SPA フォールバック: アセットが無ければ index.html（クライアントルーティング）
+    // SPA fallback: serve index.html when no asset matches (client-side routing)
     const asset = (await assets(url.pathname)) ?? (await assets("/"));
     return (
       asset ??
@@ -99,7 +99,7 @@ export function startServer(opts: ServeOptions): KuraServer {
       const server = Bun.serve({
         hostname: "127.0.0.1",
         port,
-        // biome-ignore lint/suspicious/noExplicitAny: Bun.serve の routes 型はハンドラ形状が広い
+        // biome-ignore lint/suspicious/noExplicitAny: Bun.serve's routes type accepts a wide range of handler shapes
         routes: routes as any,
         fetch: fetchFallback,
       });
@@ -115,11 +115,11 @@ export function startServer(opts: ServeOptions): KuraServer {
     }
   }
   throw new Error(
-    `ポート ${opts.port}〜${opts.port + 9} がすべて使用中です: ${lastError instanceof Error ? lastError.message : lastError}`,
+    `ports ${opts.port}-${opts.port + 9} are all in use: ${lastError instanceof Error ? lastError.message : lastError}`,
   );
 }
 
-/** OS 既定のブラウザで URL を開く */
+/** Open a URL in the OS default browser */
 export function openBrowser(url: string): void {
   const cmd =
     process.platform === "darwin"
@@ -130,6 +130,6 @@ export function openBrowser(url: string): void {
   try {
     Bun.spawn(cmd, { stdout: "ignore", stderr: "ignore" });
   } catch {
-    // ブラウザ起動失敗は致命的ではない
+    // Failing to launch a browser is not fatal
   }
 }

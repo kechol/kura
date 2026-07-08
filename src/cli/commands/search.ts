@@ -6,11 +6,11 @@ import { printHits } from "../searchOutput";
 
 export const summary = "Fast keyword search (FTS5 BM25)";
 
-export const usage = `Usage: kura search "クエリ" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
+export const usage = `Usage: kura search "<query>" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
 
 Options:
-  --all     すべての語を含むドキュメントのみ（AND 検索）
-  --tag t   タグで絞り込み（子孫タグを含む）`;
+  --all     Only documents containing all terms (AND search)
+  --tag t   Filter by tag (descendants included)`;
 
 export function run(argv: string[]): number {
   const parsed = parseCommandArgs(argv, {

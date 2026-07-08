@@ -6,10 +6,10 @@ import { useAsync } from "../hooks";
 import { currentTheme, setTheme, type Theme } from "../theme";
 import { TagTree } from "./TagTree";
 
-/** 共通レイアウト: ヘッダー（検索・テーマ切替）+ 左サイドバー（Bucket / タグツリー） */
+/** Shared layout: header (search, theme toggle) + left sidebar (buckets / tag tree) */
 export function Layout({ children }: { children: ComponentChildren }) {
   const [location, navigate] = useLocation();
-  // 画面遷移のたびに再取得して件数を追従させる（ローカル API のため軽量）
+  // Refetch on every navigation to keep counts current (cheap against the local API)
   const buckets = useAsync(fetchBuckets, [location]);
   const tags = useAsync(fetchTagTree, [location]);
   const [theme, setThemeState] = useState<Theme>(currentTheme());

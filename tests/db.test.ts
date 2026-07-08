@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("openDatabase", () => {
-  test("新規 DB にマイグレーション v1 が適用される（vaporetto なし → trigram）", () => {
+  test("migration v1 is applied to a fresh DB (no vaporetto -> trigram)", () => {
     const { db, tokenizer, vaporettoLoaded } = openDatabase({
       path: ":memory:",
       vaporettoPath: null,
@@ -56,17 +56,17 @@ describe("openDatabase", () => {
     ]) {
       expect(tables).toContain(t);
     }
-    // 既定 Bucket
+    // Default bucket
     const bucket = db.prepare("SELECT name FROM buckets").get() as { name: string };
     expect(bucket.name).toBe("main");
-    // meta 記録
+    // Meta records
     expect(getMeta(db, "fts_tokenizer")).toBe("trigram");
     expect(getMeta(db, "embedding_model")).toBe("qwen3-embedding:0.6b");
     expect(getMeta(db, "embedding_dimensions")).toBe("1024");
     db.close();
   });
 
-  test("再オープンしても冪等（マイグレーション再適用なし・meta 保持）", () => {
+  test("reopening is idempotent (no migration re-run, meta preserved)", () => {
     const path = join(home, "kura.db");
     const first = openDatabase({ path, vaporettoPath: null });
     setMeta(first.db, "fts_tokenizer", "trigram");
@@ -78,7 +78,7 @@ describe("openDatabase", () => {
     second.db.close();
   });
 
-  test("chunks_vec が指定次元で作成され KNN が動く", () => {
+  test("chunks_vec is created with the given dimensions and KNN works", () => {
     const { db } = openDatabase({ path: ":memory:", vaporettoPath: null, dimensions: 4 });
     db.prepare("INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)").run(
       1,
@@ -92,7 +92,7 @@ describe("openDatabase", () => {
     db.close();
   });
 
-  test("trigram FTS で日本語（3文字以上）が検索できる", () => {
+  test("trigram FTS finds Japanese text (3+ characters)", () => {
     const { db } = openDatabase({ path: ":memory:", vaporettoPath: null, dimensions: 4 });
     db.prepare("INSERT INTO documents_fts (rowid, title, content, tags) VALUES (1, ?, ?, ?)").run(
       "SQLite メモ",
@@ -106,7 +106,7 @@ describe("openDatabase", () => {
     db.close();
   });
 
-  test("外部キー制約が有効", () => {
+  test("foreign key constraints are enforced", () => {
     const { db } = openDatabase({ path: ":memory:", vaporettoPath: null, dimensions: 4 });
     expect(() =>
       db
@@ -120,12 +120,12 @@ describe("openDatabase", () => {
 });
 
 describe("getDb", () => {
-  test("DB 未作成なら kura init を案内して例外", () => {
+  test("throws with a kura init hint when the DB is missing", () => {
     process.env.KURA_DB = join(home, "missing.db");
     expect(() => getDb()).toThrow(/kura init/);
   });
 
-  test(":memory: は初期化なしで利用できる（テスト用経路）", () => {
+  test(":memory: works without prior initialization (test-only path)", () => {
     process.env.KURA_DB = ":memory:";
     const { db, tokenizer } = getDb();
     expect(tokenizer).toBe("trigram");
@@ -133,11 +133,11 @@ describe("getDb", () => {
   });
 });
 
-// 実ダウンロード + vaporetto ロードの統合テスト。
-// ネットワークと外部ネイティブコード実行を伴うため KURA_TEST_DOWNLOAD=1 のときのみ実行（CI で有効化）
+// Integration test with a real download + vaporetto load.
+// Runs only with KURA_TEST_DOWNLOAD=1 because it hits the network and executes external native code (enabled in CI)
 describe("vaporetto integration", () => {
   test.skipIf(!process.env.KURA_TEST_DOWNLOAD)(
-    "GitHub Releases から取得 → SHA256 検証 → ロード → 日本語トークナイズ",
+    "fetch from GitHub Releases -> verify SHA256 -> load -> tokenize Japanese",
     async () => {
       const lib = await ensureVaporetto({ download: true });
       expect(lib).toBeTruthy();

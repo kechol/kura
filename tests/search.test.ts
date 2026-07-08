@@ -11,9 +11,9 @@ import { parseYesNo } from "../src/core/search/rerank";
 import { backfillEmbeddings, pendingChunkCount, vectorSearch } from "../src/core/search/vector";
 
 /**
- * 決定的モックプロバイダ:
- * - embed: キーワード出現に基づく 4 次元ベクトル
- * - chat: rerank はドキュメントにクエリ語が含まれれば yes、expand は固定バリアント
+ * Deterministic mock provider:
+ * - embed: 4-dimensional vectors based on keyword occurrence
+ * - chat: rerank answers yes when the document contains the query term; expand returns fixed variants
  */
 class MockProvider implements LLMProvider {
   name = "ollama" as const;
@@ -89,7 +89,7 @@ function seedDocs(): void {
 }
 
 describe("keywordSearch (trigram)", () => {
-  test("タイトル一致が本文一致より上位（bm25 重み付け）", () => {
+  test("title matches rank above content matches (bm25 weighting)", () => {
     createDocument(db, {
       title: "全文検索エンジンの比較",
       content: "各種エンジンの評価。",
@@ -106,7 +106,7 @@ describe("keywordSearch (trigram)", () => {
     expect(hits[1]?.snippet).toContain("**");
   });
 
-  test("--all で AND 検索になる", () => {
+  test("--all switches to AND search", () => {
     seedDocs();
     const or = keywordSearch(db, "trigram", "猫トイレ しつけ", {});
     const and = keywordSearch(db, "trigram", "猫トイレ しつけ", { all: true });
@@ -114,13 +114,13 @@ describe("keywordSearch (trigram)", () => {
     expect(and.length).toBe(0);
   });
 
-  test("bucket / tag フィルタ", () => {
+  test("bucket / tag filters", () => {
     seedDocs();
     expect(keywordSearch(db, "trigram", "データベース", { tag: "tech" }).length).toBe(1);
     expect(keywordSearch(db, "trigram", "データベース", { tag: "ペット" }).length).toBe(0);
   });
 
-  test("3文字未満のクエリは LIKE フォールバックでヒットする", () => {
+  test("queries shorter than 3 characters hit via the LIKE fallback", () => {
     seedDocs();
     const hits = keywordSearch(db, "trigram", "猫", {});
     expect(hits.length).toBeGreaterThan(0);
@@ -128,14 +128,14 @@ describe("keywordSearch (trigram)", () => {
     expect(hits[0]?.snippet).toContain("**猫**");
   });
 
-  test("buildTrigramQuery がフレーズをエスケープする", () => {
+  test("buildTrigramQuery escapes phrases", () => {
     expect(buildTrigramQuery('猫 "cat"', false)).toBe('"猫" OR """cat"""');
     expect(buildTrigramQuery("a b", true)).toBe('"a" AND "b"');
   });
 });
 
 describe("vector search + backfill", () => {
-  test("バックフィル → KNN → ドキュメント集約", async () => {
+  test("backfill -> KNN -> per-document aggregation", async () => {
     seedDocs();
     expect(pendingChunkCount(db)).toBeGreaterThan(0);
 
@@ -146,11 +146,11 @@ describe("vector search + backfill", () => {
     const hits = await vectorSearch(db, mock, config, "猫のごはん", {});
     expect(hits[0]?.title).toBe("猫の飼い方");
     expect(hits[0]?.score).toBeGreaterThan(hits[1]?.score ?? 0);
-    // スニペットにコンテキストヘッダが含まれない
+    // Snippets do not include the context header
     expect(hits[0]?.snippet.startsWith("#")).toBe(false);
   });
 
-  test("--all で全件再生成する", async () => {
+  test("--all regenerates everything", async () => {
     seedDocs();
     await backfillEmbeddings(db, mock, config);
     const before = mock.embedCalls;
@@ -159,7 +159,7 @@ describe("vector search + backfill", () => {
     expect(mock.embedCalls).toBeGreaterThan(before);
   });
 
-  test("次元不一致は案内付きエラー", async () => {
+  test("dimension mismatch raises an error with guidance", async () => {
     seedDocs();
     config.llm.models.embedding_dimensions = 8;
     expect(backfillEmbeddings(db, mock, config)).rejects.toThrow(/embed --all/);
@@ -167,7 +167,7 @@ describe("vector search + backfill", () => {
 });
 
 describe("hybridQuery", () => {
-  test("FTS + ベクトル + リランクの融合（プロバイダあり）", async () => {
+  test("fuses FTS + vector + rerank (provider available)", async () => {
     seedDocs();
     const outcome = await hybridQuery(db, "trigram", config, "猫の飼い方", { limit: 3 });
     expect(outcome.usedVector).toBe(true);
@@ -177,7 +177,7 @@ describe("hybridQuery", () => {
     expect(outcome.warnings).toEqual([]);
   });
 
-  test("リランク結果は llm_cache にキャッシュされる", async () => {
+  test("rerank results are cached in llm_cache", async () => {
     seedDocs();
     await hybridQuery(db, "trigram", config, "猫の飼い方", { limit: 3 });
     const callsAfterFirst = mock.chatCalls;
@@ -186,7 +186,7 @@ describe("hybridQuery", () => {
     expect(mock.chatCalls).toBe(callsAfterFirst);
   });
 
-  test("--expand でバリアントが追加される（キャッシュあり）", async () => {
+  test("--expand adds variants (with cache)", async () => {
     seedDocs();
     const outcome = await hybridQuery(db, "trigram", config, "猫の飼い方", {
       limit: 3,
@@ -201,7 +201,7 @@ describe("hybridQuery", () => {
     expect(row.n).toBe(1);
   });
 
-  test("プロバイダ不在でもキーワード検索で応答する（劣化動作）", async () => {
+  test("answers with keyword search when no provider is available (degraded operation)", async () => {
     seedDocs();
     setProviderForTests(null);
     const outcome = await hybridQuery(db, "trigram", config, "データベース", { limit: 3 });
@@ -220,7 +220,7 @@ describe("scoring primitives", () => {
     expect(parseYesNo("わかりません")).toBe(0.5);
   });
 
-  test("blendScores のポジション加重（SPEC §5.1）", () => {
+  test("blendScores position weighting (SPEC §5.1)", () => {
     expect(blendScores(1, 0, 1)).toBeCloseTo(0.75);
     expect(blendScores(1, 0, 5)).toBeCloseTo(0.6);
     expect(blendScores(1, 0, 11)).toBeCloseTo(0.4);

@@ -13,7 +13,7 @@ export function DocEdit({ docKey }: { docKey: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 取得したドキュメントをフォーム初期値に反映（キーごとに 1 回）
+  // Populate the form with the fetched document (once per key)
   useEffect(() => {
     if (doc.data && loadedKey !== doc.data.key) {
       setTitle(doc.data.title);

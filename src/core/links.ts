@@ -9,19 +9,19 @@ export interface RelatedDoc {
 
 export interface Outlink {
   targetTitle: string;
-  /** null なら未解決リンク */
+  /** null means the link is unresolved */
   target: RelatedDoc | null;
 }
 
 export interface TwoHopGroup {
-  /** 共通リンク先 */
+  /** Shared link target */
   via: RelatedDoc;
   docs: RelatedDoc[];
 }
 
 const DOC_COLS = "d.doc_key AS key, d.title AS title, b.name AS bucket";
 
-/** 本文から抽出したリンクを再同期し、Bucket 内タイトルと大文字小文字無視で解決する */
+/** Re-sync links extracted from the body, resolving against in-bucket titles case-insensitively */
 export function syncLinks(
   db: Database,
   sourceId: number,
@@ -39,8 +39,8 @@ export function syncLinks(
 }
 
 /**
- * 新規作成・リネームされたタイトルに一致する未解決リンクを自動解決する（SPEC §10.1）。
- * 解決対象は同一 Bucket 内のドキュメントからのリンクのみ。
+ * Auto-resolve unresolved links matching a newly created or renamed title (SPEC §10.1).
+ * Only links from documents in the same bucket are resolved.
  */
 export function resolveUnresolvedLinks(
   db: Database,
@@ -92,7 +92,7 @@ export function backlinks(db: Database, docId: number): RelatedDoc[] {
     .all(docId) as RelatedDoc[];
 }
 
-/** 2ホップリンク: 共通のリンク先を持つ他ドキュメント（Cosense 方式、共通リンク先ごとにグループ化） */
+/** Two-hop links: other documents sharing a link target (Cosense style, grouped per shared target) */
 export function twoHopLinks(db: Database, docId: number): TwoHopGroup[] {
   const rows = db
     .prepare(
@@ -139,7 +139,7 @@ export interface BrokenLink {
   sources: RelatedDoc[];
 }
 
-/** 未解決リンク一覧（リンク先ドキュメントが存在しない）。タイトルごとにグループ化 */
+/** List unresolved links (target document does not exist), grouped by title */
 export function brokenLinks(db: Database, bucketId?: number): BrokenLink[] {
   const rows = db
     .prepare(

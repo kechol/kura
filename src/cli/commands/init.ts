@@ -40,11 +40,9 @@ export async function run(argv: string[]): Promise<number> {
       }
     } catch (e) {
       console.error(
-        `warning: sqlite-vaporetto の取得に失敗しました（${e instanceof Error ? e.message : e}）`,
+        `warning: failed to download sqlite-vaporetto (${e instanceof Error ? e.message : e})`,
       );
-      console.error(
-        "warning: FTS は trigram にフォールバックします。後で 'kura init' を再実行できます",
-      );
+      console.error("warning: FTS falls back to trigram; you can rerun 'kura init' later");
     }
   } else {
     console.log(
@@ -65,6 +63,6 @@ export async function run(argv: string[]): Promise<number> {
   console.log(`  ollama pull ${config.llm.models.embedding}`);
   console.log(`  ollama pull ${config.llm.models.reranker}`);
   console.log(`  ollama pull ${config.llm.models.generation}`);
-  console.log("  kura doctor   # 環境診断");
+  console.log("  kura doctor   # diagnose the environment");
   return EXIT.OK;
 }

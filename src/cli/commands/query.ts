@@ -6,12 +6,12 @@ import { printHits } from "../searchOutput";
 
 export const summary = "Hybrid RAG search (FTS + vector + rerank)";
 
-export const usage = `Usage: kura query "クエリ" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
+export const usage = `Usage: kura query "<query>" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
 
 Options:
-  --expand   LLM でクエリを展開して再現率を上げる
+  --expand   Expand the query with an LLM to improve recall
 
-LLM プロバイダ不在時はキーワード検索のみの劣化動作で応答します。`;
+Falls back to keyword-only search when no LLM provider is available.`;
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {

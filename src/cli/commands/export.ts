@@ -16,7 +16,7 @@ Options:
 
 const INVALID_CHARS = new Set(["/", "\\", ":", "*", "?", '"', "<", ">", "|"]);
 
-/** タイトル → ファイル名: FS で使えない文字・制御文字を - に置換して trim */
+/** Title → file name: replace FS-invalid and control characters with - and trim */
 function sanitizeFilename(title: string): string {
   let out = "";
   for (const ch of title) {

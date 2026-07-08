@@ -1,7 +1,7 @@
--- v1: 初期スキーマ（SPEC §3.1）
--- {{FTS_TOKENIZE}} / {{VEC_DIMENSIONS}} はマイグレーションランナーが実行時に置換する
+-- v1: initial schema (SPEC §3.1)
+-- {{FTS_TOKENIZE}} / {{VEC_DIMENSIONS}} are substituted at runtime by the migration runner
 
--- Bucket: ナレッジの大分類
+-- Buckets: top-level knowledge categories
 CREATE TABLE buckets (
   id          INTEGER PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
@@ -28,7 +28,7 @@ CREATE TABLE documents (
 CREATE INDEX idx_documents_bucket ON documents(bucket_id);
 CREATE INDEX idx_documents_updated ON documents(updated_at);
 
--- タグ: スラッシュ区切りの階層パス（正規化済み）
+-- Tags: slash-separated hierarchical paths (normalized)
 CREATE TABLE tags (
   id   INTEGER PRIMARY KEY,
   path TEXT NOT NULL UNIQUE
@@ -41,7 +41,7 @@ CREATE TABLE document_tags (
   PRIMARY KEY (document_id, tag_id)
 );
 
--- 相互リンク: [[タイトル]] の抽出結果。target_id が NULL なら未解決
+-- Wiki links: extracted from [[title]] syntax. NULL target_id means unresolved
 CREATE TABLE links (
   id           INTEGER PRIMARY KEY,
   source_id    INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -52,7 +52,7 @@ CREATE TABLE links (
 CREATE INDEX idx_links_target ON links(target_id);
 CREATE INDEX idx_links_unresolved ON links(target_title) WHERE target_id IS NULL;
 
--- チャンク: embedding の単位。embedded_at が NULL ならバックフィル対象
+-- Chunks: the unit of embedding. NULL embedded_at marks a backfill target
 CREATE TABLE chunks (
   id           INTEGER PRIMARY KEY,
   document_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -63,19 +63,19 @@ CREATE TABLE chunks (
   UNIQUE (document_id, seq)
 );
 
--- FTS5: rowid = documents.id。同期はリポジトリ層が同一トランザクションで行う
+-- FTS5: rowid = documents.id. Synced by the repository layer within the same transaction
 CREATE VIRTUAL TABLE documents_fts USING fts5(
   title, content, tags,
   tokenize='{{FTS_TOKENIZE}}'
 );
 
--- sqlite-vec: チャンク embedding
+-- sqlite-vec: chunk embeddings
 CREATE VIRTUAL TABLE chunks_vec USING vec0(
   chunk_id INTEGER PRIMARY KEY,
   embedding float[{{VEC_DIMENSIONS}}]
 );
 
--- LLM 応答キャッシュ
+-- LLM response cache
 CREATE TABLE llm_cache (
   cache_key  TEXT PRIMARY KEY,
   purpose    TEXT NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE llm_cache (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- システムメタ情報（fts_tokenizer / embedding_model / embedding_dimensions など）
+-- System metadata (fts_tokenizer / embedding_model / embedding_dimensions etc.)
 CREATE TABLE meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

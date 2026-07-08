@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { configPath } from "./paths";
 
-/** SPEC §11 の設定スキーマ */
+/** Config schema per SPEC §11 */
 export interface KuraConfig {
   general: {
     default_bucket: string;
@@ -69,7 +69,7 @@ function isPlainObject(v: unknown): v is PlainObject {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** 既定値の上に読み込んだ値を再帰マージ（未知キーは無視、型不一致は既定値優先） */
+/** Recursively merge loaded values onto the defaults (unknown keys ignored, type mismatches keep defaults) */
 function mergeInto(target: PlainObject, source: PlainObject): void {
   for (const [key, defVal] of Object.entries(target)) {
     if (!(key in source)) continue;
@@ -84,7 +84,7 @@ function mergeInto(target: PlainObject, source: PlainObject): void {
 
 let cached: KuraConfig | null = null;
 
-/** config.toml を読み込み、既定値とマージして返す（プロセス内キャッシュ） */
+/** Load config.toml and merge it with the defaults (cached per process) */
 export function loadConfig(path: string = configPath()): KuraConfig {
   if (cached) return cached;
   const config = defaultConfig();
@@ -98,7 +98,7 @@ export function loadConfig(path: string = configPath()): KuraConfig {
   return config;
 }
 
-/** テスト用: 設定キャッシュを破棄 */
+/** For tests: discard the config cache */
 export function resetConfigCache(): void {
   cached = null;
 }
@@ -108,7 +108,7 @@ function tomlScalar(value: unknown): string {
   return String(value);
 }
 
-/** 既知スキーマ限定の TOML シリアライザ（ネストしたオブジェクトはサブセクション化） */
+/** TOML serializer limited to the known schema (nested objects become subsections) */
 export function serializeConfig(config: KuraConfig): string {
   const lines: string[] = [];
   const walk = (obj: PlainObject, prefix: string): void => {
@@ -133,7 +133,7 @@ export function saveConfig(config: KuraConfig, path: string = configPath()): voi
   cached = null;
 }
 
-/** ドット区切りキーで設定値を取得（`kura config get` 用）。無ければ undefined */
+/** Get a config value by dotted key (for `kura config get`). undefined when missing */
 export function getConfigValue(config: KuraConfig, key: string): unknown {
   let cur: unknown = config;
   for (const part of key.split(".")) {
@@ -143,7 +143,7 @@ export function getConfigValue(config: KuraConfig, key: string): unknown {
   return cur;
 }
 
-/** ドット区切りキーで設定値を更新（`kura config set` 用）。既存キーのみ・型維持 */
+/** Set a config value by dotted key (for `kura config set`). Existing keys only, type preserved */
 export function setConfigValue(config: KuraConfig, key: string, raw: string): boolean {
   const parts = key.split(".");
   const last = parts.pop();
@@ -168,7 +168,7 @@ export function setConfigValue(config: KuraConfig, key: string, raw: string): bo
   return true;
 }
 
-/** 設定を `key = value` 形式で平坦に列挙（`kura config list` 用） */
+/** List the config flatly as `key = value` entries (for `kura config list`) */
 export function listConfigEntries(config: KuraConfig): Array<[string, unknown]> {
   const entries: Array<[string, unknown]> = [];
   const walk = (obj: PlainObject, prefix: string): void => {

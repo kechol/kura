@@ -73,7 +73,7 @@ function requireDoc(db: Database, key: string): DocumentRecord {
 
 const STALE_CUTOFF = (days: number): string => `-${days} days`;
 
-/** REST API ルート一式（SPEC §8.2）。Bun.serve の routes に渡す */
+/** All REST API routes (SPEC §8.2). Passed to Bun.serve's routes */
 export function createApiRoutes(
   deps: ApiDeps,
 ): Record<
@@ -136,7 +136,7 @@ export function createApiRoutes(
           content?: string;
           tags?: string[];
         };
-        // tags はエディタの状態を正として差分同期する
+        // Tags are diff-synced with the editor state as the source of truth
         if (Array.isArray(body.tags)) {
           const current = new Set(doc.tags);
           const next = new Set(body.tags);
@@ -267,7 +267,7 @@ interface GraphEdge {
   target: string;
 }
 
-/** ナレッジグラフ: ノード = ドキュメント、エッジ = 解決済みリンク（SPEC §8.2） */
+/** Knowledge graph: nodes = documents, edges = resolved links (SPEC §8.2) */
 function buildGraph(
   db: Database,
   config: KuraConfig,

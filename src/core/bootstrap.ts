@@ -5,17 +5,17 @@ import { getLoadablePath } from "sqlite-vec";
 import { embeddedVecLib, embeddedVecLibName } from "../generated/embedded";
 import { libDir } from "./paths";
 
-/** sqlite-vaporetto のピン留めリリース（SPEC §2.1: SHA256 検証必須） */
+/** Pinned sqlite-vaporetto release (SPEC §2.1: SHA256 verification required) */
 export const VAPORETTO_VERSION = "v0.4.0";
 
 interface VaporettoAsset {
   file: string;
   sha256: string;
-  /** アーカイブ内の拡張ライブラリファイル名 */
+  /** Extension library file name inside the archive */
   lib: string;
 }
 
-/** GitHub Releases のアセット定義（-with-model 版: 形態素モデルを dylib に埋め込み済み） */
+/** GitHub Releases asset definitions (-with-model builds: morphological model embedded in the dylib) */
 const VAPORETTO_ASSETS: Record<string, VaporettoAsset> = {
   "darwin-arm64": {
     file: `sqlite-vaporetto-${VAPORETTO_VERSION}-macos-aarch64-with-model.tar.gz`,
@@ -45,12 +45,12 @@ function platformKey(): string {
   return `${process.platform}-${process.arch}`;
 }
 
-/** このプラットフォームで vaporetto が利用可能か（darwin-x64 は未配布 → trigram フォールバック） */
+/** Whether vaporetto is available on this platform (darwin-x64 has no binary; falls back to trigram) */
 export function vaporettoSupported(): boolean {
   return platformKey() in VAPORETTO_ASSETS;
 }
 
-/** 展開済み vaporetto 拡張の期待パス */
+/** Expected path of the extracted vaporetto extension */
 export function vaporettoLibPath(): string | null {
   const asset = VAPORETTO_ASSETS[platformKey()];
   if (!asset) return null;
@@ -73,9 +73,9 @@ async function downloadTo(url: string, dest: string): Promise<void> {
 }
 
 /**
- * sqlite-vaporetto 拡張を ~/.kura/lib/<ver>/ に用意する。
- * 展開済みならそのパス、未対応プラットフォーム・download=false で未展開なら null。
- * ダウンロード時は SHA256 検証に失敗すると例外を投げる。
+ * Provision the sqlite-vaporetto extension under ~/.kura/lib/<ver>/.
+ * Returns the path if already extracted; null on unsupported platforms or when
+ * not extracted and download=false. Throws if SHA256 verification fails on download.
  */
 export async function ensureVaporetto(opts: { download?: boolean } = {}): Promise<string | null> {
   const download = opts.download ?? true;
@@ -100,7 +100,7 @@ export async function ensureVaporetto(opts: { download?: boolean } = {}): Promis
       );
     }
 
-    // tar は .tar.gz / .zip の両方を展開できる（Windows 10+ は bsdtar）
+    // tar can extract both .tar.gz and .zip (Windows 10+ ships bsdtar)
     const proc = Bun.spawnSync(["tar", "-xf", archive, "-C", workDir]);
     if (proc.exitCode !== 0) {
       throw new Error(`failed to extract ${asset.file}: ${proc.stderr.toString()}`);
@@ -118,9 +118,9 @@ export async function ensureVaporetto(opts: { download?: boolean } = {}): Promis
 }
 
 /**
- * sqlite-vec 拡張のロード可能パスを返す。
- * コンパイル済みバイナリでは埋め込みアセットを ~/.kura/lib/<ver>/ へ展開して返す
- * （埋め込み FS からは dlopen できないため、SPEC §2.1）。開発時は node_modules のプリビルド。
+ * Return a loadable path for the sqlite-vec extension.
+ * In the compiled binary, extract the embedded asset to ~/.kura/lib/<ver>/ and return it
+ * (dlopen cannot load from the embedded FS, SPEC §2.1). In dev, use the node_modules prebuild.
  */
 export function vecLoadablePath(): string {
   if (embeddedVecLib && embeddedVecLibName !== "") {

@@ -1,4 +1,4 @@
-/** SQLite の "YYYY-MM-DD HH:MM:SS" を日付表示にする */
+/** Format SQLite's "YYYY-MM-DD HH:MM:SS" as a date */
 export function formatDate(value: string | null): string {
   if (!value) return "-";
   return value.slice(0, 10);
@@ -33,7 +33,7 @@ export function escapeHtml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
-/** スニペットの **強調** を <mark> に変換する（エスケープ後に置換） */
+/** Convert snippet **highlights** to <mark> (replaced after escaping) */
 export function snippetHtml(snippet: string): string {
   return escapeHtml(snippet).replace(/\*\*(.+?)\*\*/g, "<mark>$1</mark>");
 }

@@ -8,7 +8,7 @@ const SYSTEM_PROMPT =
 
 const INSTRUCT = "Given a web search query, retrieve relevant passages that answer the query";
 
-/** 応答から yes/no を抽出して 1/0 に写像。判定不能は 0.5（Qwen3 の <think> ブロックは除去） */
+/** Extract yes/no from the answer and map to 1/0; 0.5 when undecidable (Qwen3 <think> blocks are stripped) */
 export function parseYesNo(answer: string): number {
   const cleaned = answer
     .replaceAll(/<think>[\s\S]*?<\/think>/gi, "")
@@ -28,8 +28,8 @@ const CONCURRENCY = 4;
 const MAX_DOC_CHARS = 2000;
 
 /**
- * chat completions での yes/no リランク（並列実行 + llm_cache、SPEC §5.1）。
- * 戻り値は docId → スコア（1 / 0 / 0.5）。
+ * Yes/no reranking via chat completions (parallel execution + llm_cache, SPEC §5.1).
+ * Returns a map of docId to score (1 / 0 / 0.5).
  */
 export async function rerankCandidates(
   db: Database,

@@ -12,9 +12,9 @@ export const summary = "Clip a web page into the knowledge base";
 export const usage = `Usage: kura clip <url> [--bucket b] [--tags t1,t2] [--no-llm] [--dry-run] [--force]
 
 Options:
-  --no-llm    LLM 整形・タグ提案を使わず turndown で機械変換
-  --dry-run   保存せず整形結果を表示
-  --force     同一 URL の既存ドキュメントを確認なしで上書き更新`;
+  --no-llm    Convert mechanically with turndown, without LLM formatting or tag suggestions
+  --dry-run   Print the formatted result without saving
+  --force     Overwrite an existing document with the same URL without confirmation`;
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {
@@ -33,14 +33,14 @@ export async function run(argv: string[]): Promise<number> {
   const { db } = getDb();
   const provider = noLlm ? null : await resolveProvider(config);
   if (!noLlm && !provider) {
-    console.error("warning: LLM プロバイダ不在のため turndown 変換のみで取り込みます");
+    console.error("warning: no LLM provider available; importing with turndown conversion only");
   }
 
   console.error(`fetching ${url} ...`);
   const page = await fetchAndExtract(url);
   const formatted = await formatClip(db, provider, config, page, { noLlm });
 
-  // タグ提案（既存タグ優先、SPEC §7.5）
+  // Tag suggestion (prefers existing tags, SPEC §7.5)
   const manualTags = listOpt(parsed, "tags");
   let suggested: string[] = [];
   if (provider) {
@@ -53,7 +53,7 @@ export async function run(argv: string[]): Promise<number> {
         listTags(db).map((t) => t.path),
       );
     } catch (e) {
-      console.error(`warning: タグ提案に失敗しました（${e instanceof Error ? e.message : e}）`);
+      console.error(`warning: tag suggestion failed (${e instanceof Error ? e.message : e})`);
     }
   }
 
@@ -81,12 +81,12 @@ export async function run(argv: string[]): Promise<number> {
       const isTty = process.stdout.isTTY === true && process.stdin.isTTY === true;
       if (!isTty) {
         console.error(
-          `同一 URL のドキュメントが存在します: #${existing.doc_key} ${existing.title}（--force で上書き）`,
+          `a document with the same URL already exists: #${existing.doc_key} ${existing.title} (use --force to overwrite)`,
         );
         return EXIT.ERROR;
       }
       process.stdout.write(
-        `同一 URL のドキュメント #${existing.doc_key} 「${existing.title}」を更新しますか? [y/N] `,
+        `update document #${existing.doc_key} "${existing.title}" with the same URL? [y/N] `,
       );
       const answer = await new Promise<string>((resolve) => {
         process.stdin.once("data", (d) => resolve(String(d)));

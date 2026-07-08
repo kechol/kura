@@ -3,11 +3,11 @@ import type { TagTreeNode } from "../api";
 
 interface Props {
   nodes: TagTreeNode[];
-  /** true なら直接付与数も表示（タグブラウザ用） */
+  /** When true, also show the direct-assignment count (for the tag browser) */
   detail?: boolean;
 }
 
-/** 階層タグツリー。クリックで /docs?tag= に絞り込み */
+/** Hierarchical tag tree. Clicking filters /docs?tag= */
 export function TagTree({ nodes, detail }: Props) {
   if (nodes.length === 0) return <p class="empty">タグはありません</p>;
   return <TagTreeList nodes={nodes} detail={detail} />;

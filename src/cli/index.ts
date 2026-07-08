@@ -14,7 +14,7 @@ interface CommandDef {
 }
 
 /**
- * サブコマンドレジストリ。起動オーバーヘッド削減のためコマンド本体は遅延 import。
+ * Subcommand registry. Command bodies are lazily imported to reduce startup overhead.
  */
 const commands: Record<string, CommandDef> = {
   init: {

@@ -44,7 +44,7 @@ export function DocList() {
       if (v === "") next.delete(k);
       else next.set(k, v);
     }
-    if (!("page" in patch)) next.delete("page"); // フィルタ変更時は 1 ページ目へ
+    if (!("page" in patch)) next.delete("page"); // Reset to page 1 when filters change
     const qs = next.toString();
     navigate(`/docs${qs === "" ? "" : `?${qs}`}`);
   };

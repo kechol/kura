@@ -40,7 +40,7 @@ class ClipMockProvider implements LLMProvider {
     return true;
   }
   async embed(texts: string[]): Promise<Float32Array[]> {
-    // タグ監査用: 意味的に近いタグ（db / database）を同方向のベクトルにする
+    // For the tag audit: give semantically close tags (db / database) same-direction vectors
     return texts.map((t) => {
       const v = new Float32Array(4);
       if (/db|database|データベース/.test(t)) v[0] = 1;
@@ -87,19 +87,19 @@ describe("clip extract/format", () => {
     server.stop(true);
   });
 
-  test("readability が本文とタイトルを抽出しナビ・フッターを除く", () => {
+  test("readability extracts the body and title, dropping nav and footer", () => {
     const page = extractContent("https://example.com/wal", PAGE_HTML);
     expect(page.title).toContain("WAL モード徹底解説");
     expect(page.contentHtml).toContain("チェックポイント");
     expect(page.contentHtml).not.toContain("ナビゲーション");
   });
 
-  test("fetchAndExtract がローカル HTTP サーバーから取得できる", async () => {
+  test("fetchAndExtract fetches from a local HTTP server", async () => {
     const page = await fetchAndExtract(`http://127.0.0.1:${server.port}/article`);
     expect(page.title).toContain("WAL モード");
   });
 
-  test("turndown フォールバック（--no-llm）", async () => {
+  test("turndown fallback (--no-llm)", async () => {
     const page = extractContent("https://example.com/wal", PAGE_HTML);
     const result = await formatClip(db, mock, config, page, { noLlm: true });
     expect(result.llmFormatted).toBe(false);
@@ -107,7 +107,7 @@ describe("clip extract/format", () => {
     expect(result.markdown).toContain("```");
   });
 
-  test("LLM 整形（タイトル抽出 + キャッシュ）", async () => {
+  test("LLM formatting (title extraction + cache)", async () => {
     const page = extractContent("https://example.com/wal", PAGE_HTML);
     const result = await formatClip(db, mock, config, page, {});
     expect(result.llmFormatted).toBe(true);
@@ -119,7 +119,7 @@ describe("clip extract/format", () => {
     expect(cacheRows.n).toBe(1);
   });
 
-  test("タグ提案（既存タグ優先プロンプト、purpose 'tag' キャッシュ）", async () => {
+  test("tag suggestions (prompt prefers existing tags, cached under purpose 'tag')", async () => {
     const tags = await suggestTagsForText(db, mock, config, "WAL の記事", ["tech/db/sqlite"]);
     expect(tags).toEqual(["tech/db/sqlite", "tech/performance"]);
     const cacheRows = db
@@ -128,7 +128,7 @@ describe("clip extract/format", () => {
     expect(cacheRows.n).toBe(1);
   });
 
-  test("htmlToMarkdown が script を除去する", () => {
+  test("htmlToMarkdown strips script tags", () => {
     const md = htmlToMarkdown("<p>本文</p><script>alert(1)</script>");
     expect(md).toBe("本文");
   });
@@ -140,20 +140,20 @@ describe("gardening (SPEC §10.3)", () => {
     expect(levenshtein("同じ", "同じ")).toBe(0);
   });
 
-  test("編集距離 + 単複 + embedding 類似で統合候補を出す", async () => {
+  test("lists merge candidates via edit distance + singular/plural + embedding similarity", async () => {
     createDocument(db, { title: "A", content: "x #tech/db #databases", bucket: "main" });
     createDocument(db, { title: "B", content: "y #tech/db #database", bucket: "main" });
     createDocument(db, { title: "C", content: "z #tech/db", bucket: "main" });
 
     const result = await auditTags(db, mock, config);
     expect(result.usedEmbeddings).toBe(true);
-    // database/databases は単複ゆれ
-    const plural = result.merges.find((m) => m.reason.includes("単数/複数"));
+    // database/databases is a singular/plural variant
+    const plural = result.merges.find((m) => m.reason.includes("singular/plural"));
     expect(plural).toBeTruthy();
     expect(plural?.to).toBe("database");
-    // tech/db は 3/3 = 100% 付与 → oversized
+    // tech/db is attached to 3/3 = 100% of documents -> oversized
     expect(result.oversized.some((o) => o.path === "tech/db")).toBe(true);
-    // 親子タグ（tech と tech/db）は統合候補にしない
+    // Ancestor/descendant tags (tech and tech/db) are not merge candidates
     expect(result.merges.some((m) => m.from === "tech" || m.to === "tech")).toBe(false);
   });
 
@@ -166,14 +166,14 @@ describe("gardening (SPEC §10.3)", () => {
 });
 
 describe("stale (SPEC §10.4)", () => {
-  test("staleScore は参照が多いほど減衰する", () => {
+  test("staleScore decays with more usage", () => {
     expect(staleScore(360, 0, 0, 180)).toBeCloseTo(2);
     expect(staleScore(360, 10, 0, 180)).toBeLessThan(1);
     expect(staleScore(360, 0, 4, 180)).toBeLessThan(1);
   });
 
-  test("staleDocuments が古く低参照のドキュメントのみ返す", () => {
-    // 200 日前: 放置なら score > 1、高参照なら減衰して < 1 になる
+  test("staleDocuments returns only old, rarely accessed documents", () => {
+    // 200 days ago: score > 1 when neglected, dampened below 1 when heavily accessed
     const oldDate = new Date(Date.now() - 200 * 86_400_000)
       .toISOString()
       .slice(0, 19)
@@ -202,7 +202,7 @@ describe("stale (SPEC §10.4)", () => {
 });
 
 describe("doctor fixes (SPEC §10.2)", () => {
-  test("FTS 行数不一致 → リビルド", () => {
+  test("FTS row-count mismatch triggers a rebuild", () => {
     const doc = createDocument(db, { title: "T", content: "本文テキスト #tag1", bucket: "main" });
     db.prepare("DELETE FROM documents_fts WHERE rowid = ?").run(doc.id);
     const report = rebuildFtsIfNeeded(db);
@@ -214,21 +214,21 @@ describe("doctor fixes (SPEC §10.2)", () => {
     expect(rebuildFtsIfNeeded(db)).toBeNull();
   });
 
-  test("孤立 vec 行の GC", () => {
+  test("GC of orphaned vec rows", () => {
     db.prepare("INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)").run(
       9999,
       JSON.stringify([0.1, 0.2, 0.3, 0.4]),
     );
     const report = gcOrphans(db);
-    expect(report?.detail).toContain("孤立ベクトル 1 件");
+    expect(report?.detail).toContain("1 orphaned vector");
     expect(gcOrphans(db)).toBeNull();
   });
 
-  test("content_hash 不一致 → 再計算 + 再チャンク", () => {
+  test("content_hash mismatch triggers recompute + re-chunk", () => {
     const doc = createDocument(db, { title: "T", content: "本文", bucket: "main" });
     db.prepare("UPDATE documents SET content_hash = 'broken' WHERE id = ?").run(doc.id);
     const report = fixContentHashes(db);
-    expect(report?.detail).toContain("1 件");
+    expect(report?.detail).toContain("1 document");
     expect(fixContentHashes(db)).toBeNull();
     const row = db.prepare("SELECT updated_at FROM documents WHERE id = ?").get(doc.id) as {
       updated_at: string;
@@ -236,27 +236,27 @@ describe("doctor fixes (SPEC §10.2)", () => {
     expect(row.updated_at).toBe(doc.updatedAt);
   });
 
-  test("未解決リンクの一括再解決", () => {
+  test("bulk re-resolution of unresolved links", () => {
     const src = createDocument(db, { title: "元", content: "[[先]]", bucket: "main" });
     const dst = createDocument(db, { title: "先", content: "x", bucket: "main" });
-    // 手動で未解決に戻す
+    // Manually reset the link to unresolved
     db.prepare("UPDATE links SET target_id = NULL WHERE source_id = ?").run(src.id);
     const report = resolveAllUnresolvedLinks(db);
-    expect(report?.detail).toContain("1 件");
+    expect(report?.detail).toContain("1 unresolved link");
     const link = db.prepare("SELECT target_id FROM links WHERE source_id = ?").get(src.id) as {
       target_id: number;
     };
     expect(link.target_id).toBe(dst.id);
   });
 
-  test("embedding 設定変更 → chunks_vec 再作成 + embedded_at リセット", () => {
+  test("embedding config change recreates chunks_vec and resets embedded_at", () => {
     createDocument(db, { title: "T", content: "本文", bucket: "main" });
     db.exec("UPDATE chunks SET embedded_at = datetime('now')");
     config.llm.models.embedding = "new-model";
     config.llm.models.embedding_dimensions = 8;
     const report = recreateVecIfModelChanged(db, config);
     expect(report?.action).toBe("vec-recreate");
-    // 8 次元で作り直されている
+    // Recreated with 8 dimensions
     db.prepare("INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)").run(
       1,
       JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8]),
@@ -268,7 +268,7 @@ describe("doctor fixes (SPEC §10.2)", () => {
     expect(recreateVecIfModelChanged(db, config)).toBeNull();
   });
 
-  test("retokenizeFts が FTS を再構築して meta を更新する", () => {
+  test("retokenizeFts rebuilds FTS and updates meta", () => {
     createDocument(db, { title: "検索対象", content: "全文検索のテキスト", bucket: "main" });
     setMeta(db, "fts_tokenizer", "trigram");
     const report = retokenizeFts(db, "trigram");

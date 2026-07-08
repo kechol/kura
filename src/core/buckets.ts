@@ -8,7 +8,7 @@ export interface Bucket {
   createdAt: string;
 }
 
-/** Bucket 名は小文字英数と - のみ（SPEC §3.1） */
+/** Bucket names allow lowercase alphanumerics and '-' only (SPEC §3.1) */
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export function validateBucketName(name: string): void {
@@ -64,7 +64,7 @@ export function createBucket(db: Database, name: string, description?: string): 
   return requireBucket(db, name);
 }
 
-/** import 用: 無ければ作成して返す */
+/** For import: create the bucket when missing and return it */
 export function getOrCreateBucket(db: Database, name: string): Bucket {
   return getBucket(db, name) ?? createBucket(db, name);
 }
@@ -76,7 +76,7 @@ export function renameBucket(db: Database, oldName: string, newName: string): vo
   db.prepare("UPDATE buckets SET name = ? WHERE id = ?").run(newName, bucket.id);
 }
 
-/** 空の Bucket を削除する。非空は呼び出し側でドキュメント削除後に呼ぶこと */
+/** Delete an empty bucket. For non-empty buckets, callers must delete the documents first */
 export function deleteBucket(db: Database, name: string): void {
   const bucket = requireBucket(db, name);
   const docs = (

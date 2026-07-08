@@ -3,6 +3,7 @@ import type { KuraConfig } from "../config";
 import { cached } from "../llm/cache";
 import type { LLMProvider } from "../llm/provider";
 
+// Intentionally Japanese — kura is a Japanese-first knowledge tool; this prompt is tuned for Japanese content.
 const PROMPT = `あなたは検索クエリの言い換えを作るアシスタントです。
 与えられた検索クエリに対し、同じ意図を別の語彙で表したバリアントを 2 つ生成してください。
 出力は JSON の文字列配列のみ（例: ["バリアント1", "バリアント2"]）。説明は不要です。`;
@@ -28,7 +29,7 @@ function parseVariants(answer: string, original: string): string[] {
   }
 }
 
-/** LLM クエリ展開: バリアント最大 2 件を返す（llm_cache 必須、SPEC §5.1） */
+/** LLM query expansion: returns up to 2 variants (llm_cache required, SPEC §5.1) */
 export async function expandQuery(
   db: Database,
   provider: LLMProvider,

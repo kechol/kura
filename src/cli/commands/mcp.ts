@@ -9,7 +9,7 @@ export const summary = "Run the MCP server (stdio)";
 export const usage = `Usage: kura mcp [--print-config]
 
 Options:
-  --print-config   claude mcp add / .mcp.json 用の設定スニペットを表示`;
+  --print-config   Print config snippets for claude mcp add / .mcp.json`;
 
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {
@@ -33,7 +33,7 @@ export async function run(argv: string[]): Promise<number> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // クライアント切断（stdin EOF）まで待機
+  // Wait until the client disconnects (stdin EOF)
   await new Promise<void>((resolve) => {
     server.server.onclose = () => resolve();
   });

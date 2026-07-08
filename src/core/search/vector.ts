@@ -9,7 +9,7 @@ export interface VectorOptions {
   limit?: number;
 }
 
-/** これ以下の未 embedding チャンク数なら検索前に自動バックフィルする（SPEC §5.3） */
+/** Auto-backfill before search when the number of un-embedded chunks is at or below this (SPEC §5.3) */
 export const AUTO_BACKFILL_LIMIT = 100;
 
 const EMBED_BATCH_SIZE = 16;
@@ -26,7 +26,7 @@ function toBlob(vec: Float32Array): Uint8Array {
 }
 
 export interface BackfillOptions {
-  /** true で全チャンク強制再生成（`kura embed --all`） */
+  /** true forces regeneration of all chunks (`kura embed --all`) */
   all?: boolean;
   onProgress?: (done: number, total: number) => void;
 }
@@ -37,8 +37,8 @@ export interface BackfillResult {
 }
 
 /**
- * 未 embedding チャンクのバックフィル。embedded_at ベースで中断再開可能。
- * バッチごとにトランザクションで chunks_vec / embedded_at を更新する。
+ * Backfill un-embedded chunks. Resumable after interruption via embedded_at.
+ * Updates chunks_vec / embedded_at in a transaction per batch.
  */
 export async function backfillEmbeddings(
   db: Database,
@@ -71,7 +71,7 @@ export async function backfillEmbeddings(
         const vec = vectors[j]!;
         if (vec.length !== dimensions) {
           throw new Error(
-            `embedding の次元 (${vec.length}) が設定 (${dimensions}) と一致しません。config の embedding_dimensions を見直して 'kura embed --all' を実行してください`,
+            `embedding dimension (${vec.length}) does not match the configured value (${dimensions}). Review embedding_dimensions in config and run 'kura embed --all'`,
           );
         }
         db.prepare("DELETE FROM chunks_vec WHERE chunk_id = ?").run(chunk.id);
@@ -89,8 +89,8 @@ export async function backfillEmbeddings(
 }
 
 /**
- * 検索前の embedding 整合チェック。未処理が少なければ自動バックフィルし、
- * 多ければ警告文字列を返して検索は既存 embedding で続行する（SPEC §5.3）。
+ * Pre-search embedding consistency check. Auto-backfills when the backlog is small;
+ * otherwise returns a warning string and search continues with existing embeddings (SPEC §5.3).
  */
 export async function ensureEmbeddings(
   db: Database,
@@ -103,17 +103,17 @@ export async function ensureEmbeddings(
     await backfillEmbeddings(db, provider, config);
     return null;
   }
-  return `未 embedding のチャンクが ${pending} 件あります。検索結果が不完全な可能性があります（'kura embed' を実行してください）`;
+  return `${pending} chunk(s) are not embedded yet; search results may be incomplete (run 'kura embed')`;
 }
 
-/** チャンク全文（rerank 用）を含むベクトル検索の内部結果 */
+/** Internal vector-search result including the full chunk text (for rerank) */
 export interface VectorHitDetail {
   hit: SearchHit;
   chunkText: string;
 }
 
 function chunkSnippet(text: string): string {
-  // コンテキストヘッダ（先頭行）を除いた本文の先頭を返す
+  // Return the start of the body without the context header (first line)
   const body = text
     .replace(/^# [^\n]*\n+/, "")
     .replaceAll(/\s+/g, " ")
@@ -121,7 +121,7 @@ function chunkSnippet(text: string): string {
   return body.length > 160 ? `${body.slice(0, 160)}…` : body;
 }
 
-/** クエリ embedding → chunks_vec KNN → ドキュメント単位に最良チャンクで集約（SPEC §5.1） */
+/** Query embedding -> chunks_vec KNN -> aggregate per document by best chunk (SPEC §5.1) */
 export async function vectorSearchDetailed(
   db: Database,
   provider: LLMProvider,
@@ -137,7 +137,7 @@ export async function vectorSearchDetailed(
     config.llm.models.embedding,
     config.llm.models.embedding_dimensions,
   );
-  if (!queryVec) throw new Error("クエリの embedding 生成に失敗しました");
+  if (!queryVec) throw new Error("failed to generate the query embedding");
 
   const k = Math.max(limit * 4, 40);
   const where: string[] = [];
@@ -181,7 +181,7 @@ export async function vectorSearchDetailed(
     distance: number;
   }>;
 
-  // ドキュメント単位に最良（最小距離）チャンクで集約
+  // Aggregate per document, keeping the best (smallest-distance) chunk
   const byDoc = new Map<number, VectorHitDetail>();
   for (const row of rows) {
     if (byDoc.has(row.id)) continue;

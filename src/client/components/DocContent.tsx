@@ -12,7 +12,7 @@ let mermaidSeq = 0;
 
 async function renderMermaidBlock(code: HTMLElement): Promise<void> {
   const mod = await loadMermaid();
-  if (!mod) return; // ロード失敗時はコードブロックのまま
+  if (!mod) return; // Keep the plain code block when loading fails
   const pre = code.closest("pre");
   if (!pre) return;
   try {
@@ -23,11 +23,11 @@ async function renderMermaidBlock(code: HTMLElement): Promise<void> {
     wrapper.innerHTML = svg;
     pre.replaceWith(wrapper);
   } catch {
-    // 構文エラー等はコードブロックのまま
+    // Keep the code block on syntax errors etc.
   }
 }
 
-/** ドキュメント本文のレンダリング（markdown / html + mermaid 遅延ロード） */
+/** Document body rendering (markdown / html + lazy mermaid loading) */
 export function DocContent({ content, contentType, resolve }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -40,7 +40,7 @@ export function DocContent({ content, contentType, resolve }: Props) {
     [content, contentType, resolve],
   );
 
-  // mermaid ブロックは可視領域に入ってから CDN ロードして描画する
+  // Mermaid blocks load from the CDN and render only once they enter the viewport
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -57,7 +57,7 @@ export function DocContent({ content, contentType, resolve }: Props) {
     return () => observer.disconnect();
   }, [html]);
 
-  // 内部リンクは SPA 遷移させる
+  // Navigate internal links via the SPA router
   const onClick = (e: MouseEvent) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;
@@ -72,8 +72,8 @@ export function DocContent({ content, contentType, resolve }: Props) {
   };
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 内部リンクのクリック委譲のみ（アンカー自体は操作可能）
-    // biome-ignore lint/a11y/useKeyWithClickEvents: キーボード操作はアンカー要素側で担保される
+    // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for internal links only (the anchors themselves are interactive)
+    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard access is guaranteed by the anchor elements
     <div
       class="doc-content"
       ref={ref}

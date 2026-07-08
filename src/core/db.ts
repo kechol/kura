@@ -8,7 +8,7 @@ import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
 
-/** macOS の Homebrew SQLite パス（Apple 純正 SQLite は拡張ロード不可のため必須、SPEC §2.1） */
+/** Homebrew SQLite path on macOS (required because Apple's bundled SQLite cannot load extensions, SPEC §2.1) */
 export function brewSqlitePath(): string | null {
   if (process.platform !== "darwin") return null;
   return process.arch === "arm64"
@@ -18,7 +18,7 @@ export function brewSqlitePath(): string | null {
 
 let sqliteConfigured = false;
 
-/** 最初の Database 生成前に必ず呼ぶこと。macOS 以外・2回目以降は no-op */
+/** Must be called before the first Database is created. No-op on non-macOS and on repeat calls */
 export function setupSqlite(): void {
   if (sqliteConfigured) return;
   sqliteConfigured = true;
@@ -49,7 +49,7 @@ export function schemaVersion(db: Database): number {
   return row.user_version;
 }
 
-/** PRAGMA user_version ベースのマイグレーションランナー（各マイグレーションはトランザクション内で適用） */
+/** PRAGMA user_version based migration runner (each migration is applied inside a transaction) */
 export function migrate(db: Database, ctx: MigrateContext): void {
   let current = schemaVersion(db);
   for (const m of MIGRATIONS) {
@@ -82,7 +82,7 @@ export function setMeta(db: Database, key: string, value: string): void {
 
 export interface OpenOptions {
   path?: string;
-  /** undefined なら bootstrap の既定パスを探す。null で明示的に無効化（テスト用） */
+  /** undefined: look up the default bootstrap path. null: explicitly disable (for tests) */
   vaporettoPath?: string | null;
   dimensions?: number;
   embeddingModel?: string;
@@ -96,8 +96,8 @@ export interface OpenResult {
 }
 
 /**
- * DB を開き、拡張ロード → マイグレーション → meta 整合を行う。
- * 新規 DB では vaporetto ロード可否で FTS トークナイザーを決定し meta に記録する（SPEC §2.1）。
+ * Open the database: load extensions, run migrations, and reconcile meta.
+ * For a fresh DB, pick the FTS tokenizer based on whether vaporetto loaded and record it in meta (SPEC §2.1).
  */
 export function openDatabase(opts: OpenOptions = {}): OpenResult {
   setupSqlite();
@@ -110,21 +110,21 @@ export function openDatabase(opts: OpenOptions = {}): OpenResult {
 
   const warnings: string[] = [];
 
-  // sqlite-vec は必須（chunks_vec の作成・検索に使用）
+  // sqlite-vec is required (used to create and query chunks_vec)
   try {
     db.loadExtension(vecLoadablePath());
   } catch (e) {
     db.close();
     const hint =
       process.platform === "darwin"
-        ? "\nHomebrew SQLite が必要です: brew install sqlite（詳細は kura doctor）"
-        : "\nkura doctor で診断してください";
+        ? "\nHomebrew SQLite is required: brew install sqlite (see kura doctor for details)"
+        : "\nRun kura doctor to diagnose";
     throw new Error(
       `failed to load sqlite-vec extension: ${e instanceof Error ? e.message : e}${hint}`,
     );
   }
 
-  // sqlite-vaporetto は任意（無ければ trigram フォールバック）
+  // sqlite-vaporetto is optional (falls back to trigram when unavailable)
   let vaporettoLoaded = false;
   const vapPath = opts.vaporettoPath === undefined ? vaporettoLibPath() : opts.vaporettoPath;
   if (vapPath && existsSync(vapPath)) {
@@ -133,7 +133,7 @@ export function openDatabase(opts: OpenOptions = {}): OpenResult {
       vaporettoLoaded = true;
     } catch (e) {
       warnings.push(
-        `sqlite-vaporetto のロードに失敗しました（${e instanceof Error ? e.message : e}）。trigram にフォールバックします`,
+        `failed to load sqlite-vaporetto (${e instanceof Error ? e.message : e}); falling back to trigram`,
       );
     }
   }
@@ -157,7 +157,7 @@ export function openDatabase(opts: OpenOptions = {}): OpenResult {
     });
     if (tokenizer === "vaporetto" && !vaporettoLoaded) {
       warnings.push(
-        "この DB は vaporetto トークナイザーで構築されていますが拡張をロードできません。検索が失敗する場合は kura doctor を実行してください",
+        "this database was built with the vaporetto tokenizer but the extension could not be loaded. If searches fail, run kura doctor",
       );
     }
   }
@@ -168,8 +168,8 @@ export function openDatabase(opts: OpenOptions = {}): OpenResult {
 let opened: OpenResult | null = null;
 
 /**
- * CLI コマンド用のシングルトン接続。DB 未初期化（ファイルなし）なら kura init を案内して例外。
- * `KURA_DB=:memory:` のときは常に新規作成を許可（テスト用）。
+ * Singleton connection for CLI commands. Throws with a hint to run kura init when the DB file does not exist.
+ * `KURA_DB=:memory:` always allows fresh creation (for tests).
  */
 export function getDb(): OpenResult {
   if (opened) return opened;
@@ -182,7 +182,7 @@ export function getDb(): OpenResult {
   return opened;
 }
 
-/** テスト用: シングルトン接続を閉じて破棄 */
+/** For tests: close and discard the singleton connection */
 export function closeDb(): void {
   opened?.db.close();
   opened = null;
