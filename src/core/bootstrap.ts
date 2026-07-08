@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getLoadablePath } from "sqlite-vec";
+import { embeddedVecLib, embeddedVecLibName } from "../generated/embedded";
 import { libDir } from "./paths";
 
 /** sqlite-vaporetto のピン留めリリース（SPEC §2.1: SHA256 検証必須） */
@@ -118,9 +119,17 @@ export async function ensureVaporetto(opts: { download?: boolean } = {}): Promis
 
 /**
  * sqlite-vec 拡張のロード可能パスを返す。
- * 開発時は node_modules のプリビルドを利用。コンパイル済みバイナリでは
- * 埋め込みアセットを libDir へ展開して返す（M7 でビルドパイプラインと共に実装）。
+ * コンパイル済みバイナリでは埋め込みアセットを ~/.kura/lib/<ver>/ へ展開して返す
+ * （埋め込み FS からは dlopen できないため、SPEC §2.1）。開発時は node_modules のプリビルド。
  */
 export function vecLoadablePath(): string {
+  if (embeddedVecLib && embeddedVecLibName !== "") {
+    const dest = join(libDir(), embeddedVecLibName);
+    if (!existsSync(dest)) {
+      mkdirSync(libDir(), { recursive: true });
+      writeFileSync(dest, readFileSync(embeddedVecLib));
+    }
+    return dest;
+  }
   return getLoadablePath();
 }

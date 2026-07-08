@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { embeddedAssets } from "../generated/embedded";
 import type { ApiDeps } from "./api";
 import { createApiRoutes } from "./api";
 
@@ -19,6 +20,20 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".map": "application/json",
 };
+
+/** コンパイル済みバイナリ用: 埋め込みアセットから配信（埋め込みが無ければ null） */
+export function embeddedAssetResolver(): AssetResolver | null {
+  if (Object.keys(embeddedAssets).length === 0) return null;
+  return async (path: string): Promise<Response | null> => {
+    const rel = path === "/" ? "/index.html" : path;
+    const file = embeddedAssets[rel];
+    if (!file) return null;
+    const ext = rel.slice(rel.lastIndexOf("."));
+    return new Response(Bun.file(file), {
+      headers: { "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream" },
+    });
+  };
+}
 
 export function distAssetResolver(distDir: string): AssetResolver {
   return async (path: string): Promise<Response | null> => {
@@ -59,7 +74,10 @@ export interface KuraServer {
  */
 export function startServer(opts: ServeOptions): KuraServer {
   const routes = createApiRoutes(opts);
-  const assets = opts.assets ?? distAssetResolver(join(import.meta.dir, "..", "..", "dist"));
+  const assets =
+    opts.assets ??
+    embeddedAssetResolver() ??
+    distAssetResolver(join(import.meta.dir, "..", "..", "dist"));
 
   const fetchFallback = async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
