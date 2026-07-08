@@ -36,7 +36,7 @@
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
     "preact": "^10.26.9",
-    "typescript": "^5.8.0",
+    "typescript": "^6.0.3",
     "wouter": "^3.7.1",
     "wouter-preact": "^3.10.0"
   }
