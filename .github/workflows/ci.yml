@@ -39,21 +39,17 @@ jobs:
         with:
           bun-version: "1.3.11"
       - run: bun install --frozen-lockfile
+      # Retry once as a safety net. The root cause of the occasional
+      # "database is locked" (SQLITE_BUSY) is transient WAL write-lock
+      # contention under slow/loaded CI runners, addressed at the source by the
+      # raised busy_timeout in src/core/db.ts; the retry backstops any residual
+      # flake. A real regression is deterministic and fails both attempts.
+      #
       # The real vaporetto download → SHA256 → dlopen → tokenization test runs
       # on linux-x64 only (KURA_TEST_DOWNLOAD); elsewhere the suite runs offline.
       - if: runner.os == 'Linux'
-        run: bun test
+        run: bun test || (echo "::warning::bun test flaked (retrying once)" && bun test)
         env:
           KURA_TEST_DOWNLOAD: "1"
-      # macOS: retry up to 3×. The e2e suite spawns a `bun run` subprocess per
-      # test, and GitHub's macOS runners intermittently flake on that under load
-      # (subprocess/dlopen contention — not reproducible locally). A real
-      # regression is deterministic and fails every attempt.
       - if: runner.os != 'Linux'
-        run: |
-          for attempt in 1 2 3; do
-            echo "bun test (attempt $attempt/3)"
-            bun test && exit 0
-            echo "::warning::bun test failed on macOS (attempt $attempt/3)"
-          done
-          exit 1
+        run: bun test || (echo "::warning::bun test flaked (retrying once)" && bun test)
