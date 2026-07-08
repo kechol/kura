@@ -9,3 +9,6 @@ vendor/
 *.db-wal
 *.db-shm
 .DS_Store
+# Local-only working notes (see CLAUDE.md: public OSS policy)
+TODO.md
+.prompt

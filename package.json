@@ -2,6 +2,11 @@
   "name": "kura",
   "version": "0.1.0",
   "description": "Local knowledge management CLI backed by SQLite with hybrid RAG search",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kechol/kura"
+  },
   "type": "module",
   "private": true,
   "scripts": {

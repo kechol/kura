@@ -1,112 +1,135 @@
 # kura
 
-Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージェントの双方がクエリーできるローカルナレッジ管理 CLI。
+[日本語版 README はこちら](README.ja.md)
 
-- **日本語対応ハイブリッド検索**: FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)（形態素解析）によるキーワード検索、[sqlite-vec](https://github.com/asg017/sqlite-vec) + ローカル embedding によるセマンティック検索、ローカル LLM によるリランク
-- **自己組織化**: 階層フォルダなし。Bucket + 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）で整理（Cosense 方式）
-- **AI エージェント連携**: `kura mcp`（MCP サーバー）と全コマンドの `--json` 出力
-- **ブラウザ UI**: ドキュメント閲覧・編集・ナレッジグラフ可視化（`kura browser`）
-- **ローカル完結**: データは `~/.kura/kura.db` の単一 SQLite。LLM は Ollama / LM Studio を自動検出（無くてもキーワード検索は動作）
+A local knowledge management CLI that stores Markdown/HTML documents in SQLite
+and makes them queryable by both humans and AI agents.
 
-## インストール
+- **Japanese-aware hybrid search**: keyword search with FTS5 +
+  [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)
+  (morphological analysis), semantic search with
+  [sqlite-vec](https://github.com/asg017/sqlite-vec) + local embeddings, and
+  local-LLM reranking
+- **Self-organizing**: no folder hierarchy. Documents organize themselves
+  through buckets, hierarchical tags (`tech/db/sqlite`), and wiki links
+  (`[[Title]]`) — the Cosense model
+- **AI agent integration**: an MCP server (`kura mcp`) and `--json` output on
+  every read command
+- **Browser UI**: document viewer/editor and a knowledge graph
+  (`kura browser`)
+- **Fully local**: your data lives in a single SQLite file at
+  `~/.kura/kura.db`. Ollama / LM Studio are auto-detected; without them,
+  keyword search still works (graceful degradation)
 
-### 前提条件
+## Installation
 
-- **macOS**: Homebrew の SQLite が必要（Apple 純正 SQLite は拡張ロード不可のため）
+### Prerequisites
+
+- **macOS**: Homebrew SQLite is required (Apple's bundled SQLite cannot load
+  extensions)
 
   ```sh
   brew install sqlite
   ```
 
-- **LLM 機能（任意）**: [Ollama](https://ollama.com/) または LM Studio。無い場合はキーワード検索のみの劣化動作
+- **LLM features (optional)**: [Ollama](https://ollama.com/) or LM Studio.
+  Without a provider, kura degrades to keyword-only search
 
-### バイナリ
+### Binary
 
-[Releases](../../releases) から対象プラットフォームの ZIP をダウンロードして展開:
+Download the ZIP for your platform from [Releases](../../releases):
 
 ```sh
-unzip kura-*.zip && ./install.sh   # macOS では quarantine 属性も除去される
+unzip kura-*.zip && ./install.sh   # also removes the macOS quarantine attribute
 ```
 
-### 初期化
+### Initialize
 
 ```sh
-kura init      # ~/.kura の作成、拡張のダウンロード、DB 作成
-kura doctor    # 環境診断（SQLite / 拡張 / LLM プロバイダ / DB 整合性）
+kura init      # create ~/.kura, download extensions, create the DB
+kura doctor    # diagnose SQLite / extensions / LLM providers / DB integrity
 ```
 
-`kura init` は日本語形態素解析トークナイザー（sqlite-vaporetto、モデル同梱 約 6.5MB）を GitHub Releases から SHA256 検証付きでダウンロードします。未対応環境（darwin-x64 等）では自動的に trigram トークナイザーへフォールバックします。
+`kura init` downloads the Japanese morphological tokenizer
+(sqlite-vaporetto with a bundled model, ~6.5 MB) from GitHub Releases with
+SHA256 verification. On unsupported platforms (e.g. darwin-x64) it falls back
+to the trigram tokenizer automatically.
 
-### LLM モデルの準備（セマンティック検索・リランク・clip 整形に使用）
+### Pull LLM models (for semantic search, reranking, and clip formatting)
 
 ```sh
-ollama pull qwen3-embedding:0.6b          # embedding（1024 次元）
-ollama pull dengcao/Qwen3-Reranker-0.6B   # リランク
-ollama pull qwen3:4b                      # 生成（clip 整形・タグ提案・クエリ展開）
+ollama pull qwen3-embedding:0.6b          # embeddings (1024 dimensions)
+ollama pull dengcao/Qwen3-Reranker-0.6B   # reranker
+ollama pull qwen3:4b                      # generation (clip cleanup, tag suggestion, query expansion)
 ```
 
-すべて 32GB Mac で同時ロード可能なサイズです。モデルは `kura config` で変更できます。
+All three fit comfortably in memory on a 32 GB Mac. Models are configurable
+via `kura config`.
 
-## クイックスタート
+## Quick start
 
 ```sh
-# 追加
+# Add documents
 kura add notes/sqlite-wal.md --tags tech/db/sqlite
-echo "# メモ本文" | kura add - --title "今日のメモ"
-kura clip https://example.com/article        # Web ページを整形して取り込み
+echo "# Note body" | kura add - --title "Today's note"
+kura clip https://example.com/article        # capture a web page, cleaned up by the LLM
 
-# 検索（3 モード）
-kura search "WAL チェックポイント"           # キーワード（FTS5 BM25、< 100ms）
-kura vsearch "書き込み中も読める仕組み"      # セマンティック（KNN）
-kura query "SQLite の並行性"                 # ハイブリッド + リランク（最高精度）
+# Search (three modes)
+kura search "WAL checkpoint"          # keyword (FTS5 BM25, < 100ms)
+kura vsearch "how writes stay readable"   # semantic (KNN)
+kura query "SQLite concurrency"       # hybrid + rerank (best quality)
 
-# 閲覧・編集
-kura get "今日のメモ"          # doc_key / #key / タイトルで指定
-kura edit "今日のメモ"         # $EDITOR で編集（frontmatter でタグ・タイトルも変更可）
+# View & edit
+kura get "Today's note"        # by doc key, #key, or title
+kura edit "Today's note"       # edit in $EDITOR (frontmatter edits title/tags too)
 kura ls --tag tech/db --sort updated
 
-# リンクとタグ
-kura link ls "今日のメモ"      # アウトリンク / バックリンク / 2ホップ
-kura link broken               # 未解決リンク一覧
+# Links & tags
+kura link ls "Today's note"    # outlinks / backlinks / 2-hop links
+kura link broken               # unresolved links
 kura tag ls --tree
-kura tag suggest --untagged --apply   # LLM がタグ提案（既存タグ体系を優先）
-kura tag audit                 # 類似タグの統合提案・巨大タグの検出
+kura tag suggest --untagged --apply   # LLM tag suggestions (reuses your existing taxonomy)
+kura tag audit                 # merge candidates for similar tags, oversized-tag warnings
 
-# メンテナンス
-kura status                    # 統計（embedding カバレッジ・陳腐化候補など）
-kura ls --stale                # 長期未更新 & 低参照のドキュメント
-kura doctor --fix              # インデックス修復・未解決リンク再解決など
-kura export --dir backup/      # frontmatter 付き Markdown で書き出し
-kura import backup/            # kura_key でラウンドトリップ（更新 or 新規）
+# Maintenance
+kura status                    # stats (embedding coverage, stale candidates, ...)
+kura ls --stale                # long-untouched, rarely-read documents
+kura doctor --fix              # index repair, link re-resolution, and more
+kura export --dir backup/      # write Markdown with frontmatter
+kura import backup/            # round-trips via kura_key (update or create)
 ```
 
-本文中の記法:
+Notation inside documents:
 
-- `[[タイトル]]` / `[[タイトル|表示名]]` — 相互リンク。**先にリンクを書いておけば、後からページを作ったときに自動で繋がります**
-- `#tech/db/sqlite` — 階層タグ（保存時に自動抽出）
+- `[[Title]]` / `[[Title|display text]]` — wiki links. **Write the link first
+  and it connects automatically when the page is created later**
+- `#tech/db/sqlite` — hierarchical tags (extracted on save)
 
-## AI エージェント連携（MCP）
+## AI agent integration (MCP)
 
 ```sh
 claude mcp add kura -- kura mcp     # Claude Code
-kura mcp --print-config             # .mcp.json 用スニペット
+kura mcp --print-config             # snippet for .mcp.json
 ```
 
-公開ツール: `kura_query`（ハイブリッド検索）, `kura_search`, `kura_get`, `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`
+Exposed tools: `kura_query` (hybrid search), `kura_search`, `kura_get`,
+`kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`.
 
-すべての読み取りコマンドは `--json` で機械可読出力にも対応しています。
+Every read command also supports machine-readable output via `--json`.
 
-## ブラウザ UI
+## Browser UI
 
 ```sh
-kura browser        # http://127.0.0.1:7578 （127.0.0.1 のみバインド）
+kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
-ドキュメント閲覧（Markdown レンダリング・バックリンク・2ホップリンク）、編集、3 モード検索、タグブラウザ、d3-force によるナレッジグラフ（タグ色分け・陳腐化ノード減光）。
+Document viewer (rendered Markdown, backlinks, 2-hop links), editor,
+three-mode search, tag browser, and a d3-force knowledge graph (colored by
+tag, stale nodes dimmed). The UI text is currently Japanese.
 
-## 設定
+## Configuration
 
-`~/.kura/config.toml`（`kura config list|get|set` で読み書き）:
+`~/.kura/config.toml` (read/write via `kura config list|get|set`):
 
 ```toml
 [general]
@@ -123,22 +146,35 @@ reranker = "dengcao/Qwen3-Reranker-0.6B"
 generation = "qwen3:4b"
 ```
 
-環境変数: `KURA_HOME`（データディレクトリ、既定 `~/.kura`）、`KURA_DB`（DB パス上書き）、`NO_COLOR`
+Environment variables: `KURA_HOME` (data directory, default `~/.kura`),
+`KURA_DB` (DB path override), `NO_COLOR`.
 
-embedding モデルを変更したら `kura doctor --fix` → `kura embed` で再生成してください。
+After changing the embedding model, run `kura doctor --fix` and then
+`kura embed` to regenerate vectors.
 
-## 開発
+## Development
 
 ```sh
 bun install
-bun run dev -- --help    # CLI 実行
-bun test                 # テスト（KURA_TEST_DOWNLOAD=1 で vaporetto 実ダウンロード検証も実行）
-bun run check            # 型チェック + Lint
-bun run compile          # シングルバイナリ（現在のプラットフォーム向け）
+bun run dev -- --help    # run the CLI from source
+bun test                 # tests (set KURA_TEST_DOWNLOAD=1 to include the real vaporetto download test)
+bun run check            # typecheck + lint
+bun run compile          # single binary for the current platform
 ```
 
-アーキテクチャの詳細は [SPEC.md](SPEC.md) を参照してください。
+See [SPEC.md](SPEC.md) for the architecture, and [CLAUDE.md](CLAUDE.md) for
+contribution conventions (including the bilingual documentation policy).
 
 ## License
 
-MIT
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
