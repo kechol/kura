@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "bun run src/cli/index.ts",
-    "build:client": "bun build src/client/index.tsx --outdir=dist --minify",
+    "build:client": "bun run scripts/build-html.ts",
     "build": "bun run build:client",
     "compile": "bun run build && bun build src/cli/index.ts --compile --outfile=kura",
     "test": "bun test",
@@ -17,7 +17,8 @@
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.11",
     "sqlite-vec": "^0.1.7-alpha.2",
-    "turndown": "^7.2.0"
+    "turndown": "^7.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.0",
@@ -31,6 +32,7 @@
     "markdown-it": "^14.1.0",
     "preact": "^10.26.9",
     "typescript": "^5.8.0",
-    "wouter": "^3.7.1"
+    "wouter": "^3.7.1",
+    "wouter-preact": "^3.10.0"
   }
 }

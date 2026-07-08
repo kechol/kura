@@ -25,6 +25,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Diagnose installation and environment",
     load: () => import("./commands/doctor"),
   },
+  status: {
+    summary: "Show knowledge base statistics",
+    load: () => import("./commands/status"),
+  },
   config: {
     summary: "Read and write ~/.kura/config.toml",
     load: () => import("./commands/config"),
@@ -88,6 +92,14 @@ const commands: Record<string, CommandDef> = {
   embed: {
     summary: "Generate embeddings for pending chunks",
     load: () => import("./commands/embed"),
+  },
+  mcp: {
+    summary: "Run the MCP server (stdio)",
+    load: () => import("./commands/mcp"),
+  },
+  browser: {
+    summary: "Start the browser UI server",
+    load: () => import("./commands/browser"),
   },
 };
 
