@@ -130,9 +130,10 @@ export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameT
     if (existing && existing.id !== tag.id) {
       // 統合: 既存タグへ付け替え（重複は無視）て旧タグを削除
       merged = true;
-      db.prepare(
-        "UPDATE OR IGNORE document_tags SET tag_id = ? WHERE tag_id = ?",
-      ).run(existing.id, tag.id);
+      db.prepare("UPDATE OR IGNORE document_tags SET tag_id = ? WHERE tag_id = ?").run(
+        existing.id,
+        tag.id,
+      );
       db.prepare("DELETE FROM document_tags WHERE tag_id = ?").run(tag.id);
       db.prepare("DELETE FROM tags WHERE id = ?").run(tag.id);
     } else {

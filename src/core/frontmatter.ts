@@ -67,7 +67,8 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
     bucket: asString(obj.bucket),
     tags: asTags(obj.tags),
     source_url: asString(obj.source_url),
-    content_type: contentType === "html" ? "html" : contentType === "markdown" ? "markdown" : undefined,
+    content_type:
+      contentType === "html" ? "html" : contentType === "markdown" ? "markdown" : undefined,
     created_at: asDatetime(obj.created_at),
     updated_at: asDatetime(obj.updated_at),
   };

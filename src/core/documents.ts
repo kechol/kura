@@ -1,10 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { requireBucket } from "./buckets";
+import { getOrCreateBucket, requireBucket } from "./buckets";
 import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
 import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
-import { getOrCreateBucket } from "./buckets";
 import { resolveUnresolvedLinks, syncLinks } from "./links";
 import { addTagsToDoc, docTags } from "./tags";
 import { extractWiki, replaceWikiLinkTarget } from "./wiki";
