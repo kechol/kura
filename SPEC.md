@@ -1,87 +1,87 @@
-# kura — ローカルナレッジ管理 CLI 仕様書
+# kura — Local Knowledge Management CLI Specification
 
-## 1. 概要
+## 1. Overview
 
-`kura` は、Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージェントの双方がクエリーできるローカルナレッジ管理 CLI である。
+`kura` is a local knowledge management CLI that stores Markdown/HTML documents in SQLite and lets both humans and AI agents query them.
 
-- **人間向け**: CLI での検索・閲覧・編集、`kura browser` によるブラウザ UI（ドキュメント閲覧・ナレッジグラフ可視化）
-- **AI エージェント向け**: `kura mcp` によるローカル MCP サーバー、全コマンドの `--json` 出力
-- **検索**: 日本語（CJK）対応のハイブリッド RAG 検索 — FTS5 キーワード検索（sqlite-vaporetto）+ セマンティック検索（sqlite-vec + ローカル embedding）+ ローカル LLM リランク
-- **配布**: Bun 製シングルバイナリ
+- **For humans**: search, view, and edit from the CLI, plus a browser UI via `kura browser` (document viewing and knowledge-graph visualization)
+- **For AI agents**: a local MCP server via `kura mcp`, and `--json` output on every command
+- **Search**: hybrid RAG search with Japanese (CJK) support — FTS5 keyword search (sqlite-vaporetto) + semantic search (sqlite-vec + local embeddings) + local LLM reranking
+- **Distribution**: single binary built with Bun
 
-### 1.1 設計原則（確定事項）
+### 1.1 Design Principles (settled decisions)
 
-| 項目                          | 決定                                                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| データの正（source of truth） | **SQLite**。本文も DB に格納。ファイルは import/export の入出力に過ぎない                                                       |
-| DB 配置                       | **グローバル単一 DB**（`~/.kura/kura.db`）。`KURA_HOME` 環境変数で上書き可                                                      |
-| 想定規模                      | **〜1万ドキュメント**。ANN 不要、sqlite-vec のブルートフォース KNN で十分                                                       |
-| LLM プロバイダ                | **Ollama 優先 + 自動検出**。無ければ LM Studio にフォールバック。LLM なしでも劣化動作（キーワード検索のみ）で全機能が壊れない   |
-| ドキュメント整理              | 階層フォルダなし。**Bucket（大分類）+ 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）** で自己組織化（Cosense 方式） |
-| 自己修復                      | 未解決リンクの自動解決、インデックス整合性修復、タグ・ガーデニング、陳腐化検出を備える                                          |
+| Item                  | Decision                                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source of truth       | **SQLite**. Document bodies live in the DB; files are merely import/export I/O                                                                        |
+| DB location           | **Single global DB** (`~/.kura/kura.db`). Overridable via the `KURA_HOME` environment variable                                                       |
+| Expected scale        | **Up to ~10k documents**. No ANN needed; sqlite-vec's brute-force KNN is sufficient                                                                   |
+| LLM provider          | **Ollama first + auto-detection**. Falls back to LM Studio if absent. Without any LLM, everything still works in degraded mode (keyword search only)  |
+| Document organization | No hierarchical folders. Self-organizing via **Buckets (top-level categories) + hierarchical tags (`tech/db/sqlite`) + cross-links (`[[タイトル]]`)** (Cosense style) |
+| Self-healing          | Automatic resolution of unresolved links, index consistency repair, tag gardening, and staleness detection                                            |
 
-### 1.2 非ゴール
+### 1.2 Non-Goals
 
-- マルチユーザー・同期・クラウド機能（ローカル単一ユーザー専用）
-- ファイルシステム監視による自動インデックス（取り込みは明示的な `add` / `import` / `clip` / MCP 経由）
-- 10万件超のスケール対応（量子化・パーティショニングは設計対象外）
-- WYSIWYG エディタ（編集は `$EDITOR` またはブラウザのプレーンエディタ）
+- Multi-user, sync, or cloud features (local, single-user only)
+- Automatic indexing via filesystem watching (ingestion is explicit: `add` / `import` / `clip` / via MCP)
+- Scaling beyond 100k documents (quantization and partitioning are out of scope)
+- WYSIWYG editor (editing happens in `$EDITOR` or the browser's plain editor)
 
 ---
 
-## 2. 技術スタック
+## 2. Technology Stack
 
-| レイヤ                                  | 技術                                                                      | 備考                                                                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| ランタイム                              | Bun（`bun build --compile` でシングルバイナリ化）                         | Bun ≥ 1.3 安定版。canary の dlopen リグレッション（oven-sh/bun#30717）を踏まないようビルドバージョンを固定 |
-| DB                                      | SQLite（WAL モード）                                                      | macOS では `Database.setCustomSQLite()` で Homebrew SQLite を指定（必須、§2.1）                            |
-| キーワード検索                          | FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto) | 日本語形態素解析トークナイザー。`vaporetto_or_query()` / `vaporetto_and_query()` でクエリ生成              |
-| ベクトル検索                            | [sqlite-vec](https://github.com/asg017/sqlite-vec)                        | npm パッケージが Bun を公式サポート。`vec0` 仮想テーブル                                                   |
-| embedding                               | Ollama / LM Studio の OpenAI 互換 `/v1/embeddings`                        | 既定モデル: `qwen3-embedding:0.6b`（1024 次元・多言語）                                                    |
-| リランク                                | Ollama / LM Studio の `/v1/chat/completions`                              | 既定モデル: `dengcao/Qwen3-Reranker-0.6B`。yes/no 判定（logprobs が取れる場合は信頼度に利用）              |
-| 生成（clip 整形・タグ提案・クエリ展開） | 同上 chat completions                                                     | 既定モデル: `qwen3:4b`（32GB Mac で余裕をもって動作）                                                      |
-| ブラウザ UI                             | Bun.serve + Preact SPA（バイナリに埋め込み）                              | markdown-it + highlight.js + DOMPurify、グラフは d3-force                                                  |
-| MCP                                     | `@modelcontextprotocol/sdk`（stdio）                                      |                                                                                                            |
-| CLI 引数パース                          | Node.js ネイティブ `util.parseArgs`                                       | commander 等は使わない（バイナリサイズ削減）                                                               |
+| Layer                                            | Technology                                                                | Notes                                                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Runtime                                          | Bun (single binary via `bun build --compile`)                             | Bun ≥ 1.3 stable. Pin the build version to avoid the canary dlopen regression (oven-sh/bun#30717)              |
+| DB                                               | SQLite (WAL mode)                                                          | On macOS, point to Homebrew SQLite via `Database.setCustomSQLite()` (required, §2.1)                            |
+| Keyword search                                   | FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto) | Japanese morphological tokenizer. Queries built with `vaporetto_or_query()` / `vaporetto_and_query()`           |
+| Vector search                                    | [sqlite-vec](https://github.com/asg017/sqlite-vec)                        | The npm package officially supports Bun. `vec0` virtual table                                                   |
+| embedding                                        | OpenAI-compatible `/v1/embeddings` on Ollama / LM Studio                  | Default model: `qwen3-embedding:0.6b` (1024 dimensions, multilingual)                                           |
+| Rerank                                           | `/v1/chat/completions` on Ollama / LM Studio                              | Default model: `dengcao/Qwen3-Reranker-0.6B`. yes/no judgment (logprobs used for confidence when available)     |
+| Generation (clip formatting, tag suggestions, query expansion) | Same chat completions                                       | Default model: `qwen3:4b` (runs comfortably on a 32GB Mac)                                                      |
+| Browser UI                                       | Bun.serve + Preact SPA (embedded in the binary)                            | markdown-it + highlight.js + DOMPurify; graph via d3-force                                                      |
+| MCP                                              | `@modelcontextprotocol/sdk` (stdio)                                        |                                                                                                                 |
+| CLI argument parsing                             | Node.js native `util.parseArgs`                                            | No commander or similar (keeps the binary small)                                                                |
 
-### 2.1 SQLite 拡張のロード戦略（重要）
+### 2.1 SQLite Extension Loading Strategy (important)
 
-ネイティブ拡張（.dylib/.so/.dll）はシングルバイナリに直接埋め込んで dlopen できないため、以下の戦略をとる:
+Native extensions (.dylib/.so/.dll) cannot be embedded directly into a single binary and dlopen'd, so the strategy is:
 
-1. **sqlite-vec**: バイナリに `with { type: "file" }` で埋め込み、初回起動時に `~/.kura/lib/<kuraバージョン>/` へ展開してから `loadExtension()`。npm の `sqlite-vec-darwin-arm64` 等のプリビルドを利用
-2. **sqlite-vaporetto**: 拡張 + 形態素モデル（`bccwj-suw+unidic_pos+kana.model.zst`、大容量）は埋め込まず、**初回起動時（または `kura doctor --fix`）に GitHub Releases から `~/.kura/lib/<バージョン>/` へダウンロード**。SHA256 検証必須
-3. **macOS**: 最初の `Database` 生成前に必ず `Database.setCustomSQLite()` を呼ぶ。パスは `process.arch` で解決:
+1. **sqlite-vec**: embedded into the binary with `with { type: "file" }`, extracted to `~/.kura/lib/<kura version>/` on first launch, then loaded with `loadExtension()`. Uses prebuilt npm packages such as `sqlite-vec-darwin-arm64`
+2. **sqlite-vaporetto**: the extension + morphological model (`bccwj-suw+unidic_pos+kana.model.zst`, large) are not embedded; they are **downloaded from GitHub Releases into `~/.kura/lib/<version>/` on first launch (or via `kura doctor --fix`)**. SHA256 verification is mandatory
+3. **macOS**: always call `Database.setCustomSQLite()` before creating the first `Database`. Resolve the path via `process.arch`:
    - arm64: `/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib`
    - x64: `/usr/local/opt/sqlite/lib/libsqlite3.dylib`
-   - 存在しない場合は `kura doctor` が `brew install sqlite` を案内
+   - If missing, `kura doctor` suggests `brew install sqlite`
 
-**劣化動作（self-healing の一部）**: vaporetto がロードできない環境（例: macOS x64 はバイナリ未配布）では、FTS5 の `trigram` トークナイザーに自動フォールバックする。`meta` テーブルに使用トークナイザーを記録し、環境が変わったら `doctor` が再インデックスを提案する。
+**Degraded mode (part of self-healing)**: in environments where vaporetto cannot be loaded (e.g. macOS x64, where no binary is published), automatically fall back to FTS5's `trigram` tokenizer. The tokenizer in use is recorded in the `meta` table; if the environment changes, `doctor` suggests reindexing.
 
-### 2.2 対応プラットフォーム
+### 2.2 Supported Platforms
 
-| ターゲット              | vaporetto                   | 備考                                 |
-| ----------------------- | --------------------------- | ------------------------------------ |
-| darwin-arm64            | ✅                          | 第一級サポート（開発・主要利用環境） |
-| linux-x64 / linux-arm64 | ✅                          |                                      |
-| darwin-x64              | ❌ → trigram フォールバック | vaporetto バイナリ未配布のため       |
-| windows-x64             | ✅                          | ベストエフォート                     |
+| Target                  | vaporetto                | Notes                                                |
+| ----------------------- | ------------------------ | ---------------------------------------------------- |
+| darwin-arm64            | ✅                       | First-class support (development and primary usage environment) |
+| linux-x64 / linux-arm64 | ✅                       |                                                      |
+| darwin-x64              | ❌ → trigram fallback    | No vaporetto binary is published                     |
+| windows-x64             | ✅                       | Best effort                                          |
 
 ---
 
-## 3. データモデル
+## 3. Data Model
 
-### 3.1 スキーマ（マイグレーション v1）
+### 3.1 Schema (migration v1)
 
-`PRAGMA user_version` でスキーマバージョンを管理し、起動時に不足マイグレーションを自動適用する。
+The schema version is tracked via `PRAGMA user_version`; missing migrations are applied automatically at startup.
 
 ```sql
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- Bucket: ナレッジの大分類（例: internal / external / personal）
+-- Bucket: top-level knowledge category (e.g. internal / external / personal)
 CREATE TABLE buckets (
   id          INTEGER PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,          -- 小文字英数と - のみ
+  name        TEXT NOT NULL UNIQUE,          -- lowercase alphanumerics and - only
   description TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -89,72 +89,72 @@ INSERT INTO buckets (name, description) VALUES ('main', 'Default bucket');
 
 CREATE TABLE documents (
   id               INTEGER PRIMARY KEY,
-  doc_key          TEXT NOT NULL UNIQUE,     -- 8文字の短縮ID（内容+乱数のhash、qmd の docid 相当）
+  doc_key          TEXT NOT NULL UNIQUE,     -- 8-char short ID (hash of content + randomness; equivalent to qmd's docid)
   bucket_id        INTEGER NOT NULL REFERENCES buckets(id),
   title            TEXT NOT NULL,
   content          TEXT NOT NULL,
   content_type     TEXT NOT NULL DEFAULT 'markdown',  -- 'markdown' | 'html'
-  source_url       TEXT,                     -- clip 元 URL 等
-  content_hash     TEXT NOT NULL,            -- sha256。変更検知・再embedding判定に使用
+  source_url       TEXT,                     -- e.g. the URL a clip came from
+  content_hash     TEXT NOT NULL,            -- sha256; used for change detection and re-embedding decisions
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  last_accessed_at TEXT,                     -- get / MCP get / 検索結果本文取得で更新
+  last_accessed_at TEXT,                     -- updated by get / MCP get / fetching a search result body
   access_count     INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (bucket_id, title)                  -- タイトルは Bucket 内で一意（[[リンク]] 解決のため）
+  UNIQUE (bucket_id, title)                  -- titles are unique within a bucket (for resolving [[リンク]])
 );
 CREATE INDEX idx_documents_bucket ON documents(bucket_id);
 CREATE INDEX idx_documents_updated ON documents(updated_at);
 
--- タグ: スラッシュ区切りで階層化（'tech/db/sqlite'）。タグ自体の実体テーブル
+-- Tags: hierarchical via slash separators ('tech/db/sqlite'). The tag entity table itself
 CREATE TABLE tags (
   id   INTEGER PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE                  -- 正規化: 小文字化・前後スラッシュ除去・連続スラッシュ圧縮
+  path TEXT NOT NULL UNIQUE                  -- normalized: lowercased, leading/trailing slashes stripped, consecutive slashes collapsed
 );
 
 CREATE TABLE document_tags (
   document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   tag_id      INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-  source      TEXT NOT NULL DEFAULT 'manual', -- 'manual' | 'auto'（LLM付与）
+  source      TEXT NOT NULL DEFAULT 'manual', -- 'manual' | 'auto' (assigned by LLM)
   PRIMARY KEY (document_id, tag_id)
 );
 
--- 相互リンク: 本文中の [[タイトル]] を保存時に抽出して同期
+-- Cross-links: [[タイトル]] occurrences in the body, extracted and synced on save
 CREATE TABLE links (
   id           INTEGER PRIMARY KEY,
   source_id    INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   target_id    INTEGER REFERENCES documents(id) ON DELETE SET NULL,
-  target_title TEXT NOT NULL,                -- [[...]] の生テキスト。target_id が NULL なら未解決リンク
+  target_title TEXT NOT NULL,                -- raw text inside [[...]]; NULL target_id means an unresolved link
   UNIQUE (source_id, target_title)
 );
 CREATE INDEX idx_links_target ON links(target_id);
 CREATE INDEX idx_links_unresolved ON links(target_title) WHERE target_id IS NULL;
 
--- チャンク: embedding の単位（§5.2）
+-- Chunks: the unit of embedding (§5.2)
 CREATE TABLE chunks (
   id           INTEGER PRIMARY KEY,
   document_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   seq          INTEGER NOT NULL,
   text         TEXT NOT NULL,
-  start_offset INTEGER NOT NULL,             -- 本文中の開始位置（行番号ジャンプ用）
-  embedded_at  TEXT,                         -- NULL = embedding 未生成（バックフィル対象）
+  start_offset INTEGER NOT NULL,             -- start position within the body (for line-number jumps)
+  embedded_at  TEXT,                         -- NULL = embedding not yet generated (backfill target)
   UNIQUE (document_id, seq)
 );
 
--- FTS5: 標準テーブル（highlight/snippet を使うため contentless にしない。1万件規模なら容量は許容）
--- tokenize はセットアップ時に vaporetto / trigram を決定して構築（§2.1）
+-- FTS5: standard table (not contentless, so highlight/snippet work; storage is acceptable at ~10k docs)
+-- tokenize is decided at setup time as vaporetto / trigram and built accordingly (§2.1)
 CREATE VIRTUAL TABLE documents_fts USING fts5(
   title, content, tags,
   tokenize='vaporetto model {KURA_HOME}/lib/{ver}/bccwj-suw+unidic_pos+kana.model.zst'
 );
--- 同期はトリガーではなくリポジトリ層が同一トランザクション内で行う（tags 列の合成があるため）
+-- Sync is done by the repository layer within the same transaction, not by triggers (the tags column is synthesized)
 
--- sqlite-vec: チャンク embedding（次元数は設定から。既定 1024）
+-- sqlite-vec: chunk embeddings (dimensions come from config; default 1024)
 CREATE VIRTUAL TABLE chunks_vec USING vec0(
-  chunk_id INTEGER PRIMARY KEY,              -- chunks.id と対応
+  chunk_id INTEGER PRIMARY KEY,              -- corresponds to chunks.id
   embedding float[1024]
 );
 
--- LLM 応答キャッシュ（クエリ展開・リランクスコア・タグ提案）
+-- LLM response cache (query expansion, rerank scores, tag suggestions)
 CREATE TABLE llm_cache (
   cache_key  TEXT PRIMARY KEY,               -- sha256(purpose + model + input)
   purpose    TEXT NOT NULL,                  -- 'expand' | 'rerank' | 'tag' | 'clip'
@@ -162,32 +162,32 @@ CREATE TABLE llm_cache (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- システムメタ情報
+-- System metadata
 CREATE TABLE meta (
   key   TEXT PRIMARY KEY,                    -- 'embedding_model', 'embedding_dimensions',
-  value TEXT NOT NULL                        -- 'fts_tokenizer', 'schema_version' など
+  value TEXT NOT NULL                        -- 'fts_tokenizer', 'schema_version', etc.
 );
 ```
 
-### 3.2 整合性ルール
+### 3.2 Consistency Rules
 
-- `documents` の作成・更新・削除は必ず単一トランザクションで `documents_fts` / `links` / `document_tags` / `chunks` を同期する
-- 本文更新時: `content_hash` が変わった場合のみチャンク再分割 + `chunks_vec` の該当行削除 + `embedded_at = NULL`（embedding は遅延バックフィル、§5.3）
-- タイトル変更・新規作成時: `links.target_title` が一致する未解決リンクを自動解決し、旧タイトルへのリンクは張り替える（`kura mv` 参照）
-- embedding モデルまたは次元数の変更を検知したら（`meta` と config の不一致）、`chunks_vec` を再作成して全件再 embedding を促す（`doctor` が検出、`kura embed --all` で実行）
+- Creating, updating, or deleting a row in `documents` must sync `documents_fts` / `links` / `document_tags` / `chunks` within a single transaction
+- On body update: only when `content_hash` changed, re-chunk + delete the matching `chunks_vec` rows + set `embedded_at = NULL` (embeddings are lazily backfilled, §5.3)
+- On title change or new document creation: automatically resolve unresolved links whose `links.target_title` matches, and rewire links pointing at the old title (see `kura mv`)
+- When a change of embedding model or dimensions is detected (`meta` and config disagree), recreate `chunks_vec` and prompt a full re-embedding (`doctor` detects it; run via `kura embed --all`)
 
 ---
 
-## 4. ドキュメントの記法
+## 4. Document Syntax
 
-- 本文は Markdown（GFM）。`content_type = 'html'` の生 HTML も格納可
-- **Wiki リンク**: `[[タイトル]]` または `[[タイトル|表示テキスト]]`。保存時に `links` へ抽出。Bucket 内のタイトルと大文字小文字を無視して照合
-- **ハッシュタグ**: 本文中の `#tech/db/sqlite` 形式は保存時に `document_tags(source='manual')` として抽出（frontmatter の tags と統合）
-- **frontmatter**（import/export 時のラウンドトリップに使用）:
+- Bodies are Markdown (GFM). Raw HTML can also be stored with `content_type = 'html'`
+- **Wiki links**: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (title, or title with display text). Extracted into `links` on save. Matched case-insensitively against titles within the bucket
+- **Hashtags**: `#tech/db/sqlite`-style tags in the body are extracted on save as `document_tags(source='manual')` (merged with frontmatter tags)
+- **frontmatter** (used for round-tripping on import/export):
 
 ```markdown
 ---
-kura_key: a1b2c3d4 # export 時に付与。import 時にあれば更新扱い
+kura_key: a1b2c3d4 # assigned on export; if present on import, treated as an update
 title: SQLite の WAL モード
 bucket: main
 tags: [tech/db/sqlite, tech/performance]
@@ -201,62 +201,62 @@ updated_at: 2026-07-07T10:00:00Z
 
 ---
 
-## 5. 検索パイプライン
+## 5. Search Pipeline
 
-qmd のアーキテクチャを踏襲し、3段階の検索モードを提供する。
+Following qmd's architecture, three tiers of search modes are provided.
 
-### 5.1 検索モード
+### 5.1 Search Modes
 
-| コマンド       | 方式                    | レイテンシ目標                   | LLM 要否             |
-| -------------- | ----------------------- | -------------------------------- | -------------------- |
-| `kura search`  | FTS5 BM25 のみ          | < 100ms                          | 不要                 |
-| `kura vsearch` | ベクトル KNN のみ       | < 500ms（クエリ embedding 込み） | embedding            |
-| `kura query`   | ハイブリッド + リランク | < 5s                             | embedding + reranker |
+| Command        | Method                  | Latency target                  | LLM requirement      |
+| -------------- | ----------------------- | ------------------------------- | -------------------- |
+| `kura search`  | FTS5 BM25 only          | < 100ms                         | none                 |
+| `kura vsearch` | Vector KNN only         | < 500ms (incl. query embedding) | embedding            |
+| `kura query`   | Hybrid + rerank         | < 5s                            | embedding + reranker |
 
-`kura query` のパイプライン:
+The `kura query` pipeline:
 
 ```
-クエリ
-  ├─ (オプション --expand) LLM クエリ展開: 元クエリ(重み2) + バリアント2件。llm_cache にキャッシュ
-  ├─ FTS5: WHERE documents_fts MATCH vaporetto_or_query(?) → bm25() 上位50
-  └─ vec:  クエリ embedding → chunks_vec KNN 上位50 → ドキュメント単位に max スコアで集約
+Query
+  ├─ (optional --expand) LLM query expansion: original query (weight 2) + 2 variants. Cached in llm_cache
+  ├─ FTS5: WHERE documents_fts MATCH vaporetto_or_query(?) → top 50 by bm25()
+  └─ vec:  query embedding → chunks_vec KNN top 50 → aggregated per document by max score
   ↓
-RRF 融合（k=60、重みは config の keyword_weight / vector_weight）
-  ↓ 上位20（rerank_top_k）
-リランク: 各候補チャンクを chat completions で yes/no 判定（並列、llm_cache 利用）
+RRF fusion (k=60; weights from config keyword_weight / vector_weight)
+  ↓ top 20 (rerank_top_k)
+Rerank: yes/no judgment of each candidate chunk via chat completions (parallel, uses llm_cache)
   ↓
-最終スコア = ポジション加重ブレンド（qmd 方式）:
-  RRF 順位 1–3:  RRF 75% + rerank 25%
-  RRF 順位 4–10: RRF 60% + rerank 40%
-  RRF 順位 11+:  RRF 40% + rerank 60%
+Final score = position-weighted blend (qmd style):
+  RRF rank 1–3:  RRF 75% + rerank 25%
+  RRF rank 4–10: RRF 60% + rerank 40%
+  RRF rank 11+:  RRF 40% + rerank 60%
 ```
 
-**劣化動作**: embedding プロバイダ不通なら `query` は FTS のみ + 警告表示。reranker 不在なら RRF 結果をそのまま返す。エラーで落とさない。
+**Degraded mode**: if the embedding provider is unreachable, `query` runs FTS only and prints a warning. If the reranker is absent, the RRF results are returned as-is. Never fail with an error.
 
-### 5.2 チャンク分割（qmd 方式の簡略版)
+### 5.2 Chunking (simplified qmd approach)
 
-- 目標チャンクサイズ: **1600 文字**（日本語 ≈ 900〜1000 トークン相当）、オーバーラップ 15%
-- ブレークポイント優先度: H1(100) > H2(90) > H3(80) > コードブロック境界(80、ブロック内では分割しない) > 水平線(60) > 空行(20) > 行末(1)
-- 目標サイズからの距離によるスコア減衰: `finalScore = baseScore × (1 - (distance/400)² × 0.7)`
-- チャンク先頭に `# {title} > {直近見出し}` のコンテキストヘッダを付与してから embedding する（検索精度向上）
+- Target chunk size: **1600 characters** (日本語 ≈ 900〜1000 tokens), 15% overlap
+- Breakpoint priorities: H1(100) > H2(90) > H3(80) > code block boundary (80; never split inside a block) > horizontal rule (60) > blank line (20) > end of line (1)
+- Score decay by distance from the target size: `finalScore = baseScore × (1 - (distance/400)² × 0.7)`
+- A context header `# {title} > {nearest heading}` is prepended to each chunk before embedding (improves retrieval accuracy)
 
-### 5.3 embedding の遅延バックフィル
+### 5.3 Lazy Embedding Backfill
 
-`add` / `edit` / `clip` は embedding 生成を**ブロックしない**（`embedded_at = NULL` で保存のみ）。生成タイミング:
+`add` / `edit` / `clip` do **not block** on embedding generation (they only save with `embedded_at = NULL`). Embeddings are generated:
 
-1. `kura embed` の明示実行
-2. `vsearch` / `query` 実行時、未 embedding チャンクが存在すれば検索前に自動バックフィル（件数が多い場合は警告を出して検索は実行し、`kura embed` を案内）
-3. `kura browser` / `kura mcp` サーバー起動中のアイドル時バックグラウンド処理
+1. On an explicit `kura embed`
+2. When `vsearch` / `query` runs and un-embedded chunks exist, they are backfilled automatically before searching (if there are many, print a warning, run the search anyway, and point to `kura embed`)
+3. As idle background work while the `kura browser` / `kura mcp` server is running
 
-### 5.4 FTS クエリ規約
+### 5.4 FTS Query Conventions
 
-- vaporetto 使用時: ユーザー入力を `vaporetto_or_query()` で OR クエリ化して BM25 でランキング（`search --all` で AND）。`bm25(documents_fts, 5.0, 1.0, 3.0)` で title / content / tags に重み付け
-- trigram フォールバック時: 入力をエスケープして `"..."` フレーズ + 空白区切り OR
-- スニペットは `snippet(documents_fts, 1, '**', '**', '…', 20)` で生成
+- With vaporetto: turn user input into an OR query via `vaporetto_or_query()` and rank with BM25 (AND with `search --all`). Weight title / content / tags via `bm25(documents_fts, 5.0, 1.0, 3.0)`
+- With the trigram fallback: escape the input into a `"..."` phrase plus whitespace-separated OR terms
+- Snippets are generated with `snippet(documents_fts, 1, '**', '**', '…', 20)`
 
 ---
 
-## 6. LLM プロバイダ抽象
+## 6. LLM Provider Abstraction
 
 ```typescript
 interface LLMProvider {
@@ -267,7 +267,7 @@ interface LLMProvider {
     texts: string[],
     model: string,
     dimensions?: number,
-  ): Promise<Float32Array[]>; // POST /v1/embeddings（バッチ）
+  ): Promise<Float32Array[]>; // POST /v1/embeddings (batched)
   chat(
     messages: Message[],
     model: string,
@@ -276,198 +276,198 @@ interface LLMProvider {
 }
 ```
 
-- 解決順序（`provider = "auto"`）: Ollama（`http://localhost:11434`）→ LM Studio（`http://localhost:1234`）→ none
-- 検出結果はプロセス内キャッシュ（TTL 60秒）。`none` の場合、LLM 依存機能は明確なエラーメッセージ + `kura doctor` への誘導を返す
-- 既定モデル:
-  - embedding: `qwen3-embedding:0.6b`（1024次元。日本語精度優先の代替として `kun432/cl-nagoya-ruri-large` を config で指定可。次元数も config で追随）
+- Resolution order (`provider = "auto"`): Ollama (`http://localhost:11434`) → LM Studio (`http://localhost:1234`) → none
+- Detection results are cached in-process (TTL 60 seconds). With `none`, LLM-dependent features return a clear error message and point the user to `kura doctor`
+- Default models:
+  - embedding: `qwen3-embedding:0.6b` (1024 dimensions. `kun432/cl-nagoya-ruri-large` can be configured as a Japanese-accuracy-focused alternative; the dimension count follows in config)
   - reranker: `dengcao/Qwen3-Reranker-0.6B`
   - generation: `qwen3:4b`
-- すべて 32GB Mac で同時ロード可能なサイズ（合計 < 4GB）
+- All can be loaded simultaneously on a 32GB Mac (total < 4GB)
 
 ---
 
-## 7. CLI コマンド仕様
+## 7. CLI Command Specification
 
-グローバル規約:
+Global conventions:
 
-- すべての読み取り系コマンドは `--json` で機械可読出力（エージェント連携用）
-- ドキュメント指定子 `<doc>`: `doc_key`（8文字）、`#` プレフィックス付き key、または Bucket 内で一意なタイトル
-- `--bucket <name>`: 対象 Bucket（省略時は config の `default_bucket`。検索系は省略時全 Bucket）
-- 終了コード: 0=成功, 1=一般エラー, 2=引数エラー, 3=対象なし, 4=LLM プロバイダ利用不可
-- TTY 出力時は Markdown を ANSI レンダリング（見出し・強調・コードブロック・リスト。自前実装の軽量レンダラ）。パイプ時は生テキスト
+- Every read command supports `--json` for machine-readable output (for agent integration)
+- Document specifier `<doc>`: a `doc_key` (8 chars), a key with a `#` prefix, or a title unique within the bucket
+- `--bucket <name>`: target bucket (defaults to config `default_bucket`; search commands default to all buckets when omitted)
+- Exit codes: 0=success, 1=general error, 2=argument error, 3=not found, 4=LLM provider unavailable
+- On a TTY, Markdown is rendered as ANSI (headings, emphasis, code blocks, lists; a lightweight in-house renderer). Raw text when piped
 
-### 7.1 セットアップ・診断
+### 7.1 Setup and Diagnostics
 
 ```
-kura init                     # ~/.kura/ 初期化、拡張の展開/ダウンロード、DB 作成、config 生成
-kura doctor [--fix]           # 診断: Homebrew SQLite / 拡張ロード / vaporetto モデル / Ollama・LM Studio 到達性
-                             #       必要モデルの有無（無ければ `ollama pull ...` を案内）/ DB 整合性
-                             #       FTS・vec インデックス整合 / embedding モデル変更検知
-                             # --fix: 拡張再取得、FTS リビルド、孤立チャンク GC、未解決リンク再解決
-kura status [--json]          # 統計: Bucket別件数、タグ数、embedding カバレッジ、陳腐化ドキュメント数、DB サイズ
-kura config [get|set|list]    # 設定の読み書き（~/.kura/config.toml）
+kura init                     # initialize ~/.kura/, extract/download extensions, create the DB, generate config
+kura doctor [--fix]           # diagnostics: Homebrew SQLite / extension loading / vaporetto model / Ollama & LM Studio reachability
+                             #       presence of required models (suggests `ollama pull ...` if missing) / DB integrity
+                             #       FTS & vec index consistency / embedding model change detection
+                             # --fix: re-fetch extensions, rebuild FTS, GC orphaned chunks, re-resolve unresolved links
+kura status [--json]          # stats: doc counts per bucket, tag count, embedding coverage, stale doc count, DB size
+kura config [get|set|list]    # read/write settings (~/.kura/config.toml)
 ```
 
-### 7.2 ドキュメント CRUD
+### 7.2 Document CRUD
 
 ```
 kura add <file>... [--bucket b] [--tags t1,t2] [--title T] [--type markdown|html]
-kura add -                    # stdin から。--title 必須
+kura add -                    # from stdin; --title required
 kura get <doc> [--pretty|--raw] [--json] [--lines 50:100]
-                             # access_count++ / last_accessed_at 更新
-kura edit <doc>               # 本文を一時ファイルに書き出し $EDITOR で編集 → 保存時に再パース
+                             # increments access_count / updates last_accessed_at
+kura edit <doc>               # write the body to a temp file, edit in $EDITOR, re-parse on save
 kura rm <doc> [--force]
-kura mv <doc> <新タイトル>     # リネーム。既存の [[旧タイトル]] リンクを自動で張り替え
+kura mv <doc> <new-title>     # rename; existing [[旧タイトル]] links are rewired automatically
 kura ls [--bucket b] [--tag t] [--sort updated|created|accessed|title] [--stale] [--limit n]
-kura export [--bucket b] [--tag t] --dir <path>   # frontmatter 付き Markdown で書き出し（バックアップ兼用）
-kura import <dir|file>... [--bucket b]            # frontmatter の kura_key があれば更新、無ければ新規
+kura export [--bucket b] [--tag t] --dir <path>   # write out as Markdown with frontmatter (doubles as a backup)
+kura import <dir|file>... [--bucket b]            # update if frontmatter has kura_key, otherwise create
 ```
 
-### 7.3 検索
+### 7.3 Search
 
 ```
-kura search  "クエリ" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
-kura vsearch "クエリ" [--bucket b] [--tag t] [--limit 20] [--json]
-kura query   "クエリ" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
-kura embed   [--all]          # 未処理チャンクの embedding 生成（--all で全件強制再生成）
+kura search  "query" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
+kura vsearch "query" [--bucket b] [--tag t] [--limit 20] [--json]
+kura query   "query" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
+kura embed   [--all]          # generate embeddings for pending chunks (--all forces regeneration of everything)
 ```
 
-検索結果表示: `doc_key、タイトル、Bucket、タグ、スコア、スニペット（マッチ箇所ハイライト）`。`--json` では `{key, title, bucket, tags, score, snippet, source}` の配列。
+Search result display: `doc_key, title, bucket, tags, score, snippet (matches highlighted)`. With `--json`, an array of `{key, title, bucket, tags, score, snippet, source}`.
 
-### 7.4 タグ・リンク・Bucket
+### 7.4 Tags, Links, and Buckets
 
 ```
-kura tag ls [--tree]                # タグ一覧（--tree で階層表示 + 件数）
+kura tag ls [--tree]                # list tags (--tree shows the hierarchy + counts)
 kura tag add <doc> <tag>...
 kura tag rm <doc> <tag>...
-kura tag mv <旧path> <新path>       # リネーム/統合（子孫タグも一括移動）。統合先が既存なら merge
+kura tag mv <old-path> <new-path>   # rename/consolidate (descendant tags move together); merges if the target exists
 kura tag suggest [--doc d] [--untagged] [--apply]
-                                   # LLM がタグを提案。--apply なしは提案表示のみ（対話確認して適用）
-kura tag gc                         # どのドキュメントにも付いていないタグを削除
-kura tag audit [--apply]            # ガーデニング: 類似タグ検出（編集距離 + embedding 類似度）と統合提案、
-                                   # 表記ゆれ・単数複数の指摘。--apply で対話的に統合実行
+                                   # LLM suggests tags. Without --apply, suggestions are shown only (applied after interactive confirmation)
+kura tag gc                         # delete tags not attached to any document
+kura tag audit [--apply]            # gardening: detect similar tags (edit distance + embedding similarity) and propose merges,
+                                   # flag spelling variants and singular/plural issues. --apply merges interactively
 
-kura link ls <doc>                  # アウトリンク / バックリンク / 2ホップリンクを表示
-kura link broken                    # 未解決リンク一覧（リンク先ドキュメントが存在しない）
+kura link ls <doc>                  # show outlinks / backlinks / 2-hop links
+kura link broken                    # list unresolved links (the target document does not exist)
 
-kura bucket ls | add <name> [--desc] | rm <name> [--force] | mv <旧> <新>
+kura bucket ls | add <name> [--desc] | rm <name> [--force] | mv <old> <new>
 ```
 
-### 7.5 clip（URL 取り込み）
+### 7.5 clip (URL ingestion)
 
 ```
 kura clip <url> [--bucket b] [--tags t1,t2] [--no-llm] [--dry-run]
 ```
 
-処理フロー:
+Processing flow:
 
-1. fetch で HTML 取得（タイムアウト 30s、User-Agent 明示）
-2. `@mozilla/readability` + `linkedom` で本文抽出
-3. LLM で Markdown 整形（広告・ナビ残骸の除去、見出し構造の正規化、タイトル抽出）。`--no-llm` 時は turndown で機械変換
-4. LLM でタグ提案（既存タグ一覧をプロンプトに含め、既存タグを優先させる）
-5. `source_url` 付きで保存。同一 URL の既存ドキュメントがあれば更新確認（`--force` で上書き）
-6. `--dry-run` は保存せず整形結果を表示
+1. Fetch the HTML (30s timeout, explicit User-Agent)
+2. Extract the main content with `@mozilla/readability` + `linkedom`
+3. Format into Markdown with the LLM (strip leftover ads/navigation, normalize heading structure, extract the title). With `--no-llm`, convert mechanically with turndown
+4. LLM tag suggestions (the existing tag list is included in the prompt so existing tags are preferred)
+5. Save with `source_url`. If a document with the same URL already exists, confirm before updating (`--force` overwrites)
+6. `--dry-run` shows the formatted result without saving
 
-### 7.6 サーバー
+### 7.6 Servers
 
 ```
-kura browser [--port 7578] [--no-open]   # ブラウザ UI（§8）。起動後デフォルトブラウザを開く
-kura mcp                                  # MCP サーバー（stdio、§9）
+kura browser [--port 7578] [--no-open]   # browser UI (§8); opens the default browser after startup
+kura mcp                                  # MCP server (stdio, §9)
 ```
 
 ---
 
-## 8. ブラウザ UI（`kura browser`）
+## 8. Browser UI (`kura browser`)
 
-### 8.1 アーキテクチャ
+### 8.1 Architecture
 
-- `Bun.serve` 単一プロセス。SPA アセット（Preact + wouter）は `bun build` 成果物を `with { type: "file" }` でバイナリに埋め込み
-- ポート既定 7578。EADDRINUSE 時は +1 しながら最大 10 回リトライ
-- バインドは `127.0.0.1` のみ（外部公開しない）。認証なし
+- Single `Bun.serve` process. SPA assets (Preact + wouter) are `bun build` artifacts embedded into the binary with `with { type: "file" }`
+- Default port 7578. On EADDRINUSE, increment by 1 and retry up to 10 times
+- Binds to `127.0.0.1` only (never exposed externally). No authentication
 
 ### 8.2 REST API
 
 ```
-GET  /api/stats                          # ダッシュボード統計
+GET  /api/stats                          # dashboard statistics
 GET  /api/buckets
 GET  /api/docs?bucket=&tag=&sort=&stale=&page=&per=50
-GET  /api/docs/:key                      # 本文 + メタ + タグ。access_count++
-PUT  /api/docs/:key                      # 本文・タイトル・タグ更新（保存時に CLI と同じ再パース処理）
+GET  /api/docs/:key                      # body + metadata + tags; increments access_count
+PUT  /api/docs/:key                      # update body/title/tags (same re-parsing on save as the CLI)
 DELETE /api/docs/:key
-GET  /api/docs/:key/related              # {outlinks, backlinks, twoHop}  ※2ホップ: 共通リンク先を持つ文書
+GET  /api/docs/:key/related              # {outlinks, backlinks, twoHop}  * 2-hop: documents sharing a common link target
 GET  /api/search?q=&mode=keyword|vector|hybrid&bucket=&tag=
 GET  /api/tags?tree=1
 GET  /api/graph?bucket=&tag=             # {nodes: [{key,title,tags,degree,stale}], edges: [{source,target}]}
 ```
 
-### 8.3 画面
+### 8.3 Screens
 
-| 画面             | 内容                                                                                                                                                                                                                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ホーム           | 最近更新 / よく参照されるドキュメント / **陳腐化候補**（§10.4）/ 統計                                                                                                                                                                                                                   |
-| ドキュメント一覧 | Bucket・タグでフィルタ、ソート、ページング                                                                                                                                                                                                                                              |
-| ドキュメント詳細 | **Markdown を美しくレンダリング**（GFM・シンタックスハイライト・`[[リンク]]` はクリック可能な内部リンク化・Mermaid は遅延ロード）。HTML ドキュメントは DOMPurify でサニタイズして表示。右サイドバーに**バックリンク + 2ホップリンク**（Cosense 方式）、タグ、メタ情報（参照数・更新日） |
-| 編集             | プレーンテキストエディタ（textarea + 保存）。v1 はシンプルに                                                                                                                                                                                                                            |
-| タグブラウザ     | 階層ツリー + 件数。クリックで絞り込み                                                                                                                                                                                                                                                   |
-| ナレッジグラフ   | d3-force による force-directed グラフ。ノード=ドキュメント、エッジ=リンク。タグで色分け、陳腐化ノードは減光、クリックで詳細へ。孤立ノード（リンクなし）の表示切替                                                                                                                       |
-| 検索             | 3モード切替、スニペットハイライト                                                                                                                                                                                                                                                       |
-
----
-
-## 9. MCP サーバー（`kura mcp`）
-
-`@modelcontextprotocol/sdk` の stdio トランスポート。公開ツール:
-
-| ツール           | 引数                             | 説明                                                         |
-| ---------------- | -------------------------------- | ------------------------------------------------------------ |
-| `kura_query`     | `query, bucket?, tag?, limit?`   | ハイブリッド検索（リランク込み）。結果はスニペット + doc_key |
-| `kura_search`    | `query, bucket?, tag?, limit?`   | 高速キーワード検索                                           |
-| `kura_get`       | `key, lines?`                    | 本文取得（access_count 更新）                                |
-| `kura_add`       | `title, content, bucket?, tags?` | ドキュメント追加                                             |
-| `kura_update`    | `key, content?, title?, tags?`   | 更新                                                         |
-| `kura_list_tags` | `prefix?`                        | タグ一覧                                                     |
-| `kura_related`   | `key`                            | リンク・バックリンク・2ホップ                                |
-| `kura_status`    | —                                | 統計情報                                                     |
-
-- ツール説明文（description）にはエージェントが適切に使い分けられるよう「まず `kura_query` で検索し、`kura_get` で全文取得する」等のガイダンスを記述する
-- 各ツールの結果は Markdown 文字列で返す（MCP クライアントの表示互換性のため）
-- 設定例を `kura mcp --print-config` で出力（`claude mcp add` / `.mcp.json` 用スニペット）
+| Screen          | Content                                                                                                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Home            | Recently updated / most-referenced documents / **staleness candidates** (§10.4) / statistics                                                                                                                                                                                                |
+| Document list   | Filter by bucket and tag, sorting, paging                                                                                                                                                                                                                                                    |
+| Document detail | **Beautifully rendered Markdown** (GFM, syntax highlighting, `[[リンク]]` turned into clickable internal links, Mermaid lazy-loaded). HTML documents are sanitized with DOMPurify before display. Right sidebar shows **backlinks + 2-hop links** (Cosense style), tags, and metadata (reference count, updated date) |
+| Editor          | Plain-text editor (textarea + save). Kept simple in v1                                                                                                                                                                                                                                       |
+| Tag browser     | Hierarchical tree + counts. Click to filter                                                                                                                                                                                                                                                  |
+| Knowledge graph | Force-directed graph via d3-force. Nodes = documents, edges = links. Colored by tag, stale nodes dimmed, click to open the detail view. Toggle for showing isolated nodes (no links)                                                                                                         |
+| Search          | 3-mode toggle, snippet highlighting                                                                                                                                                                                                                                                          |
 
 ---
 
-## 10. 自己修復・ナレッジ健全性維持
+## 9. MCP Server (`kura mcp`)
 
-### 10.1 未解決リンクの自動解決
+Uses the stdio transport of `@modelcontextprotocol/sdk`. Exposed tools:
 
-ドキュメント作成・リネーム時、`links.target_id IS NULL AND target_title = <新タイトル>`（大文字小文字無視）の行を自動解決。Cosense の「先にリンクを書いておけば後からページができたとき繋がる」挙動を再現する。
+| Tool             | Arguments                        | Description                                                    |
+| ---------------- | -------------------------------- | -------------------------------------------------------------- |
+| `kura_query`     | `query, bucket?, tag?, limit?`   | Hybrid search (rerank included). Results are snippets + doc_key |
+| `kura_search`    | `query, bucket?, tag?, limit?`   | Fast keyword search                                             |
+| `kura_get`       | `key, lines?`                    | Fetch the body (updates access_count)                           |
+| `kura_add`       | `title, content, bucket?, tags?` | Add a document                                                  |
+| `kura_update`    | `key, content?, title?, tags?`   | Update                                                          |
+| `kura_list_tags` | `prefix?`                        | List tags                                                       |
+| `kura_related`   | `key`                            | Links, backlinks, 2-hop                                         |
+| `kura_status`    | —                                | Statistics                                                      |
 
-### 10.2 インデックス整合性（`kura doctor --fix`）
-
-- FTS 行数と documents 行数の不一致 → FTS リビルド
-- 孤立チャンク / 孤立 vec 行 → GC
-- `content_hash` と実際の本文の不一致 → 再計算 + 再チャンク
-- embedding モデル変更検知 → `chunks_vec` 再作成の案内
-
-### 10.3 タグ・ガーデニング（`kura tag audit` / `suggest`）
-
-- 類似タグ検出: タグ名の正規化編集距離 + タグ名 embedding の cos 類似度 > 閾値で統合候補を列挙
-- タグなし・タグ過少ドキュメントに LLM がタグ提案（既存タグ体系を最優先で再利用させるプロンプト設計）
-- 巨大タグ（付与数が全体の 30% 超）には細分化を提案
-
-### 10.4 陳腐化検出
-
-陳腐化スコア = `f(最終更新からの日数, access_count, バックリンク数)`。閾値（config `stale_days`、既定 180 日）超過かつ低参照のドキュメントを `kura ls --stale`・`kura status`・ブラウザのホームに表示。削除ではなく**レビュー促進**が目的（自動削除はしない）。
+- Tool descriptions include guidance so agents pick the right tool, e.g. "search with `kura_query` first, then fetch the full text with `kura_get`"
+- Every tool returns its result as a Markdown string (for MCP client display compatibility)
+- `kura mcp --print-config` prints configuration examples (snippets for `claude mcp add` / `.mcp.json`)
 
 ---
 
-## 11. 設定ファイル
+## 10. Self-Healing and Knowledge Health Maintenance
 
-`~/.kura/config.toml`（`kura init` が既定値で生成、`kura config` で読み書き）:
+### 10.1 Automatic Resolution of Unresolved Links
+
+On document creation or rename, automatically resolve rows matching `links.target_id IS NULL AND target_title = <new title>` (case-insensitive). This reproduces Cosense's behavior of "write the link first, and it connects once the page is created later."
+
+### 10.2 Index Consistency (`kura doctor --fix`)
+
+- FTS row count differs from the documents row count → rebuild FTS
+- Orphaned chunks / orphaned vec rows → GC
+- `content_hash` doesn't match the actual body → recompute + re-chunk
+- Embedding model change detected → suggest recreating `chunks_vec`
+
+### 10.3 Tag Gardening (`kura tag audit` / `suggest`)
+
+- Similar-tag detection: enumerate merge candidates using normalized edit distance of tag names + cosine similarity of tag-name embeddings above a threshold
+- The LLM suggests tags for untagged or under-tagged documents (prompt designed to strongly prefer reusing the existing tag taxonomy)
+- Suggest splitting oversized tags (attached to more than 30% of all documents)
+
+### 10.4 Staleness Detection
+
+Staleness score = `f(days since last update, access_count, backlink count)`. Documents exceeding the threshold (config `stale_days`, default 180 days) with low reference counts are surfaced in `kura ls --stale`, `kura status`, and the browser home screen. The goal is to **prompt review**, not deletion (nothing is ever deleted automatically).
+
+---
+
+## 11. Configuration File
+
+`~/.kura/config.toml` (generated with defaults by `kura init`, read/written via `kura config`):
 
 ```toml
 [general]
 default_bucket = "main"
-editor = ""                    # 空なら $EDITOR → vi
+editor = ""                    # empty means $EDITOR → vi
 stale_days = 180
 
 [llm]
@@ -492,54 +492,54 @@ default_limit = 10
 port = 7578
 ```
 
-環境変数: `KURA_HOME`（既定 `~/.kura`）、`KURA_DB`（DB パス個別上書き、テスト用）、`NO_COLOR`。
+Environment variables: `KURA_HOME` (default `~/.kura`), `KURA_DB` (overrides just the DB path; for tests), `NO_COLOR`.
 
 ---
 
-## 12. プロジェクト構成
+## 12. Project Layout
 
 ```
 src/
   cli/
-    index.ts             # エントリポイント（shebang #!/usr/bin/env bun）、サブコマンドディスパッチ
-    args.ts              # util.parseArgs ラッパー
-    render.ts            # Markdown → ANSI レンダラ
+    index.ts             # entry point (shebang #!/usr/bin/env bun), subcommand dispatch
+    args.ts              # util.parseArgs wrapper
+    render.ts            # Markdown → ANSI renderer
     commands/            # add.ts, get.ts, search.ts, query.ts, tag.ts, link.ts, clip.ts,
-                         # doctor.ts, browser.ts, mcp.ts, ...（1コマンド1ファイル）
+                         # doctor.ts, browser.ts, mcp.ts, ... (one file per command)
   core/
-    paths.ts             # KURA_HOME 解決
-    config.ts            # TOML 読み書き
-    db.ts                # setCustomSQLite、拡張ロード、マイグレーション実行
+    paths.ts             # KURA_HOME resolution
+    config.ts            # TOML read/write
+    db.ts                # setCustomSQLite, extension loading, migration runner
     migrations/          # 001_init.sql, ...
-    bootstrap.ts         # 拡張の展開・ダウンロード（SHA256 検証）
-    documents.ts         # CRUD リポジトリ（FTS/links/tags/chunks の同期を含む）
+    bootstrap.ts         # extension extraction/download (SHA256 verification)
+    documents.ts         # CRUD repository (including FTS/links/tags/chunks sync)
     tags.ts / links.ts / buckets.ts
     chunker.ts           # §5.2
-    wiki.ts              # [[リンク]] / #タグ のパース
+    wiki.ts              # parsing of [[リンク]] / #タグ
     search/
       keyword.ts / vector.ts / hybrid.ts / rerank.ts / expand.ts
     llm/
-      provider.ts        # インターフェース + auto 検出
+      provider.ts        # interface + auto detection
       ollama.ts / lmstudio.ts
       cache.ts           # llm_cache
     clip/
       extract.ts         # readability + linkedom
-      format.ts          # LLM 整形 / turndown フォールバック
+      format.ts          # LLM formatting / turndown fallback
     doctor.ts / stale.ts / gardening.ts
   server/
-    http.ts              # Bun.serve、ルーティング、SPA アセット配信
-    api.ts               # REST ハンドラ
-    mcp.ts               # MCP サーバー
-  client/                # Preact SPA（index.tsx, pages/, components/）
+    http.ts              # Bun.serve, routing, SPA asset serving
+    api.ts               # REST handlers
+    mcp.ts               # MCP server
+  client/                # Preact SPA (index.tsx, pages/, components/)
 scripts/
-  build-html.ts          # SPA ビルド
-  fetch-vendor.ts        # 開発用: sqlite-vaporetto / vec の取得
+  build-html.ts          # SPA build
+  fetch-vendor.ts        # dev helper: fetch sqlite-vaporetto / vec
 tests/
-  fixtures/              # 日本語テストドキュメント一式
+  fixtures/              # a set of Japanese test documents
   *.test.ts
 ```
 
-### 12.1 ビルド・配布
+### 12.1 Build and Distribution
 
 ```json
 {
@@ -554,35 +554,35 @@ tests/
 }
 ```
 
-- GitHub Actions（tag push トリガー）で `bun-darwin-arm64` / `bun-darwin-x64` / `bun-linux-x64` / `bun-linux-arm64` / `bun-windows-x64` をクロスコンパイルし、ZIP（`install.sh` 同梱、macOS quarantine 除去）を GitHub Release に添付（参考 gist の方式を踏襲）
-- `dist/` は gitignore、CI で都度ビルド。`compile` は必ず `build` を前置
-- Bun バージョンは dlopen リグレッションのない安定版に CI で固定する
+- GitHub Actions (triggered on tag push) cross-compiles `bun-darwin-arm64` / `bun-darwin-x64` / `bun-linux-x64` / `bun-linux-arm64` / `bun-windows-x64` and attaches ZIPs (bundling `install.sh`, with macOS quarantine removal) to the GitHub Release (following the approach of the referenced gist)
+- `dist/` is gitignored and rebuilt in CI every time. `compile` must always be preceded by `build`
+- Pin the Bun version in CI to a stable release free of the dlopen regression
 
 ---
 
-## 13. パフォーマンス・品質目標
+## 13. Performance and Quality Targets
 
-| 項目                                     | 目標                                                      |
-| ---------------------------------------- | --------------------------------------------------------- |
-| `kura search`（1万件）                   | < 100ms                                                   |
-| `kura vsearch`（1万件 ≈ 3〜5万チャンク） | < 500ms                                                   |
-| `kura query`（リランク込み）             | < 5s                                                      |
-| `kura add` 1件（embedding 除く）         | < 200ms                                                   |
-| 起動オーバーヘッド（拡張ロード込み）     | < 300ms                                                   |
-| バイナリサイズ                           | < 100MB（vaporetto モデルは外部ダウンロードのため含まず） |
+| Item                                        | Target                                                        |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| `kura search` (10k docs)                    | < 100ms                                                       |
+| `kura vsearch` (10k docs ≈ 30k–50k chunks)  | < 500ms                                                       |
+| `kura query` (incl. rerank)                 | < 5s                                                          |
+| `kura add`, one document (excl. embedding)  | < 200ms                                                       |
+| Startup overhead (incl. extension loading)  | < 300ms                                                       |
+| Binary size                                 | < 100MB (excludes the vaporetto model, which is downloaded separately) |
 
-## 14. テスト方針
+## 14. Testing Policy
 
-- `bun test`。DB は `KURA_DB=:memory:` またはテンポラリファイル
-- **日本語検索の回帰テスト必須**: fixtures に日本語ドキュメント（技術メモ・議事録・クリップ記事の想定サンプル 30 件程度）を用意し、トークナイズ・BM25 順位・スニペットを検証
-- LLM 依存テストはモックプロバイダ（`LLMProvider` 実装差し替え）で実行。実プロバイダ疎通は `kura doctor` 相当の統合テストとして CI ではスキップ可能に
-- チャンカー・wiki パーサ・RRF はプロパティベースで境界値テスト
-- CLI e2e: サブプロセス起動で主要フロー（init → add → search → query → export → import）を検証
+- `bun test`. The DB is `KURA_DB=:memory:` or a temporary file
+- **Japanese-search regression tests are mandatory**: prepare Japanese documents in fixtures (about 30 samples resembling tech notes, meeting minutes, and clipped articles) and verify tokenization, BM25 ranking, and snippets
+- LLM-dependent tests run against a mock provider (swapping the `LLMProvider` implementation). Real-provider connectivity is an integration test equivalent to `kura doctor` and can be skipped in CI
+- Property-based boundary tests for the chunker, the wiki parser, and RRF
+- CLI e2e: spawn subprocesses to verify the main flow (init → add → search → query → export → import)
 
-## 15. 将来拡張（v1 スコープ外、設計だけ考慮）
+## 15. Future Extensions (out of v1 scope; design only accounts for them)
 
-- ブラウザ UI でのリッチエディタ（CodeMirror）
-- `kura watch`: ディレクトリ監視での自動 import
-- 2ホップリンクのグラフへの反映、タグページ（タグ自体に説明文を持たせる Cosense 方式）
-- Homebrew tap での配布
-- クエリ展開モデルのファインチューニング（qmd 方式）
+- Rich editor in the browser UI (CodeMirror)
+- `kura watch`: automatic import via directory watching
+- Reflecting 2-hop links in the graph; tag pages (Cosense style, giving tags their own description text)
+- Distribution via a Homebrew tap
+- Fine-tuning the query-expansion model (qmd style)
