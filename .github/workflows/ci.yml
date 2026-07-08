@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # dlopen リグレッション（oven-sh/bun#30717）を避けるため安定版に固定
+          bun-version: "1.3.11"
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun test
