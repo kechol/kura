@@ -1,0 +1,91 @@
+#!/usr/bin/env bun
+import { KURA_VERSION } from "../core/paths";
+import { EXIT, LLMUnavailableError, NotFoundError, UsageError } from "./args";
+
+interface CommandModule {
+  summary: string;
+  usage: string;
+  run(argv: string[]): Promise<number> | number;
+}
+
+interface CommandDef {
+  summary: string;
+  load(): Promise<CommandModule>;
+}
+
+/**
+ * サブコマンドレジストリ。起動オーバーヘッド削減のためコマンド本体は遅延 import。
+ */
+const commands: Record<string, CommandDef> = {
+  config: {
+    summary: "Read and write ~/.kura/config.toml",
+    load: () => import("./commands/config"),
+  },
+};
+
+function printHelp(): void {
+  const lines = [
+    `kura ${KURA_VERSION} — local knowledge management CLI`,
+    "",
+    "Usage: kura <command> [options]",
+    "",
+    "Commands:",
+    ...Object.entries(commands).map(([name, def]) => `  ${name.padEnd(10)} ${def.summary}`),
+    "",
+    "Global options:",
+    "  --json       Machine-readable output (read commands)",
+    "  --help, -h   Show help",
+    "  --version    Show version",
+  ];
+  console.log(lines.join("\n"));
+}
+
+export async function main(argv: string[]): Promise<number> {
+  const [name, ...rest] = argv;
+
+  if (!name || name === "help" || name === "--help" || name === "-h") {
+    printHelp();
+    return EXIT.OK;
+  }
+  if (name === "--version" || name === "-v" || name === "version") {
+    console.log(KURA_VERSION);
+    return EXIT.OK;
+  }
+
+  const def = commands[name];
+  if (!def) {
+    console.error(`kura: unknown command '${name}'\nRun 'kura --help' for usage.`);
+    return EXIT.USAGE;
+  }
+
+  const mod = await def.load();
+  if (rest.includes("--help") || rest.includes("-h")) {
+    console.log(mod.usage);
+    return EXIT.OK;
+  }
+
+  try {
+    return await mod.run(rest);
+  } catch (e) {
+    if (e instanceof UsageError) {
+      console.error(`kura ${name}: ${e.message}`);
+      console.error(mod.usage);
+      return EXIT.USAGE;
+    }
+    if (e instanceof NotFoundError) {
+      console.error(`kura ${name}: ${e.message}`);
+      return EXIT.NOT_FOUND;
+    }
+    if (e instanceof LLMUnavailableError) {
+      console.error(`kura ${name}: ${e.message}`);
+      console.error("Run 'kura doctor' to check LLM provider availability.");
+      return EXIT.NO_LLM;
+    }
+    console.error(`kura ${name}: ${e instanceof Error ? e.message : String(e)}`);
+    return EXIT.ERROR;
+  }
+}
+
+if (import.meta.main) {
+  process.exit(await main(process.argv.slice(2)));
+}
