@@ -5,8 +5,13 @@ on:
   push:
     branches: [main]
 
+# Read-only by default; no job here writes to the repo.
+permissions:
+  contents: read
+
 jobs:
-  test:
+  check:
+    name: typecheck + lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +21,29 @@ jobs:
           bun-version: "1.3.11"
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun test
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # macOS needs the Homebrew SQLite keg — Apple's bundled SQLite cannot
+      # load the sqlite-vec / sqlite-vaporetto extensions (docs: native-extensions.md).
+      - if: runner.os == 'macOS'
+        run: brew install sqlite
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - run: bun install --frozen-lockfile
+      # The real vaporetto download → SHA256 → dlopen → tokenization test runs
+      # on linux-x64 only (KURA_TEST_DOWNLOAD); elsewhere the suite runs offline.
+      - if: runner.os == 'Linux'
+        run: bun test
         env:
-          # Enable the real vaporetto download + load integration test (linux-x64)
           KURA_TEST_DOWNLOAD: "1"
+      - if: runner.os != 'Linux'
+        run: bun test

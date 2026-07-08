@@ -1,0 +1,233 @@
+/*
+ * kura docs theme — indigo accents over Starlight's neutral grays, with
+ * gentle rounded corners and subtle gradients.
+ *
+ * Starlight inverts the semantic meaning of `--sl-color-white`,
+ * `--sl-color-black`, and `--sl-color-gray-1..6` between light and dark
+ * themes. Overriding the neutral grays would need to flip per theme, so this
+ * file leaves the neutrals alone and only overrides the accent palette plus
+ * typography and component shapes.
+ */
+
+/* ----------------------------------------------------------------
+ * Shared tokens (typography, radii, shadows)
+ * ---------------------------------------------------------------- */
+
+:root {
+  --sl-font:
+    'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', 'Hiragino Sans', Arial, sans-serif;
+  --sl-font-system: var(--sl-font);
+  --sl-font-mono:
+    ui-monospace, 'SFMono-Regular', Menlo, Monaco, 'JetBrains Mono', 'Cascadia Code', 'Roboto Mono',
+    Consolas, monospace;
+  --sl-font-system-mono: var(--sl-font-mono);
+
+  --sl-text-h1: 2rem;
+  --sl-text-h2: 1.5rem;
+  --sl-text-h3: 1.25rem;
+
+  --kura-radius-sm: 8px;
+  --kura-radius-md: 12px;
+  --kura-radius-lg: 16px;
+}
+
+/* ----------------------------------------------------------------
+ * Accent palette — indigo
+ * ---------------------------------------------------------------- */
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e0e7ff;
+  --sl-color-accent: #4f46e5;
+  --sl-color-accent-high: #3730a3;
+  --kura-shadow-soft: 0 1px 2px hsl(245 40% 15% / 5%), 0 4px 16px hsl(245 40% 15% / 7%);
+  --kura-shadow-lift: 0 2px 4px hsl(245 40% 15% / 7%), 0 8px 24px hsl(245 40% 15% / 11%);
+
+  /* Soft near-black for headings — pure #000 is too heavy under bold weights. */
+  --kura-text-strong: #1e1b2e;
+}
+
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #1e1b4b;
+  --sl-color-accent: #a5b4fc;
+  --sl-color-accent-high: #c7d2fe;
+  --kura-shadow-soft: 0 1px 2px hsl(0 0% 0% / 30%), 0 4px 16px hsl(0 0% 0% / 25%);
+  --kura-shadow-lift: 0 2px 4px hsl(0 0% 0% / 35%), 0 8px 24px hsl(0 0% 0% / 35%);
+
+  --kura-text-strong: var(--sl-color-white);
+}
+
+/* ----------------------------------------------------------------
+ * Page-wide polish
+ * ---------------------------------------------------------------- */
+
+.site-title {
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--sl-color-accent);
+  text-transform: lowercase;
+  gap: 0.625rem;
+}
+
+.sl-markdown-content {
+  line-height: 1.7;
+}
+
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--kura-text-strong);
+}
+
+.content-panel h1 {
+  color: var(--kura-text-strong);
+}
+
+.pagination-links a .link-title,
+footer.sl-flex .meta a {
+  color: var(--kura-text-strong);
+}
+
+.sl-markdown-content a:not(:hover) {
+  text-decoration-color: var(--sl-color-accent-low);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+}
+
+:root[data-theme='light'] body {
+  background-image: radial-gradient(
+    ellipse 1200px 600px at 50% -200px,
+    color-mix(in srgb, var(--sl-color-accent) 8%, transparent),
+    transparent 60%
+  );
+  background-color: var(--sl-color-bg);
+  background-repeat: no-repeat;
+}
+
+:root[data-theme='dark'] body {
+  background-image: radial-gradient(
+    ellipse 1200px 600px at 50% -200px,
+    color-mix(in srgb, var(--sl-color-accent) 6%, transparent),
+    transparent 60%
+  );
+  background-color: var(--sl-color-bg);
+  background-repeat: no-repeat;
+}
+
+/* ----------------------------------------------------------------
+ * Component overrides — rounded corners + soft gradients
+ * ---------------------------------------------------------------- */
+
+.sl-link-button {
+  border-radius: var(--kura-radius-sm);
+  font-weight: 500;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
+}
+
+.sl-link-button.primary {
+  background-image: linear-gradient(
+    135deg,
+    var(--sl-color-accent) 0%,
+    color-mix(in srgb, var(--sl-color-accent) 75%, var(--sl-color-accent-high)) 100%
+  );
+  border-color: transparent;
+  box-shadow: var(--kura-shadow-soft);
+}
+
+.sl-link-button.primary:hover {
+  filter: brightness(1.05);
+  box-shadow: var(--kura-shadow-lift);
+  transform: translateY(-1px);
+}
+
+.sl-link-button.secondary {
+  border-radius: var(--kura-radius-sm);
+}
+
+.card {
+  border-radius: var(--kura-radius-md);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sl-color-accent-low) 35%, var(--sl-color-bg)) 0%,
+    var(--sl-color-bg) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--sl-color-gray-3) 40%, transparent);
+  box-shadow: var(--kura-shadow-soft);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--kura-shadow-lift);
+}
+
+.expressive-code .frame,
+.expressive-code .frame pre {
+  border-radius: var(--kura-radius-md) !important;
+}
+
+.expressive-code .frame {
+  box-shadow: var(--kura-shadow-soft);
+}
+
+.sl-markdown-content code:not(pre code) {
+  border-radius: 4px;
+}
+
+.starlight-aside {
+  border-radius: var(--kura-radius-md);
+  border-left-width: 3px;
+}
+
+.sl-flex input[type='search'],
+[name='search'] {
+  border-radius: var(--kura-radius-sm);
+}
+
+.sidebar-content nav ul li a,
+.sidebar-content nav ul li > details > summary,
+nav.sidebar a {
+  border-radius: 6px;
+}
+
+.sl-markdown-content table {
+  /* Starlight forces `display: block; overflow: auto` for horizontal scroll on
+   * narrow viewports, which breaks CSS table layout. Force proper table
+   * display back. */
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--kura-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--sl-color-gray-5);
+}
+
+.sl-markdown-content table :is(th, td) {
+  padding-block: 0.6rem;
+  padding-inline: 1rem;
+  line-height: 1.55;
+  vertical-align: top;
+}
+
+.sl-markdown-content table :is(th:first-child, td:first-child) {
+  padding-inline-start: 1rem;
+}
+
+.sl-markdown-content table thead th {
+  background: color-mix(in srgb, var(--sl-color-accent-low) 35%, transparent);
+  font-weight: 600;
+}
+
+.sl-markdown-content table :is(th, td) > code {
+  white-space: nowrap;
+}
+
+starlight-tabs [role='tabpanel'] {
+  border-radius: var(--kura-radius-sm);
+}

@@ -1,0 +1,61 @@
+---
+title: kura
+description: Markdown/HTML ドキュメントを SQLite に格納し、日本語対応ハイブリッド検索で人間と AI エージェントの双方から引けるローカルナレッジ管理 CLI。
+---
+
+import { LinkButton, Card, CardGrid } from '@astrojs/starlight/components';
+
+`kura` は、Markdown / HTML ドキュメントを単一のローカル SQLite
+ファイルに格納し、人間と AI エージェントの双方から検索できるように
+する CLI です。日本語テキストに最適化したハイブリッド検索を備えます。
+フォルダも、クラウドも、アカウントも要りません。
+
+<LinkButton href="/kura/ja/quick-start/" icon="right-arrow">
+  クイックスタート（5 分）
+</LinkButton>
+<LinkButton href="/kura/ja/concept/" variant="secondary" icon="open-book">
+  コンセプトを読む
+</LinkButton>
+
+## なぜ kura か
+
+メモは、どんなフォルダ階層でも追いつかない速さで溜まっていきます。
+kura は階層そのものを捨てました。ドキュメントは **Bucket**、
+**階層タグ**（`tech/db/sqlite`）、**相互リンク**（`[[タイトル]]`）で
+自ずと整理されます。Cosense 方式です。リンクを先に書いておけば、
+対象ページが後から作られた瞬間に自動でつながります。
+
+難しいのは検索の方で、kura はそこに力を入れています。日本語のための
+ハイブリッド検索パイプライン——形態素解析による FTS インデックス、
+ローカル embedding によるセマンティック検索、ローカル LLM による
+リランク——を、すべて 1 つの SQLite データベースの中で回します。
+
+<CardGrid>
+  <Card title="日本語対応検索" icon="magnifier">
+    キーワード検索（FTS5 + sqlite-vaporetto 形態素解析）、セマンティック
+    検索（sqlite-vec による KNN）、ローカル LLM リランク付きの
+    ハイブリッド検索。
+  </Card>
+  <Card title="ローカル完結" icon="laptop">
+    データは `~/.kura/kura.db` の単一 SQLite ファイル。Ollama や
+    LM Studio は自動検出。無くてもキーワード検索は動きます。
+  </Card>
+  <Card title="自己組織化" icon="list-format">
+    階層フォルダなし。Bucket・階層タグ・`[[相互リンク]]` で、
+    どこにも仕舞い込まずにドキュメントをつなぎます。
+  </Card>
+  <Card title="AI エージェント向け" icon="seti:default">
+    MCP サーバー（`kura mcp`）が検索と CRUD をツールとして公開し、
+    すべての読み取りコマンドは `--json` に対応します。
+  </Card>
+</CardGrid>
+
+## 優雅な劣化
+
+kura はモデルを必須にしません。LLM プロバイダに到達できない状態でも、
+セマンティック検索・リランク・clip 整形・タグ提案・クエリ展開は
+それぞれ警告を出してフォールバックし、キーワード検索・ドキュメント
+CRUD・リンク・タグは動き続けます。飛行機の中でも使えます。失われるのは
+本当にモデルを必要とする機能だけです。
+
+準備ができたら、[クイックスタート](/kura/ja/quick-start/) へ。

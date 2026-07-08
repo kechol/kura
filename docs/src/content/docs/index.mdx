@@ -1,0 +1,63 @@
+---
+title: kura
+description: A local knowledge management CLI backed by SQLite, with Japanese-aware hybrid search for both humans and AI agents.
+---
+
+import { LinkButton, Card, CardGrid } from '@astrojs/starlight/components';
+
+`kura` stores your Markdown and HTML documents in a single local
+SQLite file and makes them searchable by both humans and AI agents —
+with hybrid search tuned for Japanese text. No folders, no cloud, no
+account.
+
+<LinkButton href="/kura/quick-start/" icon="right-arrow">
+  Quick Start (5 min)
+</LinkButton>
+<LinkButton href="/kura/concept/" variant="secondary" icon="open-book">
+  Read the concept
+</LinkButton>
+
+## Why kura
+
+Notes pile up faster than any folder hierarchy can keep them tidy.
+kura drops the hierarchy entirely: documents organize themselves
+through **buckets**, **hierarchical tags** (`tech/db/sqlite`), and
+**wiki links** (`[[Title]]`) — the Cosense model. Write a link before
+the target exists and it connects automatically the moment that page
+is created.
+
+Retrieval is the hard part, and kura leans into it with a hybrid
+search pipeline built for Japanese: a morphological FTS index,
+semantic vector search over local embeddings, and local-LLM
+reranking — all inside one SQLite database.
+
+<CardGrid>
+  <Card title="Japanese-aware search" icon="magnifier">
+    Keyword search (FTS5 + the sqlite-vaporetto morphological
+    tokenizer), semantic search (sqlite-vec KNN over local
+    embeddings), and hybrid search with local-LLM reranking.
+  </Card>
+  <Card title="Fully local" icon="laptop">
+    Your data lives in one SQLite file at `~/.kura/kura.db`. Ollama
+    and LM Studio are auto-detected; without them, keyword search
+    still works.
+  </Card>
+  <Card title="Self-organizing" icon="list-format">
+    No folder tree. Buckets, hierarchical tags, and `[[wiki links]]`
+    keep documents connected without filing them anywhere.
+  </Card>
+  <Card title="Built for AI agents" icon="seti:default">
+    An MCP server (`kura mcp`) exposes search and CRUD as tools, and
+    every read command speaks `--json`.
+  </Card>
+</CardGrid>
+
+## Graceful degradation
+
+kura never hard-requires a model. With no LLM provider reachable,
+semantic search, reranking, clip formatting, tag suggestion, and
+query expansion each warn and fall back — while keyword search,
+document CRUD, links, and tags keep working. Run it on an airplane;
+you lose only the features that genuinely need a model.
+
+Ready? Head to the [Quick Start](/kura/quick-start/).

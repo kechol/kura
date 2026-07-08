@@ -1,7 +1,9 @@
 node_modules/
 dist/
 tmp/
-release/
+# anchored to repo root so it ignores the build output dir, not
+# .claude/skills/release/ (the release skill)
+/release/
 vendor/
 .output/
 /kura

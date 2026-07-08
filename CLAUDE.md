@@ -63,6 +63,20 @@ Topic docs live in `.claude/docs/` — one document per subsystem, indexed in
   history; where the implementation diverges from it, the doc records the
   divergence under "Deviations from SPEC" — don't silently rewrite history.
 
+Two more agent-facing surfaces sit next to the docs:
+
+- **`.claude/rules/`** — prescriptive rules Claude Code auto-loads each
+  session (or when a matching file is opened). `.claude/docs/` is
+  descriptive (what the system *is*); `.claude/rules/` is prescriptive
+  (what you may not change). When a rule and a doc disagree, the rule
+  wins. Indexed in `.claude/rules/README.md`.
+- **`.claude/skills/`** — repo skills. `/docs` syncs the documentation
+  with the code (read-only on code, never commits); `/release` opens a
+  version-bump PR. User docs live under `docs/` (Astro Starlight,
+  English root + Japanese `ja/` mirror), published to
+  <https://kechol.github.io/kura/>; a Japanese intro deck lives in
+  `docs/marp/`.
+
 ## Language conventions
 
 - Code comments, docs, commit messages, CLI output, and MCP tool descriptions

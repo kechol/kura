@@ -1,0 +1,81 @@
+---
+title: Quick Start
+description: Install kura, initialize your knowledge base, and run your first searches in five minutes.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Five minutes from zero to a searchable, local knowledge base.
+
+<Steps>
+
+1. **Install kura.**
+
+   On macOS with [Homebrew](https://brew.sh/):
+
+   ```sh
+   brew install kechol/tap/kura
+   ```
+
+   The formula pulls in the Homebrew SQLite kura needs to load its
+   search extensions. On other platforms, grab the archive for your
+   system from [Releases](https://github.com/kechol/kura/releases) —
+   see [Installation](/kura/installation/) for the details.
+
+2. **Initialize the store.**
+
+   ```sh
+   kura init      # create ~/.kura, download the tokenizer, create the DB
+   kura doctor    # verify SQLite, extensions, LLM providers, DB integrity
+   ```
+
+   `kura init` downloads the Japanese morphological tokenizer
+   (sqlite-vaporetto, ~6.5 MB) from GitHub Releases with SHA256
+   verification. On platforms it doesn't support, kura falls back to a
+   trigram tokenizer automatically.
+
+3. **Add a few documents.**
+
+   ```sh
+   kura add notes/sqlite-wal.md --tags tech/db/sqlite
+   echo "# Today's note" | kura add - --title "Today's note"
+   kura clip https://example.com/article   # capture a web page, cleaned up by the LLM
+   ```
+
+4. **Search three ways.**
+
+   ```sh
+   kura search "WAL checkpoint"            # keyword (FTS5 BM25, < 100ms)
+   kura vsearch "how writes stay readable" # semantic (vector KNN)
+   kura query "SQLite concurrency"         # hybrid + rerank (best quality)
+   ```
+
+   Keyword search always works. `vsearch` and `query` use a local LLM
+   when one is available and degrade gracefully when it isn't — see
+   [Search](/kura/search/).
+
+5. **Read, link, and browse.**
+
+   ```sh
+   kura get "Today's note"      # by doc key, #key, or title
+   kura link ls "Today's note"  # outlinks, backlinks, 2-hop links
+   kura browser                 # http://127.0.0.1:7578 — viewer, editor, graph
+   ```
+
+</Steps>
+
+## Notation inside documents
+
+- `[[Title]]` / `[[Title|display text]]` — wiki links. Write the link
+  first and it connects automatically when the target page is created
+  later.
+- `#tech/db/sqlite` — hierarchical tags, extracted when you save.
+
+## Next steps
+
+- [Concept](/kura/concept/) — why kura drops the folder hierarchy.
+- [Search](/kura/search/) — how the three search modes work.
+- [AI Agents (MCP)](/kura/mcp/) — wire kura into Claude Code and other
+  agents.
+- [Configuration](/kura/configuration/) — models, buckets, and
+  environment variables.

@@ -1,0 +1,81 @@
+---
+title: クイックスタート
+description: kura をインストールし、ナレッジベースを初期化して、最初の検索を 5 分で実行します。
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+ゼロから、検索できるローカルナレッジベースまで 5 分。
+
+<Steps>
+
+1. **kura をインストールする。**
+
+   macOS で [Homebrew](https://brew.sh/) を使う場合:
+
+   ```sh
+   brew install kechol/tap/kura
+   ```
+
+   この formula は、kura が検索拡張をロードするために必要な
+   Homebrew の SQLite も一緒に入れます。ほかのプラットフォームでは
+   [Releases](https://github.com/kechol/kura/releases) から対象の
+   アーカイブを取得してください。詳細は
+   [インストール](/kura/ja/installation/) にあります。
+
+2. **ストアを初期化する。**
+
+   ```sh
+   kura init      # ~/.kura の作成、トークナイザーのダウンロード、DB 作成
+   kura doctor    # SQLite / 拡張 / LLM プロバイダ / DB 整合性を診断
+   ```
+
+   `kura init` は日本語形態素解析トークナイザー（sqlite-vaporetto、
+   約 6.5MB）を GitHub Releases から SHA256 検証付きで取得します。
+   未対応のプラットフォームでは trigram トークナイザーへ自動的に
+   フォールバックします。
+
+3. **ドキュメントを追加する。**
+
+   ```sh
+   kura add notes/sqlite-wal.md --tags tech/db/sqlite
+   echo "# 今日のメモ" | kura add - --title "今日のメモ"
+   kura clip https://example.com/article   # Web ページを LLM で整形して取り込み
+   ```
+
+4. **3 通りで検索する。**
+
+   ```sh
+   kura search "WAL チェックポイント"        # キーワード（FTS5 BM25、< 100ms）
+   kura vsearch "書き込み中も読める仕組み"    # セマンティック（ベクトル KNN）
+   kura query "SQLite の並行性"               # ハイブリッド + リランク（最高精度）
+   ```
+
+   キーワード検索は常に動きます。`vsearch` と `query` は、ローカル
+   LLM があればそれを使い、無ければ優雅にフォールバックします。詳しくは
+   [検索](/kura/ja/search/) を参照してください。
+
+5. **閲覧・リンク・ブラウズ。**
+
+   ```sh
+   kura get "今日のメモ"        # doc key / #key / タイトルで指定
+   kura link ls "今日のメモ"    # アウトリンク・バックリンク・2 ホップ
+   kura browser                 # http://127.0.0.1:7578 — 閲覧・編集・グラフ
+   ```
+
+</Steps>
+
+## 本文中の記法
+
+- `[[タイトル]]` / `[[タイトル|表示名]]` — 相互リンク。先にリンクを
+  書いておけば、後から対象ページを作ったときに自動でつながります。
+- `#tech/db/sqlite` — 階層タグ。保存時に抽出されます。
+
+## 次のステップ
+
+- [コンセプト](/kura/ja/concept/) — なぜ kura はフォルダ階層を
+  捨てるのか。
+- [検索](/kura/ja/search/) — 3 つの検索モードの仕組み。
+- [AI エージェント (MCP)](/kura/ja/mcp/) — Claude Code などの
+  エージェントと連携する。
+- [設定](/kura/ja/configuration/) — モデル・Bucket・環境変数。

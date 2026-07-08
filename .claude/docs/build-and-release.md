@@ -2,8 +2,10 @@
 
 > Covers SPEC §12 (§12.1). Key sources: `package.json`, `scripts/build-html.ts`,
 > `scripts/compile.ts`, `scripts/fetch-vendor.ts`, `scripts/package-release.ts`,
-> `scripts/install.sh`, `scripts/install.ps1`, `src/generated/embedded.ts`,
-> `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
+> `scripts/gen-formula.ts`, `scripts/install.sh`, `scripts/install.ps1`,
+> `src/generated/embedded.ts`, `.github/workflows/ci.yml`,
+> `.github/workflows/release.yml`, `.github/workflows/docs.yml`,
+> `.github/workflows/dependabot-auto-merge.yml`, `.github/dependabot.yml`.
 
 ## Development commands
 
@@ -16,7 +18,8 @@
 | `bun run build:client` | SPA build via `scripts/build-html.ts` into `dist/` |
 | `bun run compile` | Single binary for the current platform via `scripts/compile.ts` |
 | `bun run scripts/fetch-vendor.ts [targets...]` | Prefetch sqlite-vec prebuilts into `vendor/` (all five targets when omitted) |
-| `bun run scripts/package-release.ts <tag>` | Zip compiled binaries + installers (expects `release/<bun-target>/` populated) |
+| `bun run scripts/package-release.ts` | Archive compiled binaries + installers into `release/kura-<platform>.{tar.gz,zip}` and write `release/SHA256SUMS.txt` (expects `release/<bun-target>/` populated) |
+| `bun run scripts/gen-formula.ts <tag>` | Generate the Homebrew formula (`release/kura.rb`) from `release/SHA256SUMS.txt` for the given tag |
 
 `dist/`, `vendor/`, `release/`, and the root `kura` binary are all gitignored
 and reproducible; nothing generated is committed.
@@ -98,19 +101,35 @@ only**; sqlite-vaporetto is downloaded at *runtime* by
 
 ## Release workflow (`.github/workflows/release.yml`)
 
-Triggered by pushing a `v*` tag; runs on `ubuntu-latest` with
-`contents: write`:
+Triggered by pushing a `v[0-9]+.[0-9]+.[0-9]+*` tag (the maintainer's manual
+step after the `/release` bump PR merges); runs on `ubuntu-latest`, with the
+`release` job granted `contents: write`:
 
 1. Checkout + `setup-bun` pinned to **1.3.11** (see CI below) +
    `bun install --frozen-lockfile`.
 2. **Cross-compile all five targets** in a loop:
    `bun run scripts/compile.ts --target <t> --outfile release/<t>/kura`
    (Bun emits `kura.exe` for `bun-windows-x64`).
-3. **Package** — `scripts/package-release.ts <tag>` copies the matching
-   installer (`install.sh`, or `install.ps1` for windows) next to each binary
-   and zips them as `release/kura-<tag>-<platform>.zip` (platform = bun
-   target minus the `bun-` prefix).
-4. **Publish** — `gh release create <tag> --generate-notes release/*.zip`.
+3. **Package** — `scripts/package-release.ts` stages each binary with the
+   matching installer (`install.sh` / `install.ps1`) plus the licenses and
+   README, then archives them as `release/kura-<platform>.tar.gz`
+   (`.zip` for windows; platform = bun target minus the `bun-` prefix, binary
+   at the archive root) and writes `release/SHA256SUMS.txt`.
+4. **Formula** — `scripts/gen-formula.ts <tag>` reads `SHA256SUMS.txt` and
+   emits `release/kura.rb` pointing at the release download URLs.
+5. **Publish** — `gh release create <tag> --generate-notes` with the archives,
+   `SHA256SUMS.txt`, and `kura.rb` (marked `--prerelease` when the tag has a
+   `-` suffix, e.g. `v0.2.0-rc.1`).
+6. **Homebrew tap** — for a stable tag, and only when the `HOMEBREW_TAP_TOKEN`
+   secret is configured, the workflow clones `kechol/homebrew-tap`, copies
+   `kura.rb` to `Formula/kura.rb`, and pushes. The token is a fine-grained PAT
+   with contents-write on the tap repo. Without the secret the step is skipped
+   (not failed), so a fork without it still publishes a normal GitHub Release.
+
+The formula is `kura` (`brew install kechol/tap/kura`) and declares
+`depends_on "sqlite"` — on macOS kura loads SQLite extensions, which Apple's
+bundled SQLite cannot do, so it needs the Homebrew keg at
+`/opt/homebrew/opt/sqlite` (docs: native-extensions.md).
 
 ### Installers
 
@@ -125,16 +144,40 @@ Triggered by pushing a `v*` tag; runs on `ubuntu-latest` with
 
 ## CI (`.github/workflows/ci.yml`)
 
-Runs on every PR and push to `main`: `bun install --frozen-lockfile`,
-`bun run check`, then `bun test` with **`KURA_TEST_DOWNLOAD=1`** so the real
-vaporetto download → SHA256 → dlopen → Japanese tokenization integration test
-in `tests/db.test.ts` executes on linux-x64.
+Runs on every PR and push to `main`:
 
-Both workflows pin **Bun 1.3.11**: newer/canary Bun builds hit a `dlopen`
+- **`check`** job (ubuntu): `bun install --frozen-lockfile` + `bun run check`
+  (`tsc --noEmit` + `biome check src`).
+- **`test`** job, matrix `ubuntu-latest` × `macos-latest`. On Linux, `bun test`
+  runs with **`KURA_TEST_DOWNLOAD=1`** so the real vaporetto download → SHA256
+  → dlopen → Japanese tokenization integration test in `tests/db.test.ts`
+  executes on linux-x64. On macOS the job first runs `brew install sqlite`
+  (extension loading needs the Homebrew keg) and then a plain offline
+  `bun test`, exercising the macOS `setupSqlite()` path.
+
+All Bun jobs pin **Bun 1.3.11**: newer/canary Bun builds hit a `dlopen`
 regression (oven-sh/bun#30717) that breaks `loadExtension()`, which would
 take down every native-extension code path. Bump the pin only after
 verifying extension loading on the new version (SPEC §2 calls this out as a
 hard requirement).
+
+## Docs site (`.github/workflows/docs.yml`)
+
+The Astro Starlight site under `docs/` (English root + Japanese `ja/` mirror)
+builds on every `main` push (smoke test) and on `vX.Y.Z` tag pushes. Pages
+deployment fires only for tag refs (and a manual `workflow_dispatch` with
+`publish=true`), so the published site at
+`https://kechol.github.io/kura/` tracks tagged releases, not the rolling
+`main` branch. The site is built with Bun (`bun install` + `bun run build`,
+non-frozen — no lockfile is committed for the docs site).
+
+## Dependency automation
+
+`.github/dependabot.yml` watches three ecosystems (github-actions at the root,
+npm at `/` for the Bun deps, npm at `/docs` for the Astro site).
+`.github/workflows/dependabot-auto-merge.yml` enables auto-merge (squash) for
+patch / minor and security bumps once the required CI checks pass; major bumps
+fall through to a human reviewer.
 
 ## Binary size
 

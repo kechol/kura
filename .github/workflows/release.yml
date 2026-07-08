@@ -1,15 +1,28 @@
 name: Release
 
+# Triggered by pushing a `vX.Y.Z` tag (the maintainer's manual step after the
+# `/release` bump PR merges). Cross-compiles every target, publishes a GitHub
+# Release with the archives + SHA256SUMS, and — for stable tags with the tap
+# token configured — pushes the generated Homebrew formula to kechol/homebrew-tap.
+# See docs: build-and-release.md.
+
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
+# Minimum privilege: the release job only needs to write this repo's releases.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      # Job-level so the "Publish Homebrew formula" step's `if:` can read it.
+      # Empty when the secret is unset → the formula push is skipped, not failed.
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -17,17 +30,61 @@ jobs:
           # Pinned to a stable version to avoid the dlopen regression (oven-sh/bun#30717)
           bun-version: "1.3.11"
       - run: bun install --frozen-lockfile
+
       - name: Cross-compile all targets
         run: |
           for target in bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64 bun-windows-x64; do
             bun run scripts/compile.ts --target "$target" --outfile "release/$target/kura"
           done
-      - name: Package ZIPs with installers
+
+      - name: Package archives + checksums
+        run: bun run scripts/package-release.ts
+
+      - name: Generate Homebrew formula
         env:
           TAG: ${{ github.ref_name }}
-        run: bun run scripts/package-release.ts "$TAG"
+        run: bun run scripts/gen-formula.ts "$TAG" --out release/kura.rb
+
+      - name: Detect prerelease
+        id: rel
+        # A hyphen in the version (e.g. v0.2.0-rc.1) marks a prerelease: it is
+        # published to GitHub Releases but must not update the stable formula.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --generate-notes release/*.zip
+          PRERELEASE: ${{ steps.rel.outputs.prerelease }}
+        run: |
+          flags=(--generate-notes)
+          [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}" \
+            release/kura-*.tar.gz release/kura-*.zip release/SHA256SUMS.txt release/kura.rb
+
+      - name: Publish Homebrew formula
+        # Stable releases only, and only when the tap token is configured.
+        if: ${{ steps.rel.outputs.prerelease == 'false' && env.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kechol/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp release/kura.rb tap/Formula/kura.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/kura.rb
+          if git diff --cached --quiet; then
+            echo "formula unchanged; nothing to push"
+          else
+            git commit -m "kura $TAG"
+            git push
+          fi

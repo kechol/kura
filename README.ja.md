@@ -4,6 +4,8 @@
 
 Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージェントの双方がクエリーできるローカルナレッジ管理 CLI。
 
+📖 **ドキュメント**: <https://kechol.github.io/kura/ja/>
+
 - **日本語対応ハイブリッド検索**: FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)（形態素解析）によるキーワード検索、[sqlite-vec](https://github.com/asg017/sqlite-vec) + ローカル embedding によるセマンティック検索、ローカル LLM によるリランク
 - **自己組織化**: 階層フォルダなし。Bucket + 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）で整理（Cosense 方式）
 - **AI エージェント連携**: `kura mcp`（MCP サーバー）と全コマンドの `--json` 出力
@@ -12,7 +14,15 @@ Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージ
 
 ## インストール
 
-### 前提条件
+### Homebrew（macOS / Linux）
+
+```sh
+brew install kechol/tap/kura
+```
+
+この formula は Homebrew の `sqlite` keg に依存します。macOS では kura の拡張ロードに必要（Apple 純正 SQLite は拡張ロード不可）で、Homebrew が一緒に入れてくれます。
+
+### 前提条件（Homebrew を使わない場合）
 
 - **macOS**: Homebrew の SQLite が必要（Apple 純正 SQLite は拡張ロード不可のため）
 
@@ -24,10 +34,10 @@ Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージ
 
 ### バイナリ
 
-[Releases](../../releases) から対象プラットフォームの ZIP をダウンロードして展開:
+[Releases](../../releases) から対象プラットフォームのアーカイブ（`kura-<platform>.tar.gz`、Windows は `.zip`）をダウンロードし、`SHA256SUMS.txt` で検証して展開:
 
 ```sh
-unzip kura-*.zip && ./install.sh   # macOS では quarantine 属性も除去される
+tar xzf kura-*.tar.gz && ./install.sh   # macOS では quarantine 属性も除去される
 ```
 
 ### 初期化

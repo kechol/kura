@@ -1,0 +1,23 @@
+# build output
+dist/
+.astro/
+
+# dependencies
+node_modules/
+
+# lockfiles (the docs site is built with `bun install`, non-frozen)
+bun.lock
+package-lock.json
+
+# logs
+npm-debug.log*
+bun-debug.log*
+
+# environment
+.env
+.env.production
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store

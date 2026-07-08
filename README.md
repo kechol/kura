@@ -5,6 +5,8 @@
 A local knowledge management CLI that stores Markdown/HTML documents in SQLite
 and makes them queryable by both humans and AI agents.
 
+📖 **Documentation**: <https://kechol.github.io/kura/>
+
 - **Japanese-aware hybrid search**: keyword search with FTS5 +
   [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)
   (morphological analysis), semantic search with
@@ -23,7 +25,16 @@ and makes them queryable by both humans and AI agents.
 
 ## Installation
 
-### Prerequisites
+### Homebrew (macOS, Linux)
+
+```sh
+brew install kechol/tap/kura
+```
+
+The formula depends on the Homebrew `sqlite` keg, which kura needs on macOS
+(Apple's bundled SQLite cannot load extensions) — Homebrew installs it for you.
+
+### Prerequisites (non-Homebrew)
 
 - **macOS**: Homebrew SQLite is required (Apple's bundled SQLite cannot load
   extensions)
@@ -37,10 +48,12 @@ and makes them queryable by both humans and AI agents.
 
 ### Binary
 
-Download the ZIP for your platform from [Releases](../../releases):
+Download the archive for your platform from [Releases](../../releases)
+(`kura-<platform>.tar.gz`, or `.zip` on Windows) and verify it against
+`SHA256SUMS.txt`:
 
 ```sh
-unzip kura-*.zip && ./install.sh   # also removes the macOS quarantine attribute
+tar xzf kura-*.tar.gz && ./install.sh   # also removes the macOS quarantine attribute
 ```
 
 ### Initialize
