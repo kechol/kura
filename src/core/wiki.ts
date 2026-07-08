@@ -105,6 +105,53 @@ function findClosingRun(line: string, from: number, n: number): number {
   return -1;
 }
 
+/**
+ * [[oldTitle]] / [[oldTitle|表示]] のタイトル部を newTitle に置き換える（kura mv のリンク張り替え用）。
+ * 大文字小文字を無視して照合し、コードブロック・インラインコード内は変更しない。
+ */
+export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitle: string): string {
+  const oldKey = oldTitle.trim().toLowerCase();
+  let fenceChar = "";
+  let fenceLen = 0;
+  const out: string[] = [];
+  const parts = content.split(/(\r?\n)/);
+  for (let idx = 0; idx < parts.length; idx += 2) {
+    const line = parts[idx] ?? "";
+    const sep = parts[idx + 1] ?? "";
+    if (fenceLen > 0) {
+      const close = FENCE_CLOSE_RE.exec(line)?.[1];
+      if (close?.startsWith(fenceChar) && close.length >= fenceLen) fenceLen = 0;
+      out.push(line, sep);
+      continue;
+    }
+    const open = FENCE_OPEN_RE.exec(line);
+    if (open) {
+      const marker = open[1] ?? "";
+      const info = open[2] ?? "";
+      if (marker.startsWith("~") || !info.includes("`")) {
+        fenceChar = marker.charAt(0);
+        fenceLen = marker.length;
+        out.push(line, sep);
+        continue;
+      }
+    }
+    // マスクは長さ保存なので、マスク行のマッチ位置を元の行にそのまま適用できる
+    const masked = maskInlineCode(line);
+    let rewritten = "";
+    let last = 0;
+    for (const m of masked.matchAll(LINK_RE)) {
+      const target = (m[1] ?? "").trim();
+      if (target.toLowerCase() !== oldKey) continue;
+      const titleStart = m.index + 2;
+      const titleEnd = titleStart + (m[1] ?? "").length;
+      rewritten += line.slice(last, titleStart) + newTitle;
+      last = titleEnd;
+    }
+    out.push(rewritten + line.slice(last), sep);
+  }
+  return out.join("");
+}
+
 /** 本文から [[リンク]] と #タグ を抽出する（frontmatter 除去済み Markdown 前提） */
 export function extractWiki(content: string): WikiExtraction {
   const links: WikiLink[] = [];

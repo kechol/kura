@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { UsageError } from "../core/errors";
 
 /** 終了コード規約（SPEC §7） */
 export const EXIT = {
@@ -9,14 +10,7 @@ export const EXIT = {
   NO_LLM: 4,
 } as const;
 
-/** 引数エラー（exit 2） */
-export class UsageError extends Error {}
-
-/** 対象なし（exit 3） */
-export class NotFoundError extends Error {}
-
-/** LLM プロバイダ利用不可（exit 4） */
-export class LLMUnavailableError extends Error {}
+export { ConflictError, LLMUnavailableError, NotFoundError, UsageError } from "../core/errors";
 
 export type OptionSpec = Record<
   string,

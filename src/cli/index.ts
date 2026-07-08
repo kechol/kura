@@ -29,6 +29,50 @@ const commands: Record<string, CommandDef> = {
     summary: "Read and write ~/.kura/config.toml",
     load: () => import("./commands/config"),
   },
+  add: {
+    summary: "Add documents from files or stdin",
+    load: () => import("./commands/add"),
+  },
+  get: {
+    summary: "Show a document",
+    load: () => import("./commands/get"),
+  },
+  edit: {
+    summary: "Edit a document with $EDITOR",
+    load: () => import("./commands/edit"),
+  },
+  rm: {
+    summary: "Delete a document",
+    load: () => import("./commands/rm"),
+  },
+  mv: {
+    summary: "Rename a document (relinks [[references]])",
+    load: () => import("./commands/mv"),
+  },
+  ls: {
+    summary: "List documents",
+    load: () => import("./commands/ls"),
+  },
+  export: {
+    summary: "Export documents as Markdown with frontmatter",
+    load: () => import("./commands/export"),
+  },
+  import: {
+    summary: "Import Markdown files (frontmatter round-trip)",
+    load: () => import("./commands/import"),
+  },
+  bucket: {
+    summary: "Manage buckets",
+    load: () => import("./commands/bucket"),
+  },
+  tag: {
+    summary: "Manage tags",
+    load: () => import("./commands/tag"),
+  },
+  link: {
+    summary: "Show links and backlinks",
+    load: () => import("./commands/link"),
+  },
 };
 
 function printHelp(): void {
