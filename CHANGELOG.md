@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`GET /api/docs/tree`), a document-path filter on the list page
   (`prefix`, also on `GET /api/docs`), and a path breadcrumb on the
   detail page.
+- `kura mv suggest`: a filing assistant that proposes paths for unfiled
+  (bucket-root) documents from link / tag / keyword signals, semantic
+  neighbors, and an LLM pick with a reason when a provider is reachable;
+  interactive by default, with `--apply` and `--json` modes. Works
+  without any provider (signal layers degrade gracefully).
 - Hierarchical document paths: documents can carry an optional
   slash-separated path (`kura add --path db/sqlite`), browsable with
   `kura ls --prefix` and movable with `kura mv <doc> --path` or in bulk with

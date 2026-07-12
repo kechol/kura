@@ -278,6 +278,7 @@ same title is created later, SPEC §10.1).
 ```
 kura mv <doc> [<new-title>] [--path <new-path>] [--bucket b]
 kura mv --prefix <old-prefix> <new-prefix> [--bucket b]
+kura mv suggest [--bucket b] [--limit n] [--json] [--apply]
 ```
 
 Renames and/or moves via `updateDocument` (`src/core/documents.ts`); at
@@ -304,6 +305,32 @@ Guards: an empty old prefix is a usage error; identical prefixes or moving a
 prefix under its own descendant are conflicts; no documents under the prefix
 is `NotFoundError` (exit 3). Prints one `moved #key  from -> to` line per
 document plus an `N documents moved (relinked M documents)` trailer.
+
+`suggest` is the filing assistant for **unfiled documents** (bucket root,
+`path = ''`), scoped to `--bucket` or `general.default_bucket`
+(`src/core/filing.ts`). Three signal layers mirror the search pipeline's
+degradation ladder:
+
+1. **structural** (always): resolved links/backlinks (weight 3), shared
+   tags (weight = overlap, capped at 3), BM25 title neighbors (weight 1) —
+   each filed neighbor votes for its own path;
+2. **semantic** (embedding provider): `vectorSearch` neighbors vote with
+   weight 2;
+3. **LLM** (generation provider): the candidates + the bucket's existing
+   paths + a document excerpt go to a Japanese prompt (an intentionally
+   Japanese surface, like tag suggestion) that returns
+   `{"path", "reason"}`, cached in `llm_cache` under purpose `path`. An
+   unusable answer falls back to the top signal candidate.
+
+No provider → a warning and layer 1 only (invariants R4); vector/LLM
+failures degrade into per-document warnings on stderr. Every suggestion
+prints its evidence (`link: [[title]]`, `shared tags (n): title`,
+`keyword: title`, `semantic: title`). Interactively (TTY, no flags) each
+document prompts `[y/e/n/q]`; `--apply` applies every suggestion;
+`--json` prints `{key, title, suggestion: {path, source: llm|signals,
+reason?} | null, candidates}` and never applies (`--json` + `--apply` is a
+usage error; an empty backlog prints `[]`). Applying goes through
+`updateDocument` (path move — links rewrite as above).
 
 ### `kura ls`
 

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { sha256Hex } from "../documents";
 
-export type CachePurpose = "expand" | "rerank" | "tag" | "clip";
+export type CachePurpose = "expand" | "rerank" | "tag" | "clip" | "path";
 
 function cacheKey(purpose: CachePurpose, model: string, input: string): string {
   return sha256Hex(`${purpose}\x00${model}\x00${input}`);

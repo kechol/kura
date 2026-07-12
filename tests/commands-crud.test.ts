@@ -304,4 +304,45 @@ describe("kura CRUD commands (e2e)", () => {
     const after = await runCli(["ls", "--prefix", "db2", "--json"], env);
     expect((JSON.parse(after.stdout) as unknown[]).length).toBe(1);
   }, 30_000);
+
+  test("mv suggest: signal-based suggestions in --json, applied with --apply", async () => {
+    const { env } = await makeHome();
+    // Deterministic degraded mode: never probe a live provider (testing.md R2)
+    const cfg = await runCli(["config", "set", "llm.provider", "none"], env);
+    expect(cfg.code).toBe(0);
+
+    await runCli(
+      ["add", "-", "--title", "SQLiteの内部構造", "--path", "db/sqlite"],
+      env,
+      "Btree の話。 #tech/db\n",
+    );
+    const unfiled = await runCli(
+      ["add", "-", "--title", "WALメモ"],
+      env,
+      "[[SQLiteの内部構造]] を参照。 #tech/db\n",
+    );
+    expect(unfiled.code).toBe(0);
+
+    const json = await runCli(["mv", "suggest", "--json"], env);
+    expect(json.code).toBe(0);
+    expect(json.stderr).toContain("no LLM provider");
+    const results = JSON.parse(json.stdout) as Array<{
+      title: string;
+      suggestion: { path: string; source: string } | null;
+    }>;
+    expect(results.length).toBe(1);
+    expect(results[0]?.title).toBe("WALメモ");
+    expect(results[0]?.suggestion?.path).toBe("db/sqlite");
+    expect(results[0]?.suggestion?.source).toBe("signals");
+
+    const applied = await runCli(["mv", "suggest", "--apply"], env);
+    expect(applied.code).toBe(0);
+    expect(applied.stdout).toContain("moved -> db/sqlite/WALメモ");
+
+    const get = await runCli(["get", "db/sqlite/WALメモ", "--json"], env);
+    expect(JSON.parse(get.stdout).path).toBe("db/sqlite");
+
+    const empty = await runCli(["mv", "suggest", "--json"], env);
+    expect(empty.stdout.trim()).toBe("[]");
+  }, 30_000);
 });

@@ -37,6 +37,7 @@ description: Every kura command grouped by task, with global conventions, --json
 | `kura edit <ref>` | Open in `$EDITOR`; frontmatter edits title, path, and tags too |
 | `kura rm <ref>` | Delete a document |
 | `kura mv <ref> [<title>]` | Rename and/or move (`--path`); rewrites wiki links. `--prefix <old> <new>` moves a whole subtree |
+| `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json` |
 | `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
 | `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
 | `kura export --dir <d>` | Write documents as Markdown with frontmatter; paths become subdirectories |
