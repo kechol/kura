@@ -4,9 +4,15 @@ import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
 import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
-import { resolveUnresolvedLinks, syncLinks } from "./links";
+import { fullPathSql, resolveUnresolvedLinks, syncLinks } from "./links";
 import { addTagsToDoc, docTags } from "./tags";
-import { extractWiki, replaceWikiLinkTarget } from "./wiki";
+import {
+  extractWiki,
+  joinDocPath,
+  normalizeDocPath,
+  replaceWikiLinkTargets,
+  type WikiLinkReplacement,
+} from "./wiki";
 
 export type ContentType = "markdown" | "html";
 
@@ -15,6 +21,8 @@ export interface DocumentRecord {
   key: string;
   bucketId: number;
   bucket: string;
+  /** Slash-separated hierarchical namespace; '' = bucket root (docs: document-notation.md) */
+  path: string;
   title: string;
   content: string;
   contentType: ContentType;
@@ -32,6 +40,7 @@ interface DocRow {
   doc_key: string;
   bucket_id: number;
   bucket: string;
+  path: string;
   title: string;
   content: string;
   content_type: string;
@@ -44,7 +53,7 @@ interface DocRow {
 }
 
 const SELECT_DOC = `
-  SELECT d.id, d.doc_key, d.bucket_id, b.name AS bucket, d.title, d.content,
+  SELECT d.id, d.doc_key, d.bucket_id, b.name AS bucket, d.path, d.title, d.content,
          d.content_type, d.source_url, d.content_hash, d.created_at, d.updated_at,
          d.last_accessed_at, d.access_count
   FROM documents d JOIN buckets b ON b.id = d.bucket_id`;
@@ -55,6 +64,7 @@ function toRecord(db: Database, row: DocRow): DocumentRecord {
     key: row.doc_key,
     bucketId: row.bucket_id,
     bucket: row.bucket,
+    path: row.path,
     title: row.title,
     content: row.content,
     contentType: row.content_type === "html" ? "html" : "markdown",
@@ -116,7 +126,7 @@ function syncDerived(db: Database, row: DocRow, opts: SyncOptions): void {
   syncLinks(db, row.id, row.bucket_id, extraction.links);
   ftsUpsert(db, { id: row.id, title: row.title, content: row.content });
   if (opts.rebuildChunks) rebuildChunks(db, row.id, row.title, row.content);
-  if (opts.resolveIncoming) resolveUnresolvedLinks(db, row.bucket_id, row.title, row.id);
+  if (opts.resolveIncoming) resolveUnresolvedLinks(db, row.bucket_id, row.id, row.path, row.title);
 }
 
 function getRowById(db: Database, id: number): DocRow {
@@ -125,10 +135,42 @@ function getRowById(db: Database, id: number): DocRow {
   return row;
 }
 
+/**
+ * Case-insensitive uniqueness of the computed full path within a bucket
+ * (docs: data-model.md). Subsumes (path, title) equality and also rejects
+ * cross-form collisions like path='a',title='b/c' vs path='a/b',title='c',
+ * which would make full-path references ambiguous. The DB constraint
+ * UNIQUE(bucket_id, path, title) remains as the case-sensitive backstop.
+ */
+function assertUniqueInBucket(
+  db: Database,
+  bucketId: number,
+  path: string,
+  title: string,
+  excludeId = -1,
+): void {
+  const full = joinDocPath(path, title);
+  const dup = db
+    .prepare(
+      `SELECT doc_key, path, title FROM documents
+       WHERE bucket_id = ? AND id != ? AND lower(${fullPathSql()}) = lower(?)`,
+    )
+    .get(bucketId, excludeId, full) as { doc_key: string; path: string; title: string } | null;
+  if (!dup) return;
+  if (dup.path.toLowerCase() === path.toLowerCase()) {
+    throw new ConflictError(`document '${full}' already exists in bucket (#${dup.doc_key})`);
+  }
+  throw new ConflictError(
+    `full path '${full}' collides with '${joinDocPath(dup.path, dup.title)}' (#${dup.doc_key}) in the same bucket`,
+  );
+}
+
 export interface CreateDocumentInput {
   title: string;
   content: string;
   bucket: string;
+  /** Slash-separated hierarchical namespace; omit or '' for the bucket root */
+  path?: string;
   contentType?: ContentType;
   sourceUrl?: string | null;
   tags?: string[];
@@ -143,16 +185,9 @@ export function createDocument(db: Database, input: CreateDocumentInput): Docume
   return db.transaction(() => {
     const title = input.title.trim();
     if (title === "") throw new UsageError("document title must not be empty");
+    const path = normalizeDocPath(input.path ?? "");
     const bucket = requireBucket(db, input.bucket);
-
-    const dup = db
-      .prepare("SELECT doc_key FROM documents WHERE bucket_id = ? AND lower(title) = lower(?)")
-      .get(bucket.id, title) as { doc_key: string } | null;
-    if (dup) {
-      throw new ConflictError(
-        `document '${title}' already exists in bucket '${bucket.name}' (#${dup.doc_key})`,
-      );
-    }
+    assertUniqueInBucket(db, bucket.id, path, title);
 
     let key = input.docKey;
     if (key !== undefined) {
@@ -169,12 +204,13 @@ export function createDocument(db: Database, input: CreateDocumentInput): Docume
     const result = db
       .prepare(
         `INSERT INTO documents
-           (doc_key, bucket_id, title, content, content_type, source_url, content_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (doc_key, bucket_id, path, title, content, content_type, source_url, content_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         key,
         bucket.id,
+        path,
         title,
         input.content,
         input.contentType ?? "markdown",
@@ -199,6 +235,8 @@ export interface UpdateDocumentInput {
   title?: string;
   content?: string;
   bucket?: string;
+  /** Slash-separated hierarchical namespace; '' moves the document to the bucket root */
+  path?: string;
   contentType?: ContentType;
   sourceUrl?: string | null;
   tags?: string[];
@@ -218,38 +256,53 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
     const oldTitle = row.title;
     const newTitle = input.title?.trim() ?? oldTitle;
     if (newTitle === "") throw new UsageError("document title must not be empty");
+    const newPath = input.path !== undefined ? normalizeDocPath(input.path) : row.path;
     const newBucket = input.bucket ? requireBucket(db, input.bucket) : null;
     const newBucketId = newBucket?.id ?? row.bucket_id;
 
     let content = input.content ?? row.content;
     const titleChanged = newTitle !== oldTitle;
+    const pathChanged = newPath !== row.path;
     const bucketChanged = newBucketId !== row.bucket_id;
 
+    if (titleChanged || pathChanged || bucketChanged) {
+      assertUniqueInBucket(db, newBucketId, newPath, newTitle, id);
+    }
+
+    // Rewrite matrix for referrer bodies (docs: document-notation.md):
+    //   title change     -> both the short title and the full-path spelling
+    //   path-only move   -> the full-path spelling only (short links stay valid)
+    //   bucket move      -> nothing; incoming links become unresolved below
+    const replacements: WikiLinkReplacement[] = [];
+    if (!bucketChanged && (titleChanged || pathChanged)) {
+      const oldFull = joinDocPath(row.path, oldTitle);
+      const newFull = joinDocPath(newPath, newTitle);
+      if (titleChanged) {
+        // Point short-form links at the full path when the new title alone
+        // would be ambiguous in the bucket, so they keep resolving
+        const titleAmbiguous = !!db
+          .prepare(
+            "SELECT 1 FROM documents WHERE bucket_id = ? AND id != ? AND lower(title) = lower(?)",
+          )
+          .get(newBucketId, id, newTitle);
+        replacements.push({ from: oldTitle, to: titleAmbiguous ? newFull : newTitle });
+      }
+      replacements.push({ from: oldFull, to: newFull });
+    }
+
     // Also rewrite self-links in the document's own body
-    if (titleChanged && row.content_type !== "html") {
-      content = replaceWikiLinkTarget(content, oldTitle, newTitle);
+    if (replacements.length > 0 && row.content_type !== "html") {
+      content = replaceWikiLinkTargets(content, replacements);
     }
     const newHash = sha256Hex(content);
     const contentChanged = newHash !== row.content_hash;
 
-    if (titleChanged || bucketChanged) {
-      const dup = db
-        .prepare(
-          "SELECT doc_key FROM documents WHERE bucket_id = ? AND lower(title) = lower(?) AND id != ?",
-        )
-        .get(newBucketId, newTitle, id) as { doc_key: string } | null;
-      if (dup) {
-        throw new ConflictError(
-          `document '${newTitle}' already exists in bucket (#${dup.doc_key})`,
-        );
-      }
-    }
-
     db.prepare(
-      `UPDATE documents SET title = ?, content = ?, content_type = ?, source_url = ?,
+      `UPDATE documents SET path = ?, title = ?, content = ?, content_type = ?, source_url = ?,
          content_hash = ?, bucket_id = ?, updated_at = ?
        WHERE id = ?`,
     ).run(
+      newPath,
       newTitle,
       content,
       input.contentType ?? row.content_type,
@@ -265,16 +318,16 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
       db.prepare("UPDATE links SET target_id = NULL WHERE target_id = ?").run(id);
     }
 
-    // Rewrite [[old title]] in referring documents (same bucket, kura mv behavior)
+    // Rewrite [[old title]] / [[old/full/path]] in referring documents (same bucket, kura mv behavior)
     let relinked = 0;
-    if (titleChanged && !bucketChanged) {
+    if (replacements.length > 0) {
       const referrers = db
         .prepare("SELECT DISTINCT source_id FROM links WHERE target_id = ? AND source_id != ?")
         .all(id, id) as Array<{ source_id: number }>;
       for (const ref of referrers) {
         const src = getRowById(db, ref.source_id);
         if (src.content_type === "html") continue;
-        const rewritten = replaceWikiLinkTarget(src.content, oldTitle, newTitle);
+        const rewritten = replaceWikiLinkTargets(src.content, replacements);
         if (rewritten !== src.content) {
           updateDocument(db, src.id, { content: rewritten });
           relinked++;
@@ -288,7 +341,7 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
       tagSource: input.tagSource,
       // Chunk context headers include the title, so rebuild on rename as well
       rebuildChunks: contentChanged || titleChanged,
-      resolveIncoming: titleChanged || bucketChanged,
+      resolveIncoming: titleChanged || pathChanged || bucketChanged,
     });
     return { record: toRecord(db, updatedRow), relinked };
   })();
@@ -297,6 +350,90 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
 /** kura mv: rename and rewrite [[old title]] in referring documents */
 export function renameDocument(db: Database, id: number, newTitle: string): UpdateResult {
   return updateDocument(db, id, { title: newTitle });
+}
+
+/** kura mv --path: move a document to another path (title unchanged) */
+export function moveDocument(db: Database, id: number, newPath: string): UpdateResult {
+  return updateDocument(db, id, { path: newPath });
+}
+
+export interface PrefixMoveResult {
+  moved: Array<{ key: string; from: string; to: string }>;
+  /** Referring documents whose bodies were rewritten across all moves */
+  relinked: number;
+}
+
+/**
+ * kura mv --prefix: move every document under a path prefix (mirrors renameTag,
+ * docs: cli-reference.md). Unlike tag renames there is no merge — a destination
+ * collision throws ConflictError and rolls back the whole move.
+ */
+export function moveDocumentsByPrefix(
+  db: Database,
+  bucketId: number,
+  oldRaw: string,
+  newRaw: string,
+): PrefixMoveResult {
+  const oldPrefix = normalizeDocPath(oldRaw);
+  const newPrefix = normalizeDocPath(newRaw);
+  if (oldPrefix === "") throw new UsageError("old path prefix must not be empty");
+  if (oldPrefix === newPrefix) {
+    throw new ConflictError(`'${oldPrefix}' and '${newPrefix}' are the same path`);
+  }
+  if (newPrefix.startsWith(`${oldPrefix}/`)) {
+    throw new ConflictError(`cannot move '${oldPrefix}' under its own descendant '${newPrefix}'`);
+  }
+  return db.transaction(() => {
+    const rows = db
+      .prepare(
+        `SELECT id, doc_key, path, title FROM documents
+         WHERE bucket_id = ? AND (lower(path) = lower(?) OR lower(path) LIKE lower(?) || '/%')
+         ORDER BY path, title`,
+      )
+      .all(bucketId, oldPrefix, oldPrefix) as Array<{
+      id: number;
+      doc_key: string;
+      path: string;
+      title: string;
+    }>;
+    if (rows.length === 0) throw new NotFoundError(`no documents under path '${oldPrefix}'`);
+
+    const moved: PrefixMoveResult["moved"] = [];
+    let relinked = 0;
+    for (const row of rows) {
+      const dest = normalizeDocPath(newPrefix + row.path.slice(oldPrefix.length));
+      const result = updateDocument(db, row.id, { path: dest });
+      moved.push({
+        key: row.doc_key,
+        from: joinDocPath(row.path, row.title),
+        to: joinDocPath(result.record.path, result.record.title),
+      });
+      relinked += result.relinked;
+    }
+    return { moved, relinked };
+  })();
+}
+
+/**
+ * kura clip: create, retrying title collisions with 'title (2)', 'title (3)', ...
+ * (docs: cli-reference.md). Non-conflict errors propagate unchanged.
+ */
+export function createDocumentWithRetry(
+  db: Database,
+  input: CreateDocumentInput,
+  maxAttempts = 50,
+): DocumentRecord {
+  for (let n = 1; n <= maxAttempts; n++) {
+    const title = n === 1 ? input.title : `${input.title} (${n})`;
+    try {
+      return createDocument(db, { ...input, title });
+    } catch (e) {
+      if (!(e instanceof ConflictError)) throw e;
+    }
+  }
+  throw new ConflictError(
+    `could not find an available title for '${input.title}' after ${maxAttempts} attempts`,
+  );
 }
 
 export function deleteDocument(db: Database, id: number): void {
@@ -321,8 +458,9 @@ export function getDocumentById(db: Database, id: number): DocumentRecord {
 }
 
 /**
- * Resolve a document specifier (docs: cli-reference.md): doc_key / #key / a title unique within a bucket.
- * When the title matches in multiple buckets, throws ConflictError listing the candidates.
+ * Resolve a document specifier (docs: cli-reference.md): doc_key / #key /
+ * full path / a title unique among the searched documents.
+ * Ambiguous matches throw ConflictError listing the candidates.
  */
 export function resolveDoc(db: Database, spec: string, bucketName?: string): DocumentRecord {
   const trimmed = spec.trim();
@@ -337,6 +475,24 @@ export function resolveDoc(db: Database, spec: string, bucketName?: string): Doc
     throw new UsageError(`invalid doc key: ${trimmed}`);
   }
 
+  const candidates = (rows: DocRow[]) =>
+    rows.map((r) => `#${r.doc_key} (${r.bucket}${r.path === "" ? "" : `, ${r.path}/`})`).join(", ");
+
+  // Stage 1: computed full path (unique per bucket; several matches means several buckets)
+  const FULL = `lower(${fullPathSql("d")}) = lower(?)`;
+  const fullRows = (
+    bucketName
+      ? db.prepare(`${SELECT_DOC} WHERE ${FULL} AND b.name = ?`).all(trimmed, bucketName)
+      : db.prepare(`${SELECT_DOC} WHERE ${FULL}`).all(trimmed)
+  ) as DocRow[];
+  if (fullRows.length === 1) return toRecord(db, fullRows[0]!);
+  if (fullRows.length > 1) {
+    throw new ConflictError(
+      `'${trimmed}' is ambiguous across buckets: ${candidates(fullRows)}. Use #key or --bucket`,
+    );
+  }
+
+  // Stage 2: title, unique among the searched documents
   const rows = (
     bucketName
       ? db
@@ -347,9 +503,8 @@ export function resolveDoc(db: Database, spec: string, bucketName?: string): Doc
 
   if (rows.length === 0) throw new NotFoundError(`document not found: ${trimmed}`);
   if (rows.length > 1) {
-    const candidates = rows.map((r) => `#${r.doc_key} (${r.bucket})`).join(", ");
     throw new ConflictError(
-      `title '${trimmed}' is ambiguous across buckets: ${candidates}. Use #key or --bucket`,
+      `title '${trimmed}' is ambiguous: ${candidates(rows)}. Use #key, the full path, or --bucket`,
     );
   }
   return toRecord(db, rows[0]!);
@@ -366,6 +521,8 @@ export interface ListFilter {
   bucket?: string;
   /** Tag (descendant tags included) */
   tag?: string;
+  /** Document path (descendant paths included) */
+  prefix?: string;
   sort?: "updated" | "created" | "accessed" | "title";
   stale?: boolean;
   staleDays?: number;
@@ -394,6 +551,10 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
     );
     params.push(filter.tag, filter.tag);
   }
+  if (filter.prefix) {
+    where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
+    params.push(filter.prefix, filter.prefix);
+  }
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");
     params.push(`-${filter.staleDays ?? 180} days`);
@@ -421,6 +582,8 @@ export interface ImportInput {
   body: string;
   /** Fallback when frontmatter has no title (e.g. the file name) */
   fallbackTitle: string;
+  /** Fallback when frontmatter has no path (the file's subdirectory relative to the scanned root) */
+  fallbackPath?: string;
   /** --bucket flag (takes precedence over frontmatter) */
   bucketOverride?: string;
   defaultBucket: string;
@@ -439,12 +602,25 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
     getOrCreateBucket(db, bucketName);
     const title = fm?.title ?? input.fallbackTitle;
 
+    // Frontmatter path wins; otherwise the on-disk subdirectory, with the
+    // leading segment stripped when it equals the bucket name so that a
+    // `kura export` tree (<dir>/<bucket>/<path...>) re-imports cleanly
+    let path = fm?.path;
+    if (path === undefined) {
+      const segments = normalizeDocPath(input.fallbackPath ?? "")
+        .split("/")
+        .filter((s) => s !== "");
+      if (segments[0] === bucketName) segments.shift();
+      path = segments.join("/");
+    }
+
     const existing = fm?.kura_key ? getDocumentByKey(db, fm.kura_key) : null;
     if (existing) {
       const { record } = updateDocument(db, existing.id, {
         title,
         content: input.body,
         bucket: bucketName,
+        path,
         contentType: fm?.content_type,
         sourceUrl: fm?.source_url ?? existing.sourceUrl,
         tags: fm?.tags,
@@ -457,6 +633,7 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
       title,
       content: input.body,
       bucket: bucketName,
+      path,
       contentType: fm?.content_type,
       sourceUrl: fm?.source_url ?? null,
       tags: fm?.tags,

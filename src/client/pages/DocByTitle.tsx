@@ -1,15 +1,25 @@
 import { useEffect } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
-import { searchDocs } from "../api";
+import { ApiError, resolveDocSpec, searchDocs } from "../api";
 import { useAsync } from "../hooks";
 
-/** [[link]] title → key resolution route. Redirects to the detail page on an exact match */
+/**
+ * [[link]] title → key resolution route. Tries GET /api/resolve first
+ * (full path / unique title, same rules as the CLI), then falls back to a
+ * keyword search for suggestions.
+ */
 export function DocByTitle({ title }: { title: string }) {
   const [, navigate] = useLocation();
   const state = useAsync(async () => {
+    try {
+      const doc = await resolveDocSpec(title);
+      return { exact: doc, hits: [] };
+    } catch (e) {
+      // 404: not created yet; 409: ambiguous — both fall back to suggestions
+      if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 409)) throw e;
+    }
     const res = await searchDocs({ q: title, mode: "keyword", limit: 50 });
-    const exact = res.hits.find((h) => h.title.toLowerCase() === title.toLowerCase()) ?? null;
-    return { exact, hits: res.hits };
+    return { exact: null, hits: res.hits };
   }, [title]);
 
   useEffect(() => {
@@ -33,7 +43,9 @@ export function DocByTitle({ title }: { title: string }) {
           <ul class="doc-links">
             {state.data.hits.slice(0, 10).map((h) => (
               <li key={h.key}>
-                <Link href={`/docs/${encodeURIComponent(h.key)}`}>{h.title}</Link>
+                <Link href={`/docs/${encodeURIComponent(h.key)}`}>
+                  {h.path === "" ? h.title : `${h.path}/${h.title}`}
+                </Link>
                 <span class="doc-link-meta">{h.bucket}</span>
               </li>
             ))}

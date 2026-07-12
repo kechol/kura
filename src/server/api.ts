@@ -7,6 +7,7 @@ import {
   deleteDocument,
   getDocumentByKey,
   listDocuments,
+  resolveDoc,
   touchAccess,
   updateDocument,
 } from "../core/documents";
@@ -19,6 +20,7 @@ import type { SearchHit } from "../core/search/types";
 import { ensureEmbeddings, vectorSearch } from "../core/search/vector";
 import { collectStats } from "../core/stats";
 import { addTagsToDoc, buildTagTree, listTags, removeTagsFromDoc } from "../core/tags";
+import { normalizeDocPath } from "../core/wiki";
 
 export interface ApiDeps {
   db: Database;
@@ -40,6 +42,7 @@ function errorResponse(e: unknown): Response {
 function docJson(doc: DocumentRecord, content = false): Record<string, unknown> {
   return {
     key: doc.key,
+    path: doc.path,
     title: doc.title,
     bucket: doc.bucket,
     tags: doc.tags,
@@ -56,6 +59,7 @@ function docJson(doc: DocumentRecord, content = false): Record<string, unknown> 
 function hitJson(h: SearchHit): Record<string, unknown> {
   return {
     key: h.key,
+    path: h.path,
     title: h.title,
     bucket: h.bucket,
     tags: h.tags,
@@ -103,6 +107,9 @@ export function createApiRoutes(
       const url = new URL(req.url);
       const bucket = url.searchParams.get("bucket") ?? undefined;
       const tag = url.searchParams.get("tag") ?? undefined;
+      const rawPrefix = url.searchParams.get("prefix");
+      const prefix = rawPrefix === null ? undefined : normalizeDocPath(rawPrefix);
+      if (prefix === "") throw new UsageError("prefix must not be empty");
       const sortParam = url.searchParams.get("sort") ?? "updated";
       if (!["updated", "created", "accessed", "title"].includes(sortParam)) {
         throw new UsageError(`invalid sort: ${sortParam}`);
@@ -114,6 +121,7 @@ export function createApiRoutes(
       const filter = {
         bucket,
         tag,
+        prefix,
         sort: sortParam as "updated" | "created" | "accessed" | "title",
         stale,
         staleDays: config.general.stale_days,
@@ -121,6 +129,16 @@ export function createApiRoutes(
       const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
       const total = listDocumentsCount(db, filter);
       return json({ docs: docs.map((d) => docJson(d)), total, page, per });
+    }),
+
+    "/api/resolve": wrap((req) => {
+      // Doc-specifier resolution for the browser's wiki-link navigation
+      // (key / #key / full path / unique title — resolveDoc, docs: http-api.md)
+      const url = new URL(req.url);
+      const spec = url.searchParams.get("doc")?.trim() ?? "";
+      if (spec === "") throw new UsageError("query parameter 'doc' is required");
+      const bucket = url.searchParams.get("bucket") ?? undefined;
+      return json(docJson(resolveDoc(db, spec, bucket)));
     }),
 
     "/api/docs/:key": {
@@ -133,6 +151,7 @@ export function createApiRoutes(
         const doc = requireDoc(db, req.params.key ?? "");
         const body = (await req.json()) as {
           title?: string;
+          path?: string;
           content?: string;
           tags?: string[];
         };
@@ -147,6 +166,7 @@ export function createApiRoutes(
         }
         const { record } = updateDocument(db, doc.id, {
           title: body.title,
+          path: body.path,
           content: body.content,
         });
         return json(docJson(record, true));
@@ -226,7 +246,7 @@ export function createApiRoutes(
 
 function listDocumentsCount(
   db: Database,
-  filter: { bucket?: string; tag?: string; stale?: boolean; staleDays: number },
+  filter: { bucket?: string; tag?: string; prefix?: string; stale?: boolean; staleDays: number },
 ): number {
   const where: string[] = [];
   const params: Array<string | number> = [];
@@ -240,6 +260,10 @@ function listDocumentsCount(
         WHERE dt.document_id = d.id AND (t.path = ? OR t.path LIKE ? || '/%'))`,
     );
     params.push(filter.tag, filter.tag);
+  }
+  if (filter.prefix) {
+    where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
+    params.push(filter.prefix, filter.prefix);
   }
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");

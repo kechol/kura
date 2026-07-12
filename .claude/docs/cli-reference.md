@@ -30,11 +30,17 @@ Resolved by `resolveDoc` in `src/core/documents.ts`, in this order:
 1. `#a1b2c3d4` — explicit key. Must match `/^[0-9a-f]{8}$/` (else
    `UsageError`); missing key is `NotFoundError` (exit 3).
 2. Bare `a1b2c3d4` — if it looks like a key, tried as a key first; on a miss
-   it falls through to title lookup (so an 8-hex-char *title* still works).
-3. Title, matched case-insensitively. With `--bucket` the lookup is scoped to
-   that bucket; without it the lookup spans **all buckets** and a title that
-   exists in more than one bucket throws `ConflictError` (exit 1) listing the
-   candidates and suggesting `#key` or `--bucket`.
+   it falls through (so an 8-hex-char *title* still works).
+3. Full path (e.g. `clips/Title`), matched case-insensitively against the
+   computed full path (`path === '' ? title : path + '/' + title`). Unique
+   per bucket, so multiple matches mean multiple buckets → `ConflictError`
+   suggesting `#key` or `--bucket`.
+4. Title, matched case-insensitively. With `--bucket` the lookup is scoped to
+   that bucket; without it the lookup spans **all buckets**. A title carried
+   by more than one document — possible even inside one bucket now, under
+   different paths — throws `ConflictError` (exit 1) listing
+   `#key (bucket, path/)` candidates and suggesting `#key`, the full path,
+   or `--bucket`.
 
 ### `--bucket` defaults
 
@@ -44,6 +50,7 @@ There is no single global default; each command class behaves differently:
 | --- | --- |
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
 | `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls` (title resolution) | all buckets, ambiguity is an error |
+| `mv --prefix` (bulk path move) | `general.default_bucket` |
 | `ls`, `search`, `vsearch`, `query`, `export`, `link broken` (filters) | all buckets |
 
 ### Exit codes
@@ -141,8 +148,9 @@ provider (warn on `none`: degraded mode).
 4. `fixContentHashes` — recompute mismatched hashes and re-chunk (preserves
    `updated_at`),
 5. `rebuildFtsIfNeeded` — row-count mismatch triggers a full FTS reinsert,
-6. `resolveAllUnresolvedLinks` — bulk re-resolution (same bucket,
-   case-insensitive),
+6. `resolveAllUnresolvedLinks` — bulk re-resolution through the shared
+   two-stage resolution (same bucket, case-insensitive, full path then
+   title; ambiguous short-form references are skipped),
 7. `retokenizeFts` to vaporetto when the DB was built with trigram but
    vaporetto now loads.
 
@@ -176,7 +184,7 @@ existing value's type. Full semantics in
 ### `kura add`
 
 ```
-kura add <file>... [--bucket b] [--tags t1,t2] [--title T] [--type markdown|html] [--json]
+kura add <file>... [--bucket b] [--path p] [--tags t1,t2] [--title T] [--type markdown|html] [--json]
 kura add - --title T
 ```
 
@@ -196,13 +204,16 @@ warning** pointing at `kura import` (add always creates). Rules:
 - Bucket: `--bucket` → frontmatter `bucket:` → `general.default_bucket`. The
   bucket must already exist (`NotFoundError` otherwise — unlike `import`,
   which auto-creates).
+- **Path precedence: `--path` → frontmatter `path:` → bucket root** (`''`).
+  The value is normalized (`normalizeDocPath`).
 - The single blank separator line after the frontmatter block is stripped
   from the body.
-- Duplicate title in the bucket → `ConflictError` (exit 1).
+- A duplicate computed full path in the bucket (case-insensitive) →
+  `ConflictError` (exit 1).
 
-Output: `#key  title  (bucket)` per document; `--json` prints an array of
-`{key, title, bucket, tags, created_at}`. Embeddings are **not** generated
-(lazy backfill, see [`embed`](#kura-embed)).
+Output: `#key  path/title  (bucket)` per document; `--json` prints an array
+of `{key, path, title, bucket, tags, created_at}`. Embeddings are **not**
+generated (lazy backfill, see [`embed`](#kura-embed)).
 
 ### `kura get`
 
@@ -215,11 +226,12 @@ Resolves the document, calls `touchAccess` (increments `access_count`, sets
 `--lines A:B` slices 1-based inclusive line ranges; open ends `50:` and
 `:100` are allowed, `":"` alone or inverted ranges are usage errors.
 Output modes: `--json` → full record
-(`key, title, bucket, tags, content, content_type, source_url, created_at,
-updated_at, last_accessed_at, access_count`; `content` is the sliced text);
-otherwise pretty ANSI (TTY default, or `--pretty`) with a synthesized
-`# title` heading and a `#key · bucket · tags` meta line, or the raw body
-(piped default, or `--raw`). `--pretty --raw` together is a usage error.
+(`key, path, title, bucket, tags, content, content_type, source_url,
+created_at, updated_at, last_accessed_at, access_count`; `content` is the
+sliced text); otherwise pretty ANSI (TTY default, or `--pretty`) with a
+synthesized `# title` heading and a `#key · bucket · path · tags` meta line
+(empty parts omitted), or the raw body (piped default, or `--raw`).
+`--pretty --raw` together is a usage error.
 
 ### `kura edit`
 
@@ -229,7 +241,7 @@ kura edit <doc> [--bucket b]
 
 Round-trips **frontmatter + body** through an editor
 (`src/cli/commands/edit.ts`): serializes
-`kura_key/title/bucket/tags/source_url/content_type/created_at/updated_at`
+`kura_key/title/bucket/path/tags/source_url/content_type/created_at/updated_at`
 above the body into `$TMPDIR/kura-edit-<key>-<pid>-<ts>.md`, launches the
 editor, and re-parses on exit.
 
@@ -238,8 +250,10 @@ editor, and re-parses on exit.
 - Non-zero editor exit discards changes (temp file kept, exit 1). A
   byte-identical file prints `no changes`.
 - Frontmatter edits are applied: title changes rename (and relink referrers,
-  same as `mv`), `bucket:` moves the document, and the frontmatter `tags`
-  list is authoritative — tags removed from the list are detached via
+  same as `mv`), `path:` moves the document within the bucket (the line is
+  omitted for root documents; **deleting the `path:` line moves the document
+  to the bucket root**), `bucket:` moves the document, and the frontmatter
+  `tags` list is authoritative — tags removed from the list are detached via
   `removeTagsFromDoc`, new ones attached.
 - `kura_key` must not change; a mismatch aborts with a usage error and keeps
   the temp file. Because YAML would coerce an unquoted all-digit key to a
@@ -262,32 +276,53 @@ same title is created later, SPEC §10.1).
 ### `kura mv`
 
 ```
-kura mv <doc> <new-title> [--bucket b]
+kura mv <doc> [<new-title>] [--path <new-path>] [--bucket b]
+kura mv --prefix <old-prefix> <new-prefix> [--bucket b]
 ```
 
-Renames via `renameDocument` → `updateDocument` (`src/core/documents.ts`):
-rewrites `[[old title]]` (and `[[old title|display]]`) in the document's own
-body and in every same-bucket referrer, prints
-`renamed #key old -> new (relinked N documents)`. Rename to a title that
-already exists in the bucket is a `ConflictError`. Unresolved links that
-already pointed at the *new* title are auto-resolved. Chunks are rebuilt on
-rename (chunk context headers embed the title).
+Renames and/or moves via `updateDocument` (`src/core/documents.ts`); at
+least one of `<new-title>` / `--path` is required (`--path ''` moves to the
+bucket root). Same-bucket referrer bodies (and self-links) are rewritten per
+the rename/move matrix
+([document-notation.md](document-notation.md#unresolved-links-and-rename-rewriting)):
+a **title change** rewrites both `[[old title]]` and `[[old/full/path]]`
+(the short form is repointed at the new full path when the new title alone
+would be ambiguous); a **path-only move** rewrites only the full-path
+spelling, so short `[[title]]` links stay valid. Prints
+`renamed|moved #key  old/full/path -> new/full/path  (relinked N documents)`
+("moved" whenever `--path` was given). A destination whose computed full
+path already exists in the bucket (case-insensitively) is a
+`ConflictError`. Unresolved links that already pointed at the *new* title or
+full path are auto-resolved. Chunks are rebuilt on rename (chunk context
+headers embed the title).
+
+`--prefix` moves **every document under a path prefix** at once
+(`moveDocumentsByPrefix`, mirroring `kura tag mv`), scoped to `--bucket` or
+`general.default_bucket`. Unlike tag renames there is **no merge**: a
+destination conflict throws `ConflictError` and rolls back the whole move.
+Guards: an empty old prefix is a usage error; identical prefixes or moving a
+prefix under its own descendant are conflicts; no documents under the prefix
+is `NotFoundError` (exit 3). Prints one `moved #key  from -> to` line per
+document plus an `N documents moved (relinked M documents)` trailer.
 
 ### `kura ls`
 
 ```
-kura ls [--bucket b] [--tag t] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
+kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
 ```
 
 `listDocuments` with filters; `--tag` includes descendant tags
-(`t` matches `t` and `t/…`). Default sort is `updated` (desc); `accessed`
+(`t` matches `t` and `t/…`); `--prefix` filters by document path,
+descendants included (`p` matches path `p` and `p/…`, case-insensitively) —
+the value is normalized and must not be empty (usage error). Default sort is
+`updated` (desc); `accessed`
 puts never-accessed docs last; invalid sorts are usage errors. `--stale`
 switches to staleness mode: candidates older than `general.stale_days` are
 scored by `src/core/stale.ts` (age normalized by `stale_days`, dampened by
 `access_count` and backlinks; only scores ≥ 1 qualify) and sorted by score
 descending; `--limit` is applied **after** scoring. Text output is
-`#key  title  [bucket]  tags  updated_at` plus an `N documents` trailer;
-`--json` mirrors the `add`/`get` field names.
+`#key  path/title  [bucket]  tags  updated_at` plus an `N documents`
+trailer; `--json` mirrors the `add`/`get` field names (including `path`).
 
 ### `kura export`
 
@@ -295,12 +330,15 @@ descending; `--limit` is applied **after** scoring. Text output is
 kura export [--bucket b] [--tag t] --dir <path> [--json]
 ```
 
-Writes every matching document to `<dir>/<bucket>/<title>.md` with a
-serialized frontmatter block (`kura_key` always quoted; datetimes emitted as
-ISO 8601). Filenames are sanitized (`/ \ : * ? " < > |` and control chars →
-`-`); empty results use the key, and case-insensitive collisions within a
-bucket get a `-<key>` suffix. Doubles as a backup; `--dir` is required.
-`--json` → `{exported, dir}`.
+Writes every matching document to `<dir>/<bucket>/<path…>/<title>.md` with
+a serialized frontmatter block (`kura_key` always quoted; `path` emitted
+when non-root; datetimes emitted as ISO 8601). Document path segments become
+real subdirectories; each segment and the title are sanitized independently
+(`/ \ : * ? " < > |` and control chars → `-`) — a literal `/` in a *title*
+becomes `-`, it never nests. Empty results use the key, and case-insensitive
+collisions on the full nested relative path (`bucket/path…/name`) get a
+`-<key>` suffix. Doubles as a backup; `--dir` is required. `--json` →
+`{exported, dir}`.
 
 ### `kura import`
 
@@ -313,8 +351,12 @@ Per file: frontmatter with a `kura_key` that exists → **update** that
 document; otherwise **create** (reusing the frontmatter key if it is unused
 and well-formed). `--bucket` overrides frontmatter, which overrides
 `general.default_bucket`; unlike `add`, missing buckets are **created**
-(`getOrCreateBucket`). Frontmatter `created_at`/`updated_at` are preserved
-on round-trip. Invalid frontmatter or title conflicts (`ConflictError`) are
+(`getOrCreateBucket`). A document's path is frontmatter `path:` when
+present, otherwise the file's subdirectory relative to the scanned root —
+with the leading segment stripped when it equals the target bucket name, so
+a `kura export` tree (`<dir>/<bucket>/<path…>`) round-trips; direct file
+arguments import to the bucket root. Frontmatter `created_at`/`updated_at`
+are preserved on round-trip. Invalid frontmatter or title conflicts (`ConflictError`) are
 skipped with a `skip <path>: reason` line on stderr and the run continues.
 Summary `imported: X created, Y updated, Z skipped`; `--json` →
 `{created, updated, skipped: [paths]}`. Exit 0 if anything succeeded, **1
@@ -498,14 +540,19 @@ title (cached under purpose `clip`), or turndown converts mechanically with
 (clip never exits 4) → LLM tag suggestions seeded with the existing tag list
 (failures are warnings) → save with `source_url`.
 
+- **Clips are filed under the `clip.path` document path** (config, default
+  `"clips"`; `""` saves to the bucket root — see
+  [configuration.md](configuration.md)). A (bucket, path, title) collision
+  retries the save as `タイトル (2)`, `タイトル (3)`, …
+  (`createDocumentWithRetry`, up to 50 attempts).
 - **URL duplicate detection is scoped per bucket**: an existing document
   with the same `source_url` in the target bucket triggers a `[y/N]` update
   confirmation on a TTY; on a non-TTY without `--force` the command prints
   the conflict and exits 1. `--force` updates unconditionally. Updates keep
-  the doc key and apply `--tags`; suggested tags are added as
-  `source='auto'`.
-- `--dry-run` prints the title, a `> url / formatter / tags` info line, and
-  the formatted Markdown without saving — useful to preview the
+  the doc key (and the existing document's path) and apply `--tags`;
+  suggested tags are added as `source='auto'`.
+- `--dry-run` prints the title, a `> url / path / formatter / tags` info
+  line, and the formatted Markdown without saving — useful to preview the
   LLM-vs-turndown output.
 - `--tags` supplies manual tags in addition to the suggestions.
 - Progress (`fetching <url> ...`) goes to stderr.
@@ -554,9 +601,9 @@ disconnects. `--print-config` prints ready-to-paste `claude mcp add` and
   `llm.models.embedding*` makes `doctor` warn, `doctor --fix` recreate
   `chunks_vec`, and `kura embed` repopulate it (see
   [configuration.md](configuration.md)).
-- **`mv`/`edit` (rename) ↔ `link`**: renames rewrite referrer bodies;
-  creating a document auto-resolves matching unresolved links; `link broken`
-  and `doctor --fix` expose/repair the remainder.
+- **`mv`/`edit` (rename/move) ↔ `link`**: renames and path moves rewrite
+  referrer bodies; creating a document auto-resolves matching unresolved
+  links; `link broken` and `doctor --fix` expose/repair the remainder.
 - **`export` ↔ `import`**: a lossless round-trip keyed on `kura_key`
   (re-import updates in place, even into a different `KURA_HOME`).
 
@@ -566,6 +613,10 @@ disconnects. `--print-config` prints ready-to-paste `claude mcp add` and
   resolution defaults to `config default_bucket`; the implementation
   resolves titles across **all buckets** and errors on ambiguity instead.
   Search commands defaulting to all buckets matches SPEC.
+- **Hierarchical document paths are an addition** (SPEC §7 has no `--path` /
+  `ls --prefix` flags, no `kura mv --prefix`, and no `clip.path`); the doc
+  specifier's full-path stage and the path-aware `export`/`import` layout
+  ride on schema v2 (see [data-model.md](data-model.md)).
 - **`init --no-download` is an addition** (not in SPEC §7.1); it exists for
   offline installs and is the backbone of test isolation.
 - **`edit` round-trips frontmatter + body**, not "the body only" as SPEC

@@ -12,8 +12,8 @@ description: Every kura command grouped by task, with global conventions, --json
   instead of formatted text. Handy for scripts and consumed by the
   [MCP server](/kura/mcp/).
 - **Document references** — commands that take a document accept a doc
-  key, a `#key`, or a title (e.g. `kura get "Today's note"` or
-  `kura get #a1b2c3`).
+  key, a `#key`, a full path (`db/sqlite/Notes`), or a unique title
+  (e.g. `kura get "Today's note"` or `kura get #a1b2c3`).
 - **`NO_COLOR`** — set it to disable colored output.
 - **Data location** — `KURA_HOME` overrides the data directory
   (default `~/.kura`); `KURA_DB` overrides the database file.
@@ -32,15 +32,15 @@ description: Every kura command grouped by task, with global conventions, --json
 
 | Command | What it does |
 |---|---|
-| `kura add <file>` | Add a document; `-` reads stdin; `--tags`, `--title`, `--bucket` |
+| `kura add <file>` | Add a document; `-` reads stdin; `--path`, `--tags`, `--title`, `--bucket` |
 | `kura get <ref>` | Print a document (Markdown or `--json`) |
-| `kura edit <ref>` | Open in `$EDITOR`; frontmatter edits title and tags too |
+| `kura edit <ref>` | Open in `$EDITOR`; frontmatter edits title, path, and tags too |
 | `kura rm <ref>` | Delete a document |
-| `kura mv <ref> <title>` | Rename a document (updates wiki links) |
-| `kura ls` | List documents; `--tag`, `--bucket`, `--sort`, `--stale` |
-| `kura clip <url>` | Capture a web page, cleaned up by the LLM |
-| `kura export --dir <d>` | Write documents as Markdown with frontmatter |
-| `kura import <dir>` | Round-trip via `kura_key` (update or create) |
+| `kura mv <ref> [<title>]` | Rename and/or move (`--path`); rewrites wiki links. `--prefix <old> <new>` moves a whole subtree |
+| `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
+| `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
+| `kura export --dir <d>` | Write documents as Markdown with frontmatter; paths become subdirectories |
+| `kura import <dir>` | Round-trip via `kura_key` (update or create); subdirectories become document paths |
 
 ## Search
 

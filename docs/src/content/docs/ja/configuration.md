@@ -27,6 +27,9 @@ embedding = "qwen3-embedding:0.6b"
 embedding_dimensions = 1024
 reranker = "dengcao/Qwen3-Reranker-0.6B"
 generation = "qwen3:4b"
+
+[clip]
+path = "clips"
 ```
 
 ### `[general]`
@@ -62,6 +65,12 @@ embedding モデルまたはその次元を変更したら、`kura doctor --fix`
 新しい次元で再生成してください。古いベクトルはモデル間で互換性が
 ありません。
 :::
+
+### `[clip]`
+
+| キー | 意味 |
+|---|---|
+| `path` | 新しいクリップを保存するドキュメント path（既定 `clips`）。`""` にすると Bucket のルートに保存 |
 
 ## 環境変数
 

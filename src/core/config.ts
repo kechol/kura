@@ -27,6 +27,10 @@ export interface KuraConfig {
     rerank_top_k: number;
     default_limit: number;
   };
+  clip: {
+    /** Document path new clips are filed under; '' saves to the bucket root */
+    path: string;
+  };
   browser: {
     port: number;
   };
@@ -56,6 +60,9 @@ export function defaultConfig(): KuraConfig {
       vector_weight: 1.0,
       rerank_top_k: 20,
       default_limit: 10,
+    },
+    clip: {
+      path: "clips",
     },
     browser: {
       port: 7578,

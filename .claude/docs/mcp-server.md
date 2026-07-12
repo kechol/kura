@@ -40,10 +40,10 @@ logic.
   messages.
 - Search-style results share `hitsToMarkdown()`: optional warning lines as
   `> ⚠ …` blockquotes, one bullet per hit
-  (`- **title** (key: \`key\`, bucket: …, tags: …)` plus an indented
-  snippet), and a closing hint line "Pass a key to `kura_get` to retrieve
-  the full text." — the hint is part of the agent-guidance design, not
-  decoration.
+  (`- **path/title** (key: \`key\`, bucket: …, tags: …)` — the bold part is
+  the computed full path via `joinDocPath` — plus an indented snippet), and
+  a closing hint line "Pass a key to `kura_get` to retrieve the full text."
+  — the hint is part of the agent-guidance design, not decoration.
 
 ## Description design
 
@@ -77,9 +77,11 @@ Search tools share `filterShape` (zod):
 | `limit` | `int 1–50?` | max results |
 
 Document specifiers (`key` fields) go through `resolveDoc()`
-(`src/core/documents.ts`), so they accept a `doc_key` **or a unique title**;
-an ambiguous title across buckets returns a `ConflictError`-flavored error
-result listing candidates.
+(`src/core/documents.ts`), so they accept a `doc_key`, **a full path**
+(e.g. `clips/Title`), **or a unique title** — the schemas describe them as
+"doc_key (8 characters), full path, or title". An ambiguous title returns a
+`ConflictError`-flavored error result listing candidates with their buckets
+and paths.
 
 ## Tool reference (8 tools)
 
@@ -106,38 +108,45 @@ Fast FTS5 BM25 keyword search via `keywordSearch()` — no LLM involved.
 
 Fetch a document body.
 
-- Input: `key` (doc_key or title), `lines?` (`"START:END"`, 1-based,
-  either side optional, e.g. `"50:100"`, `":30"`; malformed → error result).
+- Input: `key` (doc_key, full path, or title), `lines?` (`"START:END"`,
+  1-based, either side optional, e.g. `"50:100"`, `":30"`; malformed →
+  error result).
 - **Side effect**: `touchAccess()` — increments `access_count` and stamps
   `last_accessed_at`, same as CLI `get` and REST GET (SPEC §3.1).
-- Output: `# <title>` heading, a `>` metadata line (key, bucket, tags,
-  source URL, updated), then the (optionally line-sliced) body.
+- Output: `# <title>` heading, a `>` metadata line (key, bucket, `path:`
+  when non-empty, tags, source URL, updated), then the (optionally
+  line-sliced) body.
 
 ### `kura_add`
 
 Create a document via `createDocument()`.
 
-- Input: `title` (unique within a bucket), `content` (Markdown), `bucket?`
-  (defaults to `config.general.default_bucket`), `tags?` (string array,
-  `/`-separated hierarchy).
+- Input: `title` (path + title is unique within a bucket), `content`
+  (Markdown), `bucket?` (defaults to `config.general.default_bucket`),
+  `path?` (folder-like document path, e.g. `db/sqlite`; omit for the bucket
+  root), `tags?` (string array, `/`-separated hierarchy).
 - The body is parsed like any other save: `[[Title]]` links and inline
   `#tag/path` hashtags are extracted, FTS/chunks synced, and unresolved
-  links elsewhere pointing at this title resolve automatically
+  links elsewhere pointing at this title or full path resolve automatically
   ([document-notation.md](document-notation.md)).
-- Duplicate title in the bucket → error result (`ConflictError` message with
-  the existing key). Output: `Added: **title** (key: ..., bucket: ...)`.
+- A duplicate computed full path in the bucket → error result
+  (`ConflictError` message with the existing key).
+  Output: `Added: **path/title** (key: ..., bucket: ...)`.
 
 ### `kura_update`
 
 Update via `updateDocument()`.
 
-- Input: `key` (doc_key or title), `content?` (**full body replacement**),
-  `title?` (rename), `tags?` (**add-only** — the repository merges them via
+- Input: `key` (doc_key, full path, or title), `content?` (**full body
+  replacement**), `title?` (rename), `path?` (move; `''` moves to the
+  bucket root), `tags?` (**add-only** — the repository merges them via
   `addTagsToDoc`; there is deliberately no tag removal over MCP, unlike the
   REST PUT's diff-sync).
-- Rename automatically rewrites `[[old title]]` in referring documents; the
-  output appends `(relinked N backlinks)` when that happened.
-- Output: `Updated: **title** (key: ...)`.
+- Rename and move automatically rewrite `[[links]]` in referring documents
+  (rename: short title + full-path spelling; move: full-path spelling only —
+  [document-notation.md](document-notation.md)); the output appends
+  `(relinked N backlinks)` when that happened.
+- Output: `Updated: **path/title** (key: ...)`.
 
 ### `kura_list_tags`
 
@@ -151,7 +160,7 @@ Update via `updateDocument()`.
 
 Link neighborhood via `outlinks()` / `backlinks()` / `twoHopLinks()`.
 
-- Input: `key` (doc_key or title).
+- Input: `key` (doc_key, full path, or title).
 - Output: `# Related documents for <title>` with three sections —
   `## Outlinks` (`[[title]] → key`, or `(not created yet)` for unresolved
   links), `## Backlinks`, and `## Two-hop links (documents sharing a link
@@ -224,9 +233,12 @@ The server uses the global `~/.kura` database (respecting `KURA_HOME` /
   §5.3(3) planned idle backfill in the resident servers; instead
   `kura_query` relies on the pre-search auto-backfill (≤ 100 pending chunks)
   inside the hybrid pipeline and otherwise warns and points to `kura embed`.
-- **`key` inputs accept titles too** (`kura_get` / `kura_update` /
-  `kura_related`): SPEC §9's table implies doc_keys only; `resolveDoc()`
-  extends this to unique titles, with an explicit ambiguity error.
+- **`key` inputs accept full paths and titles too** (`kura_get` /
+  `kura_update` / `kura_related`): SPEC §9's table implies doc_keys only;
+  `resolveDoc()` extends this to the computed full path and unique titles,
+  with an explicit ambiguity error.
+- **`path` params on `kura_add` / `kura_update` are additions** —
+  hierarchical document paths post-date SPEC §9.
 - **`limit` is capped at 50** by the zod schema and defaults differ per tool
   (`kura_query`: config `default_limit`; `kura_search`: 10) — SPEC leaves
   these unspecified.

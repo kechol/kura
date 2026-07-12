@@ -24,6 +24,7 @@ export interface Bucket {
 
 export interface DocMeta {
   key: string;
+  path: string;
   title: string;
   bucket: string;
   tags: string[];
@@ -72,6 +73,7 @@ export type SearchMode = "keyword" | "vector" | "hybrid";
 
 export interface SearchHit {
   key: string;
+  path: string;
   title: string;
   bucket: string;
   tags: string[];
@@ -174,6 +176,11 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
 
 export function fetchDoc(key: string): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`);
+}
+
+/** Resolve a doc specifier (key / full path / unique title) via GET /api/resolve */
+export function resolveDocSpec(spec: string, bucket?: string): Promise<DocMeta> {
+  return request<DocMeta>(`/api/resolve${qs({ doc: spec, bucket })}`);
 }
 
 export function updateDoc(

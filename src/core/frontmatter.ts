@@ -1,10 +1,12 @@
-import { normalizeTagPath } from "./wiki";
+import { normalizeDocPath, normalizeTagPath } from "./wiki";
 
 /** Frontmatter for import/export round-trips (docs: document-notation.md) */
 export interface Frontmatter {
   kura_key?: string;
   title?: string;
   bucket?: string;
+  /** Document path; '' is an explicit bucket root, undefined means the key was absent */
+  path?: string;
   tags?: string[];
   source_url?: string;
   content_type?: "markdown" | "html";
@@ -27,6 +29,11 @@ export function toIsoDatetime(sqlite: string): string {
 function asString(v: unknown): string | undefined {
   if (typeof v === "string" && v.trim() !== "") return v.trim();
   return undefined;
+}
+
+/** Unlike asString, an empty string is kept — it is an explicit bucket root */
+function asDocPath(v: unknown): string | undefined {
+  return typeof v === "string" ? normalizeDocPath(v) : undefined;
 }
 
 function asDatetime(v: unknown): string | undefined {
@@ -69,6 +76,7 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
     kura_key: kuraKey,
     title: asString(obj.title),
     bucket: asString(obj.bucket),
+    path: asDocPath(obj.path),
     tags: asTags(obj.tags),
     source_url: asString(obj.source_url),
     content_type:
@@ -88,6 +96,7 @@ export function serializeFrontmatter(fm: {
   kura_key: string;
   title: string;
   bucket: string;
+  path: string;
   tags: string[];
   source_url?: string | null;
   content_type?: string;
@@ -99,6 +108,7 @@ export function serializeFrontmatter(fm: {
   lines.push(`kura_key: ${yamlScalar(fm.kura_key)}`);
   lines.push(`title: ${yamlScalar(fm.title)}`);
   lines.push(`bucket: ${yamlScalar(fm.bucket)}`);
+  if (fm.path !== "") lines.push(`path: ${yamlScalar(fm.path)}`);
   if (fm.tags.length > 0) {
     lines.push(`tags: [${fm.tags.map(yamlScalar).join(", ")}]`);
   }

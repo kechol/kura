@@ -39,8 +39,12 @@ Five minutes from zero to a searchable, local knowledge base.
    ```sh
    kura add notes/sqlite-wal.md --tags tech/db/sqlite
    echo "# Today's note" | kura add - --title "Today's note"
-   kura clip https://example.com/article   # capture a web page, cleaned up by the LLM
+   kura clip https://example.com/article    # capture a web page, cleaned by the LLM, filed under clips/
+   kura mv "Today's note" --path db/sqlite  # optionally file it under a path later
    ```
+
+   A document path (`--path`) is always optional — documents without
+   one live at the bucket root, which works fine as an inbox.
 
 4. **Search three ways.**
 
@@ -57,7 +61,7 @@ Five minutes from zero to a searchable, local knowledge base.
 5. **Read, link, and browse.**
 
    ```sh
-   kura get "Today's note"      # by doc key, #key, or title
+   kura get "Today's note"      # by doc key, #key, full path, or title
    kura link ls "Today's note"  # outlinks, backlinks, 2-hop links
    kura browser                 # http://127.0.0.1:7578 — viewer, editor, graph
    ```
@@ -68,12 +72,13 @@ Five minutes from zero to a searchable, local knowledge base.
 
 - `[[Title]]` / `[[Title|display text]]` — wiki links. Write the link
   first and it connects automatically when the target page is created
-  later.
+  later. If two documents share a title, `[[db/sqlite/Title]]` (full
+  path) pins the link to one of them.
 - `#tech/db/sqlite` — hierarchical tags, extracted when you save.
 
 ## Next steps
 
-- [Concept](/kura/concept/) — why kura drops the folder hierarchy.
+- [Concept](/kura/concept/) — why kura refuses forced filing.
 - [Search](/kura/search/) — how the three search modes work.
 - [AI Agents (MCP)](/kura/mcp/) — wire kura into Claude Code and other
   agents.

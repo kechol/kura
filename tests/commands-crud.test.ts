@@ -273,4 +273,35 @@ describe("kura CRUD commands (e2e)", () => {
       expect(typeof d.access_count).toBe("number");
     }
   }, 30_000);
+
+  test("path: add --path / ls --prefix / get by full path / mv --path / mv --prefix", async () => {
+    const { env } = await makeHome();
+    const add = await runCli(
+      ["add", "-", "--title", "SQLite メモ", "--path", "db/sqlite"],
+      env,
+      "WAL モードの整理。\n",
+    );
+    expect(add.code).toBe(0);
+    expect(add.stdout).toContain("db/sqlite/SQLite メモ");
+
+    const ls = await runCli(["ls", "--prefix", "db", "--json"], env);
+    expect(ls.code).toBe(0);
+    const docs = JSON.parse(ls.stdout) as Array<{ path: string }>;
+    expect(docs.length).toBe(1);
+    expect(docs[0]?.path).toBe("db/sqlite");
+
+    const get = await runCli(["get", "db/sqlite/SQLite メモ", "--json"], env);
+    expect(get.code).toBe(0);
+    expect(JSON.parse(get.stdout).path).toBe("db/sqlite");
+
+    const mv = await runCli(["mv", "db/sqlite/SQLite メモ", "--path", "database"], env);
+    expect(mv.code).toBe(0);
+    expect(mv.stdout).toContain("database/SQLite メモ");
+
+    const prefix = await runCli(["mv", "--prefix", "database", "db2"], env);
+    expect(prefix.code).toBe(0);
+    expect(prefix.stdout).toContain("1 documents moved");
+    const after = await runCli(["ls", "--prefix", "db2", "--json"], env);
+    expect((JSON.parse(after.stdout) as unknown[]).length).toBe(1);
+  }, 30_000);
 });

@@ -158,4 +158,37 @@ describe("REST API (docs: http-api.md)", () => {
     expect(status).toBe(404);
     expect(body.error).toBeTruthy();
   });
+
+  test("GET /api/docs?prefix= filters by document path (descendants included)", async () => {
+    createDocument(db, { title: "記事", content: "x", bucket: "main", path: "clips/技術" });
+    const { body } = await api("/api/docs?prefix=clips");
+    expect(body.total).toBe(1);
+    expect(body.docs[0].path).toBe("clips/技術");
+    const none = await api("/api/docs?prefix=%E3%81%AA%E3%81%97");
+    expect(none.body.total).toBe(0);
+  });
+
+  test("doc JSON carries path ('' for the bucket root)", async () => {
+    const { body } = await api("/api/docs");
+    expect(body.docs.every((d: { path: string }) => d.path === "")).toBe(true);
+  });
+
+  test("GET /api/resolve resolves full paths and unique titles", async () => {
+    const doc = createDocument(db, { title: "記事", content: "x", bucket: "main", path: "clips" });
+    const byFull = await api(`/api/resolve?doc=${encodeURIComponent("clips/記事")}`);
+    expect(byFull.status).toBe(200);
+    expect(byFull.body.key).toBe(doc.key);
+    const byTitle = await api(`/api/resolve?doc=${encodeURIComponent("記事")}`);
+    expect(byTitle.body.key).toBe(doc.key);
+  });
+
+  test("GET /api/resolve returns 404 for unknown and 409 for ambiguous specs", async () => {
+    createDocument(db, { title: "記事", content: "1", bucket: "main", path: "a" });
+    createDocument(db, { title: "記事", content: "2", bucket: "main", path: "b" });
+    const missing = await api(`/api/resolve?doc=${encodeURIComponent("存在しない")}`);
+    expect(missing.status).toBe(404);
+    const ambiguous = await api(`/api/resolve?doc=${encodeURIComponent("記事")}`);
+    expect(ambiguous.status).toBe(409);
+    expect(ambiguous.body.error).toContain("ambiguous");
+  });
 });

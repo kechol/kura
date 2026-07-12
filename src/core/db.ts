@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { VAPORETTO_ENTRY_POINT, vaporettoLibPath, vecLoadablePath } from "./bootstrap";
 import { loadConfig } from "./config";
 import migration001 from "./migrations/001_init.sql" with { type: "text" };
+import migration002 from "./migrations/002_document_paths.sql" with { type: "text" };
 import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
@@ -42,6 +43,10 @@ const MIGRATIONS: Array<{ version: number; render(ctx: MigrateContext): string }
         .replaceAll("{{FTS_TOKENIZE}}", ctx.tokenizer)
         .replaceAll("{{VEC_DIMENSIONS}}", String(ctx.dimensions)),
   },
+  {
+    version: 2,
+    render: () => migration002,
+  },
 ];
 
 export function schemaVersion(db: Database): number {
@@ -49,19 +54,36 @@ export function schemaVersion(db: Database): number {
   return row.user_version;
 }
 
-/** PRAGMA user_version based migration runner (each migration is applied inside a transaction) */
-export function migrate(db: Database, ctx: MigrateContext): void {
+/**
+ * PRAGMA user_version based migration runner (each migration is applied inside a transaction).
+ * `upTo` caps the target version (tests build old-schema databases with it).
+ *
+ * foreign_keys is toggled off around each migration — the pragma is a no-op
+ * inside a transaction, and a table rebuild's DROP TABLE would otherwise fire
+ * ON DELETE actions on the child tables. foreign_key_check before COMMIT keeps
+ * the safety the pragma provided (sqlite.org/lang_altertable.html §7).
+ */
+export function migrate(db: Database, ctx: MigrateContext, upTo = Number.MAX_SAFE_INTEGER): void {
   let current = schemaVersion(db);
   for (const m of MIGRATIONS) {
-    if (m.version <= current) continue;
+    if (m.version <= current || m.version > upTo) continue;
+    db.exec("PRAGMA foreign_keys = OFF");
     db.exec("BEGIN");
     try {
       db.exec(m.render(ctx));
+      const violations = db.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `migration ${m.version}: foreign_key_check reported ${violations.length} violation(s)`,
+        );
+      }
       db.exec(`PRAGMA user_version = ${m.version}`);
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
       throw e;
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON");
     }
     current = m.version;
   }

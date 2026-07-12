@@ -8,9 +8,11 @@ const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
 async function runCli(
   args: string[],
   env: Record<string, string>,
+  stdin?: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", CLI, ...args], {
     env: { ...process.env, NO_COLOR: "1", ...env },
+    stdin: stdin === undefined ? "ignore" : Buffer.from(stdin),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -153,6 +155,46 @@ describe("kura export / import / bucket (e2e)", () => {
     expect(again.code).toBe(1);
     expect(again.stdout).toContain("imported: 0 created, 0 updated, 1 skipped");
     expect(again.stderr).toContain("already exists");
+  }, 30_000);
+
+  test("export/import round-trips document paths as directories", async () => {
+    const add = await runCli(
+      ["add", "-", "--title", "ベクトル検索の記事", "--path", "クリップ/技術"],
+      envA,
+      "リランキング前段の候補生成について。\n",
+    );
+    expect(add.code).toBe(0);
+
+    const pathExportDir = join(work, "export-paths");
+    const r = await runCli(["export", "--dir", pathExportDir], envA);
+    expect(r.code).toBe(0);
+    const filePath = join(pathExportDir, "main", "クリップ", "技術", "ベクトル検索の記事.md");
+    expect(existsSync(filePath)).toBe(true);
+    expect(readFileSync(filePath, "utf-8")).toContain('path: "クリップ/技術"');
+
+    // Frontmatter path wins on import into another home
+    const imp = await runCli(["import", pathExportDir], envB);
+    expect(imp.code).toBe(0);
+    const ls = await runCli(["ls", "--prefix", "クリップ", "--json"], envB);
+    const docs = JSON.parse(ls.stdout) as Array<{ path: string; title: string }>;
+    expect(docs.length).toBe(1);
+    expect(docs[0]?.path).toBe("クリップ/技術");
+  }, 30_000);
+
+  test("import derives paths from subdirectories when frontmatter has none", async () => {
+    const treeDir = join(work, "tree");
+    mkdirSync(join(treeDir, "調査", "検索"), { recursive: true });
+    writeFileSync(
+      join(treeDir, "調査", "検索", "リランキング手法.md"),
+      "クロスエンコーダによる再順位付けのメモ。\n",
+    );
+    const r = await runCli(["import", treeDir], envA);
+    expect(r.code).toBe(0);
+    const ls = await runCli(["ls", "--prefix", "調査/検索", "--json"], envA);
+    const docs = JSON.parse(ls.stdout) as Array<{ path: string; title: string }>;
+    expect(docs.length).toBe(1);
+    expect(docs[0]?.title).toBe("リランキング手法");
+    expect(docs[0]?.path).toBe("調査/検索");
   }, 30_000);
 
   test("bucket: add / ls / mv", async () => {

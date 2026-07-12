@@ -15,8 +15,8 @@ the cache.
 ## Key reference
 
 The schema is the `KuraConfig` interface in `src/core/config.ts`; defaults
-are `defaultConfig()` and match SPEC §11 exactly (verified by
-`tests/config.test.ts`).
+are `defaultConfig()` and match SPEC §11 exactly, plus the post-SPEC
+`[clip]` section (verified by `tests/config.test.ts`).
 
 | Key | Type | Default | Meaning / effect of changing it |
 | --- | --- | --- | --- |
@@ -35,6 +35,7 @@ are `defaultConfig()` and match SPEC §11 exactly (verified by
 | `search.vector_weight` | number | `1.0` | Multiplier for the KNN candidate list in RRF fusion. |
 | `search.rerank_top_k` | number | `20` | How many fused candidates go to the reranker (also bounds the final result pool of `query`). |
 | `search.default_limit` | number | `10` | Default `--limit` for `kura query` (and the hybrid path generally). `search`/`vsearch` default to a hard-coded 20 instead. |
+| `clip.path` | string | `"clips"` | Document path `kura clip` files new clips under (`src/cli/commands/clip.ts`). Normalized like any document path (`normalizeDocPath`); `""` saves clips to the bucket root. Changing it does not move existing clips, and the same-URL update branch keeps the existing document's path. |
 | `browser.port` | number | `7578` | `kura browser` listen port; on EADDRINUSE the server retries +1 up to 10 times (`src/server/http.ts`). `--port` overrides per invocation. |
 
 ## `kura config` behavior
@@ -129,6 +130,8 @@ inherited stdio; a non-zero exit aborts the edit and keeps the temp file.
   `PRAGMA user_version` instead (`src/core/db.ts::schemaVersion`).
 - **`kura config set` normalizes the file**, dropping comments and unknown
   keys (SPEC doesn't specify write-back semantics).
+- **The `[clip]` section is an addition**: SPEC §11 has no `clip.path` key
+  (hierarchical document paths post-date it).
 - **Unknown-key handling is split**: reads/parses ignore unknown keys
   silently (merge-onto-defaults), while `config get`/`set` reject them with
   exit 3. SPEC §11 doesn't define either behavior; both are intentional

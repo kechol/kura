@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { WikiLink } from "./wiki";
+import { joinDocPath, type WikiLink } from "./wiki";
 
 export interface RelatedDoc {
   key: string;
@@ -21,7 +21,43 @@ export interface TwoHopGroup {
 
 const DOC_COLS = "d.doc_key AS key, d.title AS title, b.name AS bucket";
 
-/** Re-sync links extracted from the body, resolving against in-bucket titles case-insensitively */
+/** SQL spelling of a document's computed full path (docs: document-notation.md) */
+export function fullPathSql(alias = ""): string {
+  const p = alias === "" ? "" : `${alias}.`;
+  return `CASE WHEN ${p}path = '' THEN ${p}title ELSE ${p}path || '/' || ${p}title END`;
+}
+
+/**
+ * Two-stage, bucket-scoped, case-insensitive wiki-link resolution
+ * (docs: document-notation.md):
+ *   1. exact computed-full-path match (unique per bucket by construction)
+ *   2. title match, resolved only when exactly one candidate exists
+ * Returns null when unresolved or ambiguous. The explicit LIMIT 2 count guard
+ * replaces the old scalar subquery, which silently picked an arbitrary row
+ * when several titles matched.
+ */
+export function resolveLinkTarget(
+  db: Database,
+  bucketId: number,
+  ref: string,
+  excludeId: number,
+): number | null {
+  const byFull = db
+    .prepare(
+      `SELECT id FROM documents
+       WHERE bucket_id = ? AND id != ? AND lower(${fullPathSql()}) = lower(?) LIMIT 2`,
+    )
+    .all(bucketId, excludeId, ref) as Array<{ id: number }>;
+  if (byFull.length > 0) return byFull.length === 1 ? (byFull[0]?.id ?? null) : null;
+  const byTitle = db
+    .prepare(
+      "SELECT id FROM documents WHERE bucket_id = ? AND id != ? AND lower(title) = lower(?) LIMIT 2",
+    )
+    .all(bucketId, excludeId, ref) as Array<{ id: number }>;
+  return byTitle.length === 1 ? (byTitle[0]?.id ?? null) : null;
+}
+
+/** Re-sync links extracted from the body, resolving each target via resolveLinkTarget */
 export function syncLinks(
   db: Database,
   sourceId: number,
@@ -30,33 +66,50 @@ export function syncLinks(
 ): void {
   db.prepare("DELETE FROM links WHERE source_id = ?").run(sourceId);
   const insert = db.prepare(
-    `INSERT OR IGNORE INTO links (source_id, target_id, target_title)
-     VALUES (?, (SELECT id FROM documents WHERE bucket_id = ? AND lower(title) = lower(?) AND id != ?), ?)`,
+    "INSERT OR IGNORE INTO links (source_id, target_id, target_title) VALUES (?, ?, ?)",
   );
   for (const link of links) {
-    insert.run(sourceId, bucketId, link.target, sourceId, link.target);
+    insert.run(sourceId, resolveLinkTarget(db, bucketId, link.target, sourceId), link.target);
   }
 }
 
 /**
- * Auto-resolve unresolved links matching a newly created or renamed title (docs: self-healing.md).
- * Only links from documents in the same bucket are resolved.
+ * Auto-resolve unresolved links matching a newly created, renamed, or moved
+ * document (docs: self-healing.md). Both the title and the full-path spelling
+ * are considered; ambiguous short-form references stay unresolved. Only links
+ * from documents in the same bucket are resolved.
  */
 export function resolveUnresolvedLinks(
   db: Database,
   bucketId: number,
+  docId: number,
+  path: string,
   title: string,
-  targetId: number,
 ): number {
-  const result = db
+  const full = joinDocPath(path, title);
+  const rows = db
     .prepare(
-      `UPDATE links SET target_id = ?
-       WHERE target_id IS NULL AND lower(target_title) = lower(?)
-       AND source_id IN (SELECT id FROM documents WHERE bucket_id = ?)
-       AND source_id != ?`,
+      `SELECT l.id, l.source_id, l.target_title
+       FROM links l
+       JOIN documents s ON s.id = l.source_id
+       WHERE l.target_id IS NULL AND s.bucket_id = ? AND l.source_id != ?
+         AND (lower(l.target_title) = lower(?) OR lower(l.target_title) = lower(?))`,
     )
-    .run(targetId, title, bucketId, targetId);
-  return result.changes;
+    .all(bucketId, docId, title, full) as Array<{
+    id: number;
+    source_id: number;
+    target_title: string;
+  }>;
+  let changes = 0;
+  const update = db.prepare("UPDATE links SET target_id = ? WHERE id = ?");
+  for (const row of rows) {
+    const target = resolveLinkTarget(db, bucketId, row.target_title, row.source_id);
+    if (target !== null) {
+      update.run(target, row.id);
+      changes++;
+    }
+  }
+  return changes;
 }
 
 export function outlinks(db: Database, docId: number): Outlink[] {

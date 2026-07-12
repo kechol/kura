@@ -22,11 +22,25 @@ Syntax: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (`LINK_RE` i
   only the innermost bracket pair becomes a link.
 - Extraction **deduplicates by lowercased title**, keeping the first
   occurrence in document order (`[[SQLite]] と [[sqlite]]` yields one link).
-- **Resolution is case-insensitive and scoped to the document's bucket**
-  (`syncLinks` in `src/core/links.ts`): `[[bun runtime]]` resolves to a
-  same-bucket document titled `Bun Runtime`, never to another bucket.
-  Self-references stay unresolved. Unresolved links keep the raw
-  `target_title` with `target_id = NULL`.
+- **Resolution is two-stage, bucket-scoped, and case-insensitive**
+  (`resolveLinkTarget` in `src/core/links.ts` — the single shared
+  implementation behind `syncLinks`, `resolveUnresolvedLinks`, and doctor's
+  `resolveAllUnresolvedLinks`):
+  1. `[[full/path/Title]]` — exact match on the **computed full path**
+     (`path === '' ? title : path + '/' + title`; unique per bucket by
+     construction).
+  2. `[[Title]]` — title match, resolved only when **exactly one** candidate
+     exists (an explicit `LIMIT 2` count guard — the old scalar subquery
+     silently picked an arbitrary row). An ambiguous short form stays
+     unresolved (`target_id = NULL`) and surfaces via `kura link broken` and
+     doctor.
+
+  `[[bun runtime]]` resolves to a same-bucket document titled `Bun Runtime`,
+  never to another bucket. Self-references stay unresolved. Unresolved links
+  keep the raw `target_title` with `target_id = NULL`.
+- **Already-resolved links are sticky**: creating a second same-title
+  document later does not retro-unresolve links that already point at the
+  first one — resolution only re-runs when the referring document is saved.
 
 ### Code is never notation
 
@@ -48,6 +62,23 @@ Both extraction and rename rewriting ignore code (`visibleLines` /
   backtick characters, which is **length-preserving** — match indexes found
   on the masked line apply directly to the original line. Extraction only
   needs the masked text; rename rewriting depends on the preserved offsets.
+
+## Document paths
+
+Documents carry a slash-separated, folder-like `path` alongside the title
+(`documents.path`, `''` = bucket root — schema v2,
+[data-model.md](data-model.md)). The notation-relevant rules:
+
+- **The path is a separate column, not part of the title.** A title may
+  contain a literal `/` (free text is never split into segments); only the
+  `path` column carries hierarchy. On export a `/` in a *title* is sanitized
+  to `-`, while path segments become real subdirectories.
+- **Normalization** (`normalizeDocPath` in `src/core/wiki.ts`): trim each
+  segment, drop empty segments (collapses `//`, strips leading/trailing
+  `/`). Unlike tag paths, **case is preserved**.
+- `joinDocPath` computes the **full path**
+  (`path === '' ? title : path + '/' + title`) — the form wiki links,
+  `resolveDoc`, and the repository's uniqueness check match against.
 
 ## Hashtags
 
@@ -76,22 +107,35 @@ in `src/core/wiki.ts`), merged into `document_tags` with `source='manual'`.
 
 - **Write links first, connect later** (SPEC §10.1): saving `[[未来のページ]]`
   before that page exists stores an unresolved row. When a document with a
-  matching title (case-insensitive, same bucket) is later **created or
-  renamed**, `resolveUnresolvedLinks` (`src/core/links.ts`) rewires those
-  rows inside the same save transaction. `kura doctor --fix` bulk-resolves
-  the remainder (`resolveAllUnresolvedLinks` in `src/core/doctor.ts`).
-- **Rename** (`kura mv` → `updateDocument` with a new title): every
-  same-bucket referrer with a resolved link to the document gets its body
-  rewritten by `replaceWikiLinkTarget` (`src/core/wiki.ts`), and the
-  document's own self-links are rewritten too. Only the **title part** of
+  matching title **or full path** (case-insensitive, same bucket) is later
+  **created, renamed, or moved**, `resolveUnresolvedLinks`
+  (`src/core/links.ts`) re-runs the two-stage resolution for those rows
+  inside the same save transaction — ambiguous short forms stay unresolved.
+  `kura doctor --fix` bulk-resolves the remainder with the same guard
+  (`resolveAllUnresolvedLinks` in `src/core/doctor.ts`).
+- **Rename / move** (`kura mv` → `updateDocument`): every same-bucket
+  referrer with a resolved link to the document gets its body rewritten by
+  `replaceWikiLinkTargets` (`src/core/wiki.ts`; plural — it applies several
+  replacements in one pass and replaced the old single-replacement helper),
+  and the document's own self-links are rewritten too. The rewrite matrix:
+  - a **title change** rewrites both `[[旧タイトル]]` and the full-path
+    spelling `[[old/full/path]]`; the short form is pointed at the **new
+    full path** when the new title alone would be ambiguous in the bucket,
+    so it keeps resolving;
+  - a **path-only move** rewrites only the full-path spelling — short
+    `[[タイトル]]` links keep their `target_id` and stay valid;
+  - a **bucket move** rewrites nothing; incoming links unresolve
+    ([data-model.md](data-model.md)).
+
+  Only the **title part** of
   `[[旧タイトル]]` / `[[旧タイトル|表示名]]` is replaced (display text is
   preserved); matching is trim + case-insensitive. Code is protected: fenced
   blocks pass through untouched, and inline code is skipped via the
   length-preserving mask — the rewriter finds `LINK_RE` matches on the
-  masked line, then splices `newTitle` into the *original* line at the same
-  offsets. Referrer bodies are saved through `updateDocument`, so their
-  derived data re-syncs; `UpdateResult.relinked` reports how many referrers
-  changed.
+  masked line, then splices the replacement text into the *original* line at
+  the same offsets. Referrer bodies are saved through `updateDocument`, so
+  their derived data re-syncs; `UpdateResult.relinked` reports how many
+  referrers changed.
 
 ## Frontmatter
 
@@ -104,6 +148,7 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
 | `kura_key` | string, 8-hex | Present + known ⇒ **update** that document; unknown/absent ⇒ create (unknown-but-taken keys are regenerated — see [data-model.md](data-model.md)) |
 | `title` | string | Falls back to the file name (`fallbackTitle`) |
 | `bucket` | string | `--bucket` flag wins over frontmatter; otherwise config `default_bucket`. Missing buckets are auto-created |
+| `path` | string (normalized via `normalizeDocPath`; `""` = explicit bucket root) | Falls back to the file's subdirectory relative to the scanned root, with the leading segment stripped when it equals the bucket name (so an export tree round-trips); direct file arguments ⇒ root |
 | `tags` | string array or comma-separated string | No tags. Each entry is normalized (`normalizeTagPath`) and deduped |
 | `source_url` | string | Kept from the existing document on update; `null` on create |
 | `content_type` | `'markdown'` \| `'html'` (anything else ignored) | `'markdown'` |
@@ -116,9 +161,11 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
   (`kura_key: 16052989`) by converting safe integers back to strings.
   Regression tests: `tests/documents.test.ts`.
 - Export (`src/cli/commands/export.ts`) writes
-  `<dir>/<bucket>/<sanitized title>.md`, quoting all string scalars, emitting
-  `tags` only when non-empty, `content_type` only when not `markdown`, and
-  timestamps as ISO 8601 (`toIsoDatetime`).
+  `<dir>/<bucket>/<path segments>/<sanitized title>.md` — each path segment
+  sanitized like the file name, while a literal `/` in a *title* is
+  sanitized to `-` (never nested) — quoting all string scalars, emitting
+  `path` only when non-root, `tags` only when non-empty, `content_type`
+  only when not `markdown`, and timestamps as ISO 8601 (`toIsoDatetime`).
 
 ## `content_type: 'html'` special cases
 
@@ -146,6 +193,11 @@ HTML documents are stored verbatim and mostly opt out of notation handling
   are implementation-defined (locked in by `tests/wiki.test.ts`).
 - **`content_type` frontmatter field**: not in SPEC §4's field list; added
   so HTML documents survive the export/import round-trip.
+- **Document paths and two-stage link resolution are additions**: SPEC §4
+  resolves `[[Title]]` by title only. The `path` column / frontmatter key,
+  the full-path resolution stage, the exactly-one-candidate guard, and the
+  ambiguity → unresolved behavior are implementation-defined (locked in by
+  `tests/paths.test.ts`).
 - **HTML opt-outs**: SPEC doesn't define how `content_type='html'` interacts
   with wiki syntax; skipping extraction and rename rewriting for HTML is
   implementation-defined.

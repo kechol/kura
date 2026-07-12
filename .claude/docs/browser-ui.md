@@ -16,7 +16,7 @@ embed them with a static table.
 | --- | --- |
 | `index.html` | Static shell: `<div id="app">`, loads `/index.js` + `/index.css`, `lang="ja"` |
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
-| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses; `ApiError` carries the HTTP status |
+| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
 | `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard) |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
@@ -30,7 +30,7 @@ embed them with a static table.
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
 | `pages/DocEdit.tsx` | Plain editor (title / tags / textarea) |
-| `pages/DocByTitle.tsx` | `[[link]]` title-resolution route |
+| `pages/DocByTitle.tsx` | `[[link]]` resolution route (`GET /api/resolve` + search fallback) |
 | `pages/Search.tsx` | 3-mode search |
 | `pages/Tags.tsx` | Tag browser |
 | `pages/Graph.tsx` | d3-force knowledge graph |
@@ -44,7 +44,7 @@ embed them with a static table.
 | --- | --- |
 | `/` | Home |
 | `/docs` | Document list (filters live in the query string: `bucket`, `tag`, `sort`, `stale`, `page`) |
-| `/docs/title/:title` | Title → key resolution (wikilink fallback) |
+| `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
 | `/docs/:key/edit` | Editor |
 | `/docs/:key` | Document detail |
 | `/search` | Search (`q`, `mode`, `bucket`, `tag` in query string) |
@@ -86,11 +86,13 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
 - **Tag browser** — full tag tree with "direct / total including
   descendants" counts; every node links to the filtered document list.
 - **Knowledge graph** — see below.
-- **Title resolution (`/docs/title/:title`)** — runs a keyword search for
-  the title; on an exact (case-insensitive) title match it redirects to the
-  detail page (`replace: true` so history stays clean). Otherwise it shows an
-  "unresolved link" page listing the closest matches — the click-through
-  target for red wikilinks.
+- **Link resolution (`/docs/title/:title`)** — calls `GET /api/resolve`
+  (`resolveDocSpec()` in `api.ts`) with the raw link text — full path or
+  unique title, the same `resolveDoc` grammar as the CLI — and redirects to
+  the detail page on success (`replace: true` so history stays clean). A 404
+  (not created yet) or 409 (ambiguous) falls back to a keyword search and
+  shows an "unresolved link" page listing the closest matches with their
+  full paths — the click-through target for red wikilinks.
 
 ## Rendering pipeline
 
@@ -243,10 +245,11 @@ identifiers, and CSS class names stay English.
 
 ## Deviations from SPEC
 
-- **`/docs/title/:title` resolution route is an addition.** SPEC §8.3 only
-  asks for `[[リンク]]` to become clickable; the implementation gives
-  unresolved links a landing page with near-match suggestions, and resolved
-  navigation happens client-side by title lookup when needed.
+- **The `/docs/title/:title` route and `GET /api/resolve` are additions.**
+  SPEC §8.3 only asks for `[[リンク]]` to become clickable; the
+  implementation resolves link text server-side via `resolveDoc` (full path
+  / unique title — [http-api.md](http-api.md)) and gives unresolved or
+  ambiguous links a landing page with near-match suggestions.
 - **`[[Title|display text]]` is not special-cased** in the renderer: the raw
   inner text (including the `|display`) is used as both label and lookup key,
   whereas SPEC §4 defines the pipe form. Core extraction handles it; the

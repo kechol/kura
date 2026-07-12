@@ -7,8 +7,8 @@ import { LinkButton, Card, CardGrid } from '@astrojs/starlight/components';
 
 `kura` stores your Markdown and HTML documents in a single local
 SQLite file and makes them searchable by both humans and AI agents —
-with hybrid search tuned for Japanese text. No folders, no cloud, no
-account.
+with hybrid search tuned for Japanese text. No forced filing, no
+cloud, no account.
 
 <LinkButton href="/kura/quick-start/" icon="right-arrow">
   Quick Start (5 min)
@@ -19,11 +19,13 @@ account.
 
 ## Why kura
 
-Notes pile up faster than any folder hierarchy can keep them tidy.
-kura drops the hierarchy entirely: documents organize themselves
+Notes pile up faster than any mandatory hierarchy can keep them tidy.
+kura never forces a filing decision: documents organize themselves
 through **buckets**, **hierarchical tags** (`tech/db/sqlite`), and
-**wiki links** (`[[Title]]`). Write a link before the target exists and
-it connects automatically the moment that page is created.
+**wiki links** (`[[Title]]`), with optional **document paths**
+(`db/sqlite`) when a folder-like name helps. Write a link before the
+target exists and it connects automatically the moment that page is
+created.
 
 Retrieval is the hard part, and kura leans into it with a hybrid
 search pipeline built for Japanese: a morphological FTS index,
@@ -42,8 +44,9 @@ reranking — all inside one SQLite database.
     still works.
   </Card>
   <Card title="Self-organizing" icon="list-format">
-    No folder tree. Buckets, hierarchical tags, and `[[wiki links]]`
-    keep documents connected without filing them anywhere.
+    No forced filing. Buckets, hierarchical tags, and `[[wiki links]]`
+    keep documents connected; document paths are optional, and the
+    bucket root works as an inbox.
   </Card>
   <Card title="Built for AI agents" icon="seti:default">
     An MCP server (`kura mcp`) exposes search and CRUD as tools, and

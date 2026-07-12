@@ -11,6 +11,7 @@ import { keywordSearch } from "../core/search/keyword";
 import type { SearchHit } from "../core/search/types";
 import { collectStats } from "../core/stats";
 import { listTags } from "../core/tags";
+import { joinDocPath } from "../core/wiki";
 
 export interface McpDeps {
   db: Database;
@@ -41,7 +42,9 @@ function hitsToMarkdown(hits: SearchHit[], warnings: string[] = []): string {
   }
   for (const h of hits) {
     const tags = h.tags.length > 0 ? ` — tags: ${h.tags.join(", ")}` : "";
-    lines.push(`- **${h.title}** (key: \`${h.key}\`, bucket: ${h.bucket}${tags})`);
+    lines.push(
+      `- **${joinDocPath(h.path, h.title)}** (key: \`${h.key}\`, bucket: ${h.bucket}${tags})`,
+    );
     if (h.snippet) lines.push(`  ${h.snippet.replaceAll("\n", " ")}`);
   }
   lines.push("");
@@ -131,7 +134,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
         "kura_query / kura_search results. For long documents, restrict the output with " +
         "lines (e.g. '1:100').",
       inputSchema: {
-        key: z.string().describe("doc_key (8 characters) or document title"),
+        key: z
+          .string()
+          .describe("doc_key (8 characters), full path (e.g. clips/Title), or document title"),
         lines: z.string().optional().describe("Line range 'START:END' (1-based, optional)"),
       },
     },
@@ -141,6 +146,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         touchAccess(db, doc.id);
         const meta = [
           `key: \`${doc.key}\` / bucket: ${doc.bucket}`,
+          doc.path !== "" ? `path: ${doc.path}` : null,
           doc.tags.length > 0 ? `tags: ${doc.tags.join(", ")}` : null,
           doc.sourceUrl ? `source: ${doc.sourceUrl}` : null,
           `updated: ${doc.updatedAt}`,
@@ -161,21 +167,28 @@ export function createMcpServer(deps: McpDeps): McpServer {
         "Add a new document to the knowledge base. The body is Markdown. " +
         "Link to other documents with [[Title]] and write tags inline as #tag/path.",
       inputSchema: {
-        title: z.string().describe("Document title (unique within a bucket)"),
+        title: z.string().describe("Document title (path + title is unique within a bucket)"),
         content: z.string().describe("Markdown body"),
         bucket: z.string().optional().describe("Bucket name (default bucket if omitted)"),
+        path: z
+          .string()
+          .optional()
+          .describe("Folder-like document path (e.g. 'db/sqlite'); omit for the bucket root"),
         tags: z.array(z.string()).optional().describe("Tags (hierarchy separated by /)"),
       },
     },
-    ({ title, content, bucket, tags }) => {
+    ({ title, content, bucket, path, tags }) => {
       try {
         const doc = createDocument(db, {
           title,
           content,
           bucket: bucket ?? config.general.default_bucket,
+          path,
           tags,
         });
-        return text(`Added: **${doc.title}** (key: \`${doc.key}\`, bucket: ${doc.bucket})`);
+        return text(
+          `Added: **${joinDocPath(doc.path, doc.title)}** (key: \`${doc.key}\`, bucket: ${doc.bucket})`,
+        );
       } catch (e) {
         return errorResult(e);
       }
@@ -187,21 +200,25 @@ export function createMcpServer(deps: McpDeps): McpServer {
     {
       description:
         "Update an existing document. Passing content replaces the entire body. " +
-        "Passing title renames the document and automatically rewrites [[links]] " +
-        "from other documents. tags are add-only (never removed).",
+        "Passing title renames the document, passing path moves it; both " +
+        "automatically rewrite [[links]] from other documents. tags are add-only " +
+        "(never removed).",
       inputSchema: {
-        key: z.string().describe("doc_key (8 characters) or title"),
+        key: z.string().describe("doc_key (8 characters), full path, or title"),
         content: z.string().optional().describe("New Markdown body (full replacement)"),
         title: z.string().optional().describe("New title (rename)"),
+        path: z.string().optional().describe("New document path ('' moves to the bucket root)"),
         tags: z.array(z.string()).optional().describe("Tags to add"),
       },
     },
-    ({ key, content, title, tags }) => {
+    ({ key, content, title, path, tags }) => {
       try {
         const doc = resolveDoc(db, key);
-        const { record, relinked } = updateDocument(db, doc.id, { content, title, tags });
+        const { record, relinked } = updateDocument(db, doc.id, { content, title, path, tags });
         const note = relinked > 0 ? ` (relinked ${relinked} backlinks)` : "";
-        return text(`Updated: **${record.title}** (key: \`${record.key}\`)${note}`);
+        return text(
+          `Updated: **${joinDocPath(record.path, record.title)}** (key: \`${record.key}\`)${note}`,
+        );
       } catch (e) {
         return errorResult(e);
       }
@@ -240,7 +257,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         "Get related information for a document (outlinks, backlinks, two-hop links). " +
         "Use to explore knowledge around a topic.",
       inputSchema: {
-        key: z.string().describe("doc_key (8 characters) or title"),
+        key: z.string().describe("doc_key (8 characters), full path, or title"),
       },
     },
     ({ key }) => {

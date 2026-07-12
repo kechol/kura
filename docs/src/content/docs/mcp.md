@@ -29,9 +29,9 @@ no account.
 |---|---|
 | `kura_query` | Hybrid search (keyword + semantic + rerank) — the default retrieval tool |
 | `kura_search` | Keyword search (FTS5 BM25) |
-| `kura_get` | Fetch a document by key or title |
-| `kura_add` | Create a document |
-| `kura_update` | Update an existing document |
+| `kura_get` | Fetch a document by key, full path (`clips/Title`), or title |
+| `kura_add` | Create a document; an optional `path` files it under a folder-like document path |
+| `kura_update` | Update an existing document; changing `title` or `path` rewrites `[[links]]` in referring documents |
 | `kura_list_tags` | List the tag hierarchy |
 | `kura_related` | Documents related to a given one (links + similarity) |
 | `kura_status` | Store statistics |

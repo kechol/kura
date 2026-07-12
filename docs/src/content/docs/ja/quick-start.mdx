@@ -40,8 +40,13 @@ import { Steps } from '@astrojs/starlight/components';
    ```sh
    kura add notes/sqlite-wal.md --tags tech/db/sqlite
    echo "# 今日のメモ" | kura add - --title "今日のメモ"
-   kura clip https://example.com/article   # Web ページを LLM で整形して取り込み
+   kura clip https://example.com/article    # Web ページを LLM で整形して取り込み（clips/ に保存）
+   kura mv "今日のメモ" --path db/sqlite    # 後から任意のパスを付ける
    ```
+
+   ドキュメントのパス（`--path`）は常に任意です。パスの無い
+   ドキュメントは Bucket のルートに置かれ、そのまま inbox として
+   使えます。
 
 4. **3 通りで検索する。**
 
@@ -58,7 +63,7 @@ import { Steps } from '@astrojs/starlight/components';
 5. **閲覧・リンク・ブラウズ。**
 
    ```sh
-   kura get "今日のメモ"        # doc key / #key / タイトルで指定
+   kura get "今日のメモ"        # doc key / #key / フルパス / タイトルで指定
    kura link ls "今日のメモ"    # アウトリンク・バックリンク・2 ホップ
    kura browser                 # http://127.0.0.1:7578 — 閲覧・編集・グラフ
    ```
@@ -69,12 +74,14 @@ import { Steps } from '@astrojs/starlight/components';
 
 - `[[タイトル]]` / `[[タイトル|表示名]]` — 相互リンク。先にリンクを
   書いておけば、後から対象ページを作ったときに自動でつながります。
+  タイトルが重複するときは、フルパス（`[[db/sqlite/タイトル]]`）で
+  リンク先を 1 つに固定できます。
 - `#tech/db/sqlite` — 階層タグ。保存時に抽出されます。
 
 ## 次のステップ
 
-- [コンセプト](/kura/ja/concept/) — なぜ kura はフォルダ階層を
-  捨てるのか。
+- [コンセプト](/kura/ja/concept/) — なぜ kura はファイリングの強制を
+  拒むのか。
 - [検索](/kura/ja/search/) — 3 つの検索モードの仕組み。
 - [AI エージェント (MCP)](/kura/ja/mcp/) — Claude Code などの
   エージェントと連携する。

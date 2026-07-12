@@ -7,7 +7,8 @@ export const summary = "Show a document";
 
 export const usage = `Usage: kura get <doc> [--pretty|--raw] [--json] [--lines A:B] [--bucket b]
 
-<doc> is a doc key (#a1b2c3d4 or a1b2c3d4) or a title unique within a bucket.
+<doc> is a doc key (#a1b2c3d4 or a1b2c3d4), a full path (clips/Title), or a
+title unique within a bucket.
 
 Options:
   --pretty          ANSI-rendered Markdown (default when stdout is a TTY)
@@ -53,6 +54,7 @@ export function run(argv: string[]): number {
   if (boolOpt(parsed, "json")) {
     const out = {
       key: doc.key,
+      path: doc.path,
       title: doc.title,
       bucket: doc.bucket,
       tags: doc.tags,
@@ -74,7 +76,9 @@ export function run(argv: string[]): number {
     return EXIT.OK;
   }
 
-  const meta = [`#${doc.key}`, doc.bucket, doc.tags.join(", ")].filter((s) => s !== "").join(" · ");
+  const meta = [`#${doc.key}`, doc.bucket, doc.path, doc.tags.join(", ")]
+    .filter((s) => s !== "")
+    .join(" · ");
   const md = `# ${doc.title}\n\n${meta}\n\n${content}`;
   console.log(renderMarkdown(md, { color: isColorEnabled() }));
   return EXIT.OK;

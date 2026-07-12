@@ -5,6 +5,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Hierarchical document paths: documents can carry an optional
+  slash-separated path (`kura add --path db/sqlite`), browsable with
+  `kura ls --prefix` and movable with `kura mv <doc> --path` or in bulk with
+  `kura mv --prefix <old> <new>` (rewrites `[[links]]` in referring
+  documents).
+- `[[full/path/Title]]` wiki links pin a single document; `GET /api/resolve`
+  resolves key / full path / unique title for the browser UI.
+- `kura export` writes paths as real subdirectories and `kura import`
+  derives paths from subdirectories when frontmatter has none, so exported
+  trees (and Obsidian-style folder trees) round-trip.
+- New config key `clip.path` (default `"clips"`): `kura clip` files clips
+  under a dedicated path.
+
+### Changed
+
+- **BREAKING**: title uniqueness is now per (bucket, path, title) — schema
+  v2, migrated automatically (existing documents land at the bucket root,
+  ids and links preserved). Equal titles can coexist under different paths,
+  so title-based addressing and `[[Title]]` links resolve only when the
+  title is unique in scope; ambiguous references are reported
+  (`kura link broken`, `kura doctor`) instead of silently picking one.
+- **BREAKING**: `--json` output of `ls` / `get` / `add`, REST document and
+  search-hit payloads, and MCP tool results now include a `path` field;
+  `kura_add` / `kura_update` accept an optional `path` parameter.
+- `kura clip` no longer fails on a duplicate title — it retries as
+  "タイトル (2)", "タイトル (3)", ….
+
 ## [0.1.0] - 2026-07-08
 
 ### Added

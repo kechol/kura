@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import { type FtsTokenizer, getMeta, setMeta } from "./db";
 import { sha256Hex, updateDocument } from "./documents";
+import { resolveLinkTarget } from "./links";
 
 export interface FixReport {
   action: string;
@@ -91,29 +92,31 @@ export function fixContentHashes(db: Database): FixReport | null {
     : null;
 }
 
-/** Re-resolve all unresolved links in bulk (within the same bucket, case-insensitive, docs: self-healing.md) */
+/**
+ * Re-resolve all unresolved links in bulk (within the same bucket, docs: self-healing.md).
+ * Delegates to the shared two-stage resolution, so ambiguous short-form
+ * references are skipped rather than pointed at an arbitrary match.
+ */
 export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
-  const result = db
+  const rows = db
     .prepare(
-      `UPDATE links SET target_id = (
-         SELECT d.id FROM documents d
-         JOIN documents s ON s.id = links.source_id
-         WHERE d.bucket_id = s.bucket_id
-           AND lower(d.title) = lower(links.target_title)
-           AND d.id != links.source_id
-       )
-       WHERE target_id IS NULL
-         AND EXISTS (
-           SELECT 1 FROM documents d
-           JOIN documents s ON s.id = links.source_id
-           WHERE d.bucket_id = s.bucket_id
-             AND lower(d.title) = lower(links.target_title)
-             AND d.id != links.source_id
-         )`,
+      `SELECT l.id, l.source_id, l.target_title, s.bucket_id
+       FROM links l
+       JOIN documents s ON s.id = l.source_id
+       WHERE l.target_id IS NULL`,
     )
-    .run();
-  return result.changes > 0
-    ? { action: "resolve-links", detail: `resolved ${result.changes} unresolved link(s)` }
+    .all() as Array<{ id: number; source_id: number; target_title: string; bucket_id: number }>;
+  let changes = 0;
+  const update = db.prepare("UPDATE links SET target_id = ? WHERE id = ?");
+  for (const row of rows) {
+    const target = resolveLinkTarget(db, row.bucket_id, row.target_title, row.source_id);
+    if (target !== null) {
+      update.run(target, row.id);
+      changes++;
+    }
+  }
+  return changes > 0
+    ? { action: "resolve-links", detail: `resolved ${changes} unresolved link(s)` }
     : null;
 }
 

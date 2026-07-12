@@ -126,19 +126,19 @@ All ingestion paths (`kura add` / `edit` / `import` / `clip`, `PUT
 ```
 caller (cli / server / mcp)
   └─ createDocument / updateDocument          BEGIN TRANSACTION
-       ├─ validate bucket; title uniqueness (case-insensitive, per bucket)
+       ├─ validate bucket; full-path uniqueness (case-insensitive, per bucket)
        ├─ INSERT / UPDATE documents  (content_hash = sha256(content))
        ├─ syncDerived:
        │    ├─ extractWiki(content)              [skipped for content_type='html']
        │    ├─ addTagsToDoc: tags + document_tags + FTS tags column
-       │    ├─ syncLinks: DELETE + re-INSERT links rows,
-       │    │             resolving [[titles]] against the bucket (case-insensitive)
+       │    ├─ syncLinks: DELETE + re-INSERT links rows, resolving each
+       │    │             target two-stage (full path, then unique title)
        │    ├─ ftsUpsert: DELETE + INSERT documents_fts (rowid = documents.id)
        │    ├─ rebuildChunks          [only when content or title changed]:
        │    │     delete chunks_vec rows → delete chunks → insert new chunks
        │    │     with embedded_at = NULL (embedding deferred, SPEC §5.3)
-       │    └─ resolveUnresolvedLinks [on create / rename]: earlier [[links]]
-       │          to this title connect automatically
+       │    └─ resolveUnresolvedLinks [on create / rename / move]: earlier
+       │          [[links]] to this title or full path connect automatically
        └─ COMMIT
 ```
 

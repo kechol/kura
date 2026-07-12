@@ -12,7 +12,7 @@ export const usage = `Usage: kura export [--bucket <name>] [--tag <path>] --dir 
 Options:
   --bucket <name>  Export only the given bucket
   --tag <path>     Export only documents with the tag (descendants included)
-  --dir <path>     Output directory (required). Files go to <dir>/<bucket>/<title>.md`;
+  --dir <path>     Output directory (required). Files go to <dir>/<bucket>/<path...>/<title>.md`;
 
 const INVALID_CHARS = new Set(["/", "\\", ":", "*", "?", '"', "<", ">", "|"]);
 
@@ -40,18 +40,23 @@ export async function run(argv: string[]): Promise<number> {
 
   const used = new Set<string>();
   for (const doc of docs) {
-    const bucketDir = join(dir, doc.bucket);
-    mkdirSync(bucketDir, { recursive: true });
+    // Document path segments become real subdirectories; the title stays a
+    // single file name (a literal '/' in a title is sanitized, not nested)
+    const segments = doc.path === "" ? [] : doc.path.split("/").map(sanitizeFilename);
+    const outDir = join(dir, doc.bucket, ...segments);
+    mkdirSync(outDir, { recursive: true });
 
     let name = sanitizeFilename(doc.title);
     if (name === "") name = doc.key;
-    if (used.has(join(doc.bucket, name).toLowerCase())) name = `${name}-${doc.key}`;
-    used.add(join(doc.bucket, name).toLowerCase());
+    const usedKey = (n: string) => [doc.bucket, ...segments, n].join("/").toLowerCase();
+    if (used.has(usedKey(name))) name = `${name}-${doc.key}`;
+    used.add(usedKey(name));
 
     const fm = serializeFrontmatter({
       kura_key: doc.key,
       title: doc.title,
       bucket: doc.bucket,
+      path: doc.path,
       tags: doc.tags,
       source_url: doc.sourceUrl,
       content_type: doc.contentType,
@@ -59,7 +64,7 @@ export async function run(argv: string[]): Promise<number> {
       updated_at: doc.updatedAt,
     });
     const content = doc.content.endsWith("\n") ? doc.content : `${doc.content}\n`;
-    writeFileSync(join(bucketDir, `${name}.md`), `${fm}\n\n${content}`);
+    writeFileSync(join(outDir, `${name}.md`), `${fm}\n\n${content}`);
   }
 
   if (boolOpt(parsed, "json")) {

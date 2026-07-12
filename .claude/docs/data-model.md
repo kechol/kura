@@ -1,12 +1,14 @@
 # Data Model
 
-> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
+> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
 
-Schema v1 lives in `src/core/migrations/001_init.sql`. Two placeholders are
-substituted by the migration runner at apply time: `{{FTS_TOKENIZE}}`
-(`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}` (embedding dimensions).
-All derived tables are kept in sync by the repository layer — see the
-invariants in [architecture.md](architecture.md).
+Schema v1 lives in `src/core/migrations/001_init.sql`; schema v2
+(`002_document_paths.sql`) adds hierarchical document paths (see the
+`documents` table and the migration-runner section below). Two placeholders
+are substituted into `001_init.sql` by the migration runner at apply time:
+`{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}`
+(embedding dimensions). All derived tables are kept in sync by the
+repository layer — see the invariants in [architecture.md](architecture.md).
 
 ## Tables
 
@@ -33,7 +35,8 @@ The single source of truth for document bodies.
 | `id` | PK. Also the `documents_fts` rowid and FK target for links/chunks/tags |
 | `doc_key` | UNIQUE 8-hex public short ID (see "doc_key" below) |
 | `bucket_id` | FK → `buckets(id)` |
-| `title` | Trimmed, non-empty. `UNIQUE (bucket_id, title)` in DDL, and additionally enforced **case-insensitively** by the repository (`lower(title)` duplicate checks) so `[[link]]` resolution is unambiguous |
+| `path` | Slash-separated folder-like namespace; `''` = bucket root. `NOT NULL DEFAULT ''` (schema v2). Normalized on write (`normalizeDocPath` in `src/core/wiki.ts`: trim segments, drop empty segments) — **case-preserving**, unlike tag paths |
+| `title` | Trimmed, non-empty. May contain a literal `/` — the `path` column, not the title, carries hierarchy. `UNIQUE (bucket_id, path, title)` in DDL (schema v2); the repository additionally enforces **case-insensitive** uniqueness of the **computed full path** (`path === '' ? title : path + '/' + title` — `assertUniqueInBucket` in `src/core/documents.ts`), which also rejects cross-form collisions like `path='a', title='b/c'` vs `path='a/b', title='c'` so full-path references stay unambiguous |
 | `content` | Full body (Markdown or raw HTML) |
 | `content_type` | `'markdown'` (default) or `'html'`; anything else is read back as `'markdown'` |
 | `source_url` | Origin URL for `kura clip` documents; nullable |
@@ -68,8 +71,10 @@ One row per distinct `[[target]]` in a document body.
 | — | `UNIQUE (source_id, target_title)`; partial index `idx_links_unresolved` on `target_title WHERE target_id IS NULL` |
 
 `syncLinks` (`src/core/links.ts`) deletes and re-inserts a document's rows on
-every save, resolving `target_id` against same-bucket titles
-case-insensitively (self-links resolve to NULL).
+every save, resolving each `target_id` through `resolveLinkTarget` — the
+shared two-stage, bucket-scoped, case-insensitive resolution (computed full
+path first, then title, resolved only when exactly one candidate exists; see
+[document-notation.md](document-notation.md)). Self-links resolve to NULL.
 
 ### `chunks`
 
@@ -135,13 +140,28 @@ The schema version is **not** in `meta`; it lives in `PRAGMA user_version`.
 
 - Versioning via `PRAGMA user_version` (0 = fresh). `MIGRATIONS` is an
   ordered array of `{ version, render(ctx) }`; every entry with `version >
-  user_version` is applied.
+  user_version` is applied. An optional `upTo` parameter caps the target
+  version — tests use it to build old-schema databases
+  (`tests/migration.test.ts`).
 - `render` substitutes `{{FTS_TOKENIZE}}` / `{{VEC_DIMENSIONS}}` from
   `MigrateContext`. For a fresh DB the context comes from the vaporetto load
   result + config; for an existing DB it comes from `meta` so re-renders
   match what the DB was actually built with.
 - Each migration runs inside its own `BEGIN … COMMIT` with `ROLLBACK` on
   error, and sets `PRAGMA user_version` inside that transaction.
+- The runner toggles `PRAGMA foreign_keys = OFF/ON` around each migration —
+  **outside** the transaction, where the pragma would be a no-op. A table
+  rebuild's `DROP TABLE` would otherwise fire the `ON DELETE` actions on
+  child tables. `PRAGMA foreign_key_check` runs before `COMMIT` to keep the
+  safety the pragma provided (sqlite.org/lang_altertable.html §7); any
+  violation rolls the migration back.
+- **Schema v2** (`002_document_paths.sql`) rebuilds `documents` to change
+  `UNIQUE (bucket_id, title)` into `UNIQUE (bucket_id, path, title)`,
+  **preserving ids** — the `documents_fts` rowid and the
+  `links` / `document_tags` / `chunks` FKs all reference `documents.id` — and
+  recreating the two indexes. Every existing row gets `path = ''`, so an
+  upgraded database's meaning is unchanged. Migrations are forward-only;
+  there is no down path.
 
 **Adding a migration**: create `src/core/migrations/00N_name.sql`, import it
 in `db.ts` with `with { type: "text" }`, append `{ version: N, render }` to
@@ -161,11 +181,16 @@ existing DBs will not re-run it.
   key means "update this document" instead (`importDocument`).
 - **Resolution** (`resolveDoc`): a `<doc>` specifier is, in order —
   1. `#key` — must be valid 8-hex (else `UsageError`); unknown → `NotFoundError`.
-  2. bare 8-hex string — tried as a key first, then falls through to title lookup.
-  3. title — case-insensitive match, scoped to `--bucket` when given,
+  2. bare 8-hex string — tried as a key first, then falls through.
+  3. computed full path — case-insensitive match on
+     `path === '' ? title : path + '/' + title`, scoped to `--bucket` when
+     given. Unique per bucket by construction, so several matches means
+     several buckets → `ConflictError` (use `#key` or `--bucket`).
+  4. title — case-insensitive match, scoped to `--bucket` when given,
      otherwise across all buckets. Zero matches → `NotFoundError` (exit 3);
-     multiple matches → `ConflictError` listing `#key (bucket)` candidates
-     (exit 1; use `#key` or `--bucket`).
+     multiple matches (possible even inside one bucket now, under different
+     paths) → `ConflictError` listing `#key (bucket, path/)` candidates
+     (exit 1; use `#key`, the full path, or `--bucket`).
 - **YAML lesson**: an all-digit key (`16052989`) or an exponent-like key
   (`12e45678`) is coerced to a number by YAML if unquoted. Export therefore
   always quotes `kura_key`, and the parser rescues hand-written unquoted
@@ -192,11 +217,17 @@ existing DBs will not re-run it.
   matching `chunks_vec` rows; new chunks start with `embedded_at = NULL` for
   lazy backfill). Chunks are *also* rebuilt on a title-only change because
   the chunk context header embeds the title.
-- **Rename** (`kura mv` → `renameDocument`): rewrites `[[旧タイトル]]` in
-  same-bucket referrers' bodies (recursively through `updateDocument`, so
-  each referrer re-syncs), rewrites self-links, then resolves any unresolved
-  links that match the new title. Moving a document to another bucket
-  instead **unresolves** its incoming links (link scope is per bucket).
+- **Rename / move** (`kura mv` → `updateDocument`): same-bucket referrers'
+  bodies are rewritten via `replaceWikiLinkTargets` (recursively through
+  `updateDocument`, so each referrer re-syncs) per this matrix —
+  a **title change** rewrites both `[[旧タイトル]]` and the full-path spelling
+  `[[old/full/path]]`, pointing the short form at the **new full path** when
+  the new title alone would be ambiguous in the bucket; a **path-only move**
+  rewrites only the full-path spelling (short `[[title]]` links keep their
+  `target_id` and stay valid); a **bucket move** rewrites nothing and instead
+  **unresolves** incoming links (link scope is per bucket). Self-links are
+  rewritten too, and any unresolved links matching the new title / full path
+  are resolved afterwards.
 - **Embedding config drift**: `doctor` compares config
   `embedding_model` / `embedding_dimensions` against `meta`
   (`recreateVecIfModelChanged`); on mismatch it drops and recreates
@@ -223,9 +254,14 @@ existing DBs will not re-run it.
 - **doc_key seed (§3.1)**: SPEC says "hash of content + randomness"; the
   seed actually includes the title too (`title:content:random`). Cosmetic —
   uniqueness comes from the randomness + collision retry.
-- **Case-insensitive title uniqueness**: the DDL `UNIQUE (bucket_id, title)`
-  is case-sensitive; the repository additionally rejects case-insensitive
-  duplicates, which SPEC doesn't state explicitly.
+- **Hierarchical document paths (schema v2)**: SPEC §3.1 has no `path`
+  column and specifies `UNIQUE (bucket_id, title)`; migration 002 adds
+  `path TEXT NOT NULL DEFAULT ''` and relaxes the constraint to
+  `UNIQUE (bucket_id, path, title)`, so same-title documents can coexist in
+  one bucket under different paths.
+- **Case-insensitive uniqueness**: the DDL UNIQUE constraint is
+  case-sensitive; the repository additionally rejects case-insensitive
+  duplicates of the computed full path, which SPEC doesn't state explicitly.
 - **Bucket moves**: unresolving incoming links when a document changes
   bucket is implementation-defined behavior not covered by SPEC.
 - **Import creates buckets**: `importDocument` auto-creates a missing bucket
