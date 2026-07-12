@@ -144,8 +144,9 @@ kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
 Document viewer (rendered Markdown, backlinks, 2-hop links), editor,
-three-mode search, tag browser, and a d3-force knowledge graph (colored by
-tag, stale nodes dimmed). The UI text is currently Japanese.
+three-mode search, a sidebar document tree following your document paths,
+tag browser, and a d3-force knowledge graph (colored by tag, stale nodes
+dimmed). The UI text is currently Japanese.
 
 ## Configuration
 

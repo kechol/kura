@@ -100,6 +100,15 @@ export interface TagTreeNode {
   children: TagTreeNode[];
 }
 
+export interface DocTreeNode {
+  segment: string;
+  path: string;
+  /** Present when this node is a document (a branch can also be one) */
+  key?: string;
+  total: number;
+  children: DocTreeNode[];
+}
+
 export interface GraphNode {
   key: string;
   title: string;
@@ -155,6 +164,7 @@ export function fetchBuckets(): Promise<Bucket[]> {
 export interface DocsQuery {
   bucket?: string;
   tag?: string;
+  prefix?: string;
   sort?: string;
   stale?: boolean;
   page?: number;
@@ -166,6 +176,7 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
     `/api/docs${qs({
       bucket: q.bucket,
       tag: q.tag,
+      prefix: q.prefix,
       sort: q.sort,
       stale: q.stale ? "1" : undefined,
       page: q.page,
@@ -220,6 +231,10 @@ export function searchDocs(p: SearchQuery): Promise<SearchResult> {
 
 export function fetchTagTree(): Promise<TagTreeNode[]> {
   return request<TagTreeNode[]>("/api/tags?tree=1");
+}
+
+export function fetchDocTree(bucket: string): Promise<DocTreeNode[]> {
+  return request<DocTreeNode[]>(`/api/docs/tree${qs({ bucket })}`);
 }
 
 export function fetchGraph(q: { bucket?: string; tag?: string } = {}): Promise<GraphData> {

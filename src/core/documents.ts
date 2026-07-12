@@ -577,6 +577,106 @@ function sqliteNow(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+export interface DocTreeNode {
+  /** Path segment for branches; the document title for document nodes */
+  segment: string;
+  /** Path prefix for branches; the computed full path for document nodes */
+  path: string;
+  /** doc_key when this node is a document (a branch can also be one) */
+  key?: string;
+  /** Documents in this subtree (a document node counts itself) */
+  total: number;
+  children: DocTreeNode[];
+}
+
+export interface DocTreeEntry {
+  key: string;
+  path: string;
+  title: string;
+}
+
+/**
+ * Build a bucket's documents into a path hierarchy (mirrors buildTagTree,
+ * docs: browser-ui.md). Branch nodes come from path prefixes; documents
+ * attach as leaves, or merge into the branch whose path equals their
+ * computed full path (a "folder" that is itself a document). Branches are
+ * memoized case-insensitively, matching path comparison semantics.
+ */
+export function buildDocTree(entries: DocTreeEntry[]): DocTreeNode[] {
+  const roots: DocTreeNode[] = [];
+  const index = new Map<string, DocTreeNode>();
+
+  const ensureBranch = (path: string): DocTreeNode => {
+    const memoKey = path.toLowerCase();
+    const existing = index.get(memoKey);
+    if (existing) return existing;
+    const idx = path.lastIndexOf("/");
+    const node: DocTreeNode = {
+      segment: idx === -1 ? path : path.slice(idx + 1),
+      path,
+      total: 0,
+      children: [],
+    };
+    index.set(memoKey, node);
+    if (idx === -1) roots.push(node);
+    else ensureBranch(path.slice(0, idx)).children.push(node);
+    return node;
+  };
+
+  // Branches first so that document placement is order-independent
+  for (const entry of entries) {
+    if (entry.path !== "") ensureBranch(entry.path);
+  }
+  for (const entry of entries) {
+    const full = joinDocPath(entry.path, entry.title);
+    const branch = index.get(full.toLowerCase());
+    if (branch && branch.key === undefined) {
+      branch.key = entry.key;
+      continue;
+    }
+    const node: DocTreeNode = {
+      segment: entry.title,
+      path: full,
+      key: entry.key,
+      total: 0,
+      children: [],
+    };
+    if (entry.path === "") roots.push(node);
+    else ensureBranch(entry.path).children.push(node);
+  }
+
+  const sum = (node: DocTreeNode): number => {
+    node.total =
+      (node.key === undefined ? 0 : 1) + node.children.reduce((acc, c) => acc + sum(c), 0);
+    return node.total;
+  };
+  const sort = (nodes: DocTreeNode[]): void => {
+    // File-manager order: subtrees first, then documents, each alphabetical
+    nodes.sort((a, b) => {
+      const aBranch = a.children.length > 0;
+      const bBranch = b.children.length > 0;
+      if (aBranch !== bBranch) return aBranch ? -1 : 1;
+      return a.segment.localeCompare(b.segment, "ja");
+    });
+    for (const n of nodes) sort(n.children);
+  };
+  for (const r of roots) sum(r);
+  sort(roots);
+  return roots;
+}
+
+/** Document tree of one bucket, for the browser sidebar (GET /api/docs/tree) */
+export function docTree(db: Database, bucketName: string): DocTreeNode[] {
+  const rows = db
+    .prepare(
+      `SELECT d.doc_key AS key, d.path, d.title FROM documents d
+       JOIN buckets b ON b.id = d.bucket_id WHERE b.name = ?
+       ORDER BY d.path, d.title`,
+    )
+    .all(bucketName) as DocTreeEntry[];
+  return buildDocTree(rows);
+}
+
 export interface ImportInput {
   fm: Frontmatter | null;
   body: string;

@@ -182,6 +182,21 @@ describe("REST API (docs: http-api.md)", () => {
     expect(byTitle.body.key).toBe(doc.key);
   });
 
+  test("GET /api/docs/tree returns the per-bucket path hierarchy", async () => {
+    createDocument(db, { title: "記事", content: "x", bucket: "main", path: "clips/技術" });
+    const { status, body } = await api("/api/docs/tree?bucket=main");
+    expect(status).toBe(200);
+    const clips = body.find((n: { segment: string }) => n.segment === "clips");
+    expect(clips.total).toBe(1);
+    expect(clips.children[0].segment).toBe("技術");
+    expect(clips.children[0].children[0].key).toBeTruthy();
+    // The two root documents from the fixture appear as leaves
+    expect(body.filter((n: { key?: string }) => n.key).length).toBe(2);
+
+    const missing = await api("/api/docs/tree");
+    expect(missing.status).toBe(400);
+  });
+
   test("GET /api/resolve returns 404 for unknown and 409 for ambiguous specs", async () => {
     createDocument(db, { title: "記事", content: "1", bucket: "main", path: "a" });
     createDocument(db, { title: "記事", content: "2", bucket: "main", path: "b" });

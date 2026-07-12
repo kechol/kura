@@ -409,6 +409,59 @@ mark {
   padding: 1rem;
 }
 
+/* ---- Document tree (sidebar) ---- */
+
+.doc-tree-row {
+  display: flex;
+  align-items: center;
+}
+
+.doc-tree-row .tag-tree-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-tree-row .tag-segment {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-tree-toggle {
+  flex: none;
+  width: 1.1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.doc-tree-branch {
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.doc-path-prefix {
+  color: var(--text-muted);
+}
+
+.doc-breadcrumb {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.doc-breadcrumb-sep {
+  margin: 0 0.25rem;
+  color: var(--text-muted);
+}
+
 /* ---- Home ---- */
 
 .stat-cards {

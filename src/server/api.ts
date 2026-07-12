@@ -5,6 +5,7 @@ import type { FtsTokenizer } from "../core/db";
 import {
   type DocumentRecord,
   deleteDocument,
+  docTree,
   getDocumentByKey,
   listDocuments,
   resolveDoc,
@@ -129,6 +130,13 @@ export function createApiRoutes(
       const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
       const total = listDocumentsCount(db, filter);
       return json({ docs: docs.map((d) => docJson(d)), total, page, per });
+    }),
+
+    "/api/docs/tree": wrap((req) => {
+      // Sidebar document tree; titles are bucket-scoped so the tree is too
+      const bucket = new URL(req.url).searchParams.get("bucket") ?? "";
+      if (bucket === "") throw new UsageError("query parameter 'bucket' is required");
+      return json(docTree(db, bucket));
     }),
 
     "/api/resolve": wrap((req) => {

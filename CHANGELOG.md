@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Browser UI: a collapsible per-bucket document tree in the sidebar
+  (`GET /api/docs/tree`), a document-path filter on the list page
+  (`prefix`, also on `GET /api/docs`), and a path breadcrumb on the
+  detail page.
 - Hierarchical document paths: documents can carry an optional
   slash-separated path (`kura add --path db/sqlite`), browsable with
   `kura ls --prefix` and movable with `kura mv <doc> --path` or in bulk with

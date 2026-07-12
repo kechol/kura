@@ -134,6 +134,22 @@ Paged document listing (metadata only, no `content`).
 Response: `{docs: Document[], total, page, per}`. `total` is computed with
 the same filter by `listDocumentsCount()` so the UI can render pagination.
 
+### `GET /api/docs/tree`
+
+Per-bucket document-path hierarchy for the sidebar, via `docTree()` /
+`buildDocTree()` (`src/core/documents.ts`, mirroring `buildTagTree`).
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `bucket` | **required** | titles are bucket-scoped, so the tree is too; missing → 400 |
+
+Response: `DocTreeNode[]` — `{segment, path, key?, total, children}`.
+Branch nodes come from path prefixes (`key` absent); document nodes carry
+their `doc_key` as `key`; a branch whose path equals a document's computed
+full path is merged (both `key` and `children`). Subtrees sort before
+documents, then alphabetically. Note the static route must keep winning
+over `/api/docs/:key` (Bun.serve prefers exact segments over params).
+
 ### `GET /api/resolve`
 
 Doc-specifier resolution for the browser's wiki-link navigation — a thin

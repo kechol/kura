@@ -4,8 +4,10 @@ import { createBucket } from "../src/core/buckets";
 import { openDatabase } from "../src/core/db";
 import { resolveAllUnresolvedLinks } from "../src/core/doctor";
 import {
+  buildDocTree,
   createDocument,
   createDocumentWithRetry,
+  docTree,
   getDocumentByKey,
   importDocument,
   listDocuments,
@@ -283,6 +285,43 @@ describe("listDocuments prefix filter", () => {
     expect(listDocuments(db, { prefix: "db" }).length).toBe(2);
     expect(listDocuments(db, { prefix: "db/sqlite" }).length).toBe(1);
     expect(listDocuments(db, { prefix: "なし" }).length).toBe(0);
+  });
+});
+
+describe("buildDocTree / docTree (docs: browser-ui.md)", () => {
+  test("builds branches from paths and leaves from documents, folders first", () => {
+    createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "db/sqlite" });
+    createDocument(db, { title: "WAL", content: "x", bucket: "main", path: "db/sqlite" });
+    createDocument(db, { title: "ルート直下", content: "x", bucket: "main" });
+    const tree = docTree(db, "main");
+
+    expect(tree.map((n) => n.segment)).toEqual(["db", "ルート直下"]);
+    const dbNode = tree[0]!;
+    expect(dbNode.key).toBeUndefined();
+    expect(dbNode.total).toBe(2);
+    const sqlite = dbNode.children[0]!;
+    expect(sqlite.segment).toBe("sqlite");
+    expect(sqlite.children.map((n) => n.segment)).toEqual(["WAL", "メモ"]);
+    expect(sqlite.children.every((n) => n.key !== undefined)).toBe(true);
+  });
+
+  test("a document whose full path is also a path prefix merges into the branch", () => {
+    const parent = createDocument(db, { title: "sqlite", content: "x", bucket: "main", path: "db" });
+    createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "db/sqlite" });
+    const tree = docTree(db, "main");
+    const sqlite = tree[0]!.children[0]!;
+    expect(sqlite.segment).toBe("sqlite");
+    expect(sqlite.key).toBe(parent.key);
+    expect(sqlite.children.map((n) => n.segment)).toEqual(["メモ"]);
+    expect(sqlite.total).toBe(2);
+  });
+
+  test("a literal '/' in a title does not create hierarchy", () => {
+    const entries = [{ key: "aaaa1111", path: "", title: "HTTP/3とQUICの現在" }];
+    const tree = buildDocTree(entries);
+    expect(tree.length).toBe(1);
+    expect(tree[0]?.segment).toBe("HTTP/3とQUICの現在");
+    expect(tree[0]?.children).toEqual([]);
   });
 });
 
