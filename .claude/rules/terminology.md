@@ -16,10 +16,14 @@ code and `.claude/docs/` already use. These rules keep them consistent.
   (`kura search`, `kura vsearch`, `kura query` are three distinct
   commands — keyword, semantic, hybrid+rerank — never blur them).
 - Domain terms carry their kura meaning: **bucket** (top-level grouping,
-  not "folder" / "notebook"), **hierarchical tag** (`tech/db/sqlite`),
-  **wiki link** (`[[Title]]`), **doc key** / `kura_key` (stable
-  identity used by `get` / `export` / `import`), **hybrid search** (RRF
-  fusion of FTS + vector, then rerank).
+  not "folder" / "notebook"), **document path** (`documents.path`, an
+  optional slash-separated namespace like `clips/技術`; `''` = bucket
+  root — a naming/browsing aid, never a forced filing location, and
+  case-preserving unlike tags), **hierarchical tag** (`tech/db/sqlite`),
+  **wiki link** (`[[Title]]`, or `[[full/path/Title]]` to pin one
+  document), **doc key** / `kura_key` (stable identity used by
+  `get` / `export` / `import`), **hybrid search** (RRF fusion of
+  FTS + vector, then rerank).
 - The three search modes map to fixed pipeline stages
   (docs: search-pipeline.md). Don't relabel `query` as "search" in
   user-facing text.

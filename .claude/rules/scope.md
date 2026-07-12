@@ -46,12 +46,25 @@ that outlive the process, no lockfiles left behind. `kura export` /
 `kura import` round-trip the whole store as Markdown with frontmatter —
 that is the backup and portability story.
 
-## R5. No document folder hierarchy
+## R5. Document paths are a namespace, not a filing requirement
 
-Organization is buckets + hierarchical tags (`tech/db/sqlite`) + wiki
-links (`[[Title]]`). Don't propose a directory tree,
-notebooks, or nested collections; those recreate the filing problem kura
-exists to avoid.
+Documents may carry an optional slash-separated **document path**
+(`documents.path`, e.g. `clips` or `db/sqlite`; `''` = bucket root).
+Uniqueness is per (bucket, path, title), so equal titles can coexist
+under different paths. Paths exist for collision-free naming and for
+browsing; the primary organization axes remain buckets + hierarchical
+tags (`tech/db/sqlite`) + wiki links (`[[Title]]`).
+
+What stays out of scope:
+
+- **No forced filing.** Creating a document must never require choosing
+  a location; the bucket root is a first-class inbox. Auto-ingested
+  content (`clip`, MCP) gets a default path, never a prompt.
+- **No folder entities.** A path exists iff a document has it (same
+  lexical model as tags) — no folder CRUD, no empty folders, no
+  per-folder metadata, no "notebooks" or nested collections.
+- **Titles are free text.** A literal `/` inside a title is not a
+  separator; only the path column creates hierarchy.
 
 ## R6. Distribution is a single self-contained binary
 

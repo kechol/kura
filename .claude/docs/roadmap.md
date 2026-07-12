@@ -6,6 +6,18 @@
 These items were considered during the v1 design so that implementing them
 later does not require breaking changes. None of them are commitments.
 
+- **Sidebar document tree** (browser UI). Documents now carry a
+  hierarchical path (schema v2); the sidebar should render a collapsible
+  per-bucket path tree as an independent section, mirroring
+  `buildTagTree` / `TagTree.tsx`, backed by a `GET /api/docs/tree`
+  endpoint. Includes a `prefix` filter UI on the document list and a
+  path breadcrumb on the detail page.
+- **`kura mv suggest`** — filing assistant for root-level (path-less)
+  documents. Three signal layers mirroring the search pipeline: tag /
+  link overlap (always available), `chunks_vec` KNN votes (embedding
+  provider), LLM pick-or-new-path with a one-line reason (generation
+  provider, Japanese prompt like tag suggest). Interactive accept /
+  `--json` / `--apply`, always showing the evidence.
 - **Rich editor in the browser UI** (CodeMirror). v1 ships a plain
   `<textarea>` editor on purpose; the PUT `/api/docs/:key` contract already
   carries everything a richer editor needs.
