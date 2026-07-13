@@ -5,6 +5,7 @@ import { BucketProvider } from "./bucket";
 import { Layout } from "./components/Layout";
 import { useDocumentTitle } from "./hooks";
 import { bootRedirect } from "./lastdoc";
+import { ModalProvider } from "./modal";
 import { DocByTitle } from "./pages/DocByTitle";
 import { DocDetail } from "./pages/DocDetail";
 import { DocEdit } from "./pages/DocEdit";
@@ -33,20 +34,24 @@ function NotFound() {
 function App() {
   return (
     <BucketProvider>
-      <Layout>
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/docs" component={DocList} />
-          <Route path="/docs/title/:title">{(params) => <DocByTitle title={params.title} />}</Route>
-          <Route path="/docs/:key/edit">{(params) => <DocEdit docKey={params.key} />}</Route>
-          <Route path="/docs/:key">{(params) => <DocDetail docKey={params.key} />}</Route>
-          <Route path="/search" component={SearchPage} />
-          <Route path="/tags" component={TagsPage} />
-          <Route path="/graph" component={GraphPage} />
-          <Route path="/stats" component={StatsPage} />
-          <Route component={NotFound} />
-        </Switch>
-      </Layout>
+      <ModalProvider>
+        <Layout>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/docs" component={DocList} />
+            <Route path="/docs/title/:title">
+              {(params) => <DocByTitle title={params.title} />}
+            </Route>
+            <Route path="/docs/:key/edit">{(params) => <DocEdit docKey={params.key} />}</Route>
+            <Route path="/docs/:key">{(params) => <DocDetail docKey={params.key} />}</Route>
+            <Route path="/search" component={SearchPage} />
+            <Route path="/tags" component={TagsPage} />
+            <Route path="/graph" component={GraphPage} />
+            <Route path="/stats" component={StatsPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </Layout>
+      </ModalProvider>
     </BucketProvider>
   );
 }

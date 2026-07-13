@@ -265,6 +265,11 @@ export function fetchTagTree(bucket?: string): Promise<TagTreeNode[]> {
   return request<TagTreeNode[]>(`/api/tags${qs({ tree: "1", bucket })}`);
 }
 
+/** Flat tag list (path + count), for the search modal's tag tab */
+export function fetchTags(bucket?: string): Promise<TagEntry[]> {
+  return request<TagEntry[]>(`/api/tags${qs({ bucket })}`);
+}
+
 export function fetchDocTree(bucket: string): Promise<DocTreeNode[]> {
   return request<DocTreeNode[]>(`/api/docs/tree${qs({ bucket })}`);
 }

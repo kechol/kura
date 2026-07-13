@@ -1,18 +1,20 @@
-import { Moon, Sun } from "lucide-preact";
+import { Keyboard, Moon, Search, Sun } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
 import { fetchDocTree, fetchTagTree } from "../api";
 import { useBucket } from "../bucket";
 import { useAsync } from "../hooks";
+import { useModal } from "../modal";
 import { currentTheme, setTheme, type Theme } from "../theme";
 import { DocTree } from "./DocTree";
 import { TagTree } from "./TagTree";
 
 /** Shared layout: header (search) + left sidebar (bucket picker / doc tree / tag tree / theme) */
 export function Layout({ children }: { children: ComponentChildren }) {
-  const [location, navigate] = useLocation();
+  const [location] = useLocation();
   const { bucket, buckets, setBucket, loading } = useBucket();
+  const modal = useModal();
   // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current
   const tags = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchTagTree(bucket)),
@@ -23,18 +25,11 @@ export function Layout({ children }: { children: ComponentChildren }) {
     [location, bucket],
   );
   const [theme, setThemeState] = useState<Theme>(currentTheme());
-  const [q, setQ] = useState("");
 
   const toggleTheme = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setTheme(next);
     setThemeState(next);
-  };
-
-  const submitSearch = (e: Event) => {
-    e.preventDefault();
-    const query = q.trim();
-    if (query !== "") navigate(`/search?q=${encodeURIComponent(query)}`);
   };
 
   return (
@@ -43,20 +38,30 @@ export function Layout({ children }: { children: ComponentChildren }) {
         <Link href="/" class="brand">
           kura
         </Link>
+        <button
+          type="button"
+          class="icon-btn search-trigger"
+          onClick={() => modal.open("search")}
+          aria-label="検索（Ctrl + K）"
+          title="検索（Ctrl + K）"
+        >
+          <Search size={16} />
+        </button>
         <nav class="nav">
           <Link href="/docs">ドキュメント</Link>
           <Link href="/tags">タグ</Link>
           <Link href="/graph">グラフ</Link>
           <Link href="/stats">統計</Link>
         </nav>
-        <form class="search-form" onSubmit={submitSearch}>
-          <input
-            type="search"
-            placeholder="検索…"
-            value={q}
-            onInput={(e) => setQ((e.target as HTMLInputElement).value)}
-          />
-        </form>
+        <button
+          type="button"
+          class="icon-btn header-help"
+          onClick={() => modal.open("shortcuts")}
+          aria-label="ショートカット一覧（Ctrl + ?）"
+          title="ショートカット一覧（Ctrl + ?）"
+        >
+          <Keyboard size={16} />
+        </button>
       </header>
       <div class="layout-body">
         <aside class="sidebar">

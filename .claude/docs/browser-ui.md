@@ -36,13 +36,19 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
 | `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
 | `lastdoc.ts` | Remembers the last-read document (`localStorage["kura-last-doc"]`) and rewrites `/` to it before the first render |
+| `modal.tsx` | `ModalProvider` / `useModal()` — owns the three modals and the global shortcut handler |
+| `shortcuts.ts` | The shortcut table (the list modal is generated from it) and the window `keydown` hook |
 | `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard); `useDocumentTitle()` sets `document.title` per screen |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
 | `styles.css` | All styling; CSS custom properties per theme |
 | `types.d.ts` | Ambient module declarations for the bundler |
-| `components/Layout.tsx` | Header (nav, search box) + sidebar (bucket picker, document tree, tag tree, theme toggle pinned at the bottom); refetches counts on navigation |
+| `components/Layout.tsx` | Header (search icon, nav, shortcut help) + sidebar (bucket picker, document tree, tag tree, theme toggle pinned at the bottom); refetches counts on navigation |
+| `components/Modal.tsx` | Modal shell: overlay, Escape, focus in on open / restored on close; `ModalHints` renders the `<kbd>` footer |
+| `components/SearchModal.tsx` | Raycast-style search: keystroke-by-keystroke keyword search, document / tag tabs, tag filter |
+| `components/RecentModal.tsx` | Recently-viewed documents (Ctrl+R) |
+| `components/ShortcutsModal.tsx` | The shortcut list (Ctrl+?), generated from `SHORTCUTS` |
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
@@ -126,10 +132,11 @@ name on the detail page, the screen name elsewhere, both suffixed with
   /api/docs/:key` with the full tag array (diff-sync contract — see
   [http-api.md](http-api.md)). A richer editor is roadmap
   ([roadmap.md](roadmap.md)).
-- **Search** — mode toggle (キーワード / ベクトル / ハイブリッド) and a tag
-  filter, `limit=30`, always within the selected bucket. Renders API
-  `warnings` (degraded mode) above results; each hit shows title, source
-  badge, score, snippet with `<mark>` highlights, and tag chips.
+- **Search page (`/search`)** — mode toggle (キーワード / ベクトル /
+  ハイブリッド) and a tag filter, `limit=30`, always within the selected
+  bucket. Renders API `warnings` (degraded mode) above results; each hit
+  shows title, source badge, score, snippet with `<mark>` highlights, and tag
+  chips. This is the *full* search; the modal below is the fast path.
 - **Sidebar document tree** — a sidebar section rendering
   `GET /api/docs/tree` for the selected bucket. Built by
   `buildDocTree` in core (mirrors `buildTagTree`): branch nodes come from
@@ -147,6 +154,49 @@ name on the detail page, the screen name elsewhere, both suffixed with
   (not created yet) or 409 (ambiguous) falls back to a keyword search and
   shows an "unresolved link" page listing the closest matches with their
   full paths — the click-through target for red wikilinks.
+
+## Modals and keyboard shortcuts
+
+`ModalProvider` (`modal.tsx`) sits inside the router, owns which modal is open
+and hosts the single window `keydown` listener (`useShortcuts`). The header's
+magnifier icon opens the same search modal the shortcut does.
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl + K` | Search modal |
+| `Ctrl + ?` | Shortcut list |
+| `Ctrl + R` | Recently viewed documents |
+| `Ctrl + H` | Home |
+| `Ctrl + T` | Tag browser |
+| `Escape` | Close the modal |
+| `↑` `↓` `Enter` | Move / choose inside a modal |
+
+**Why Ctrl and not Cmd.** On macOS the browser and the OS own Cmd+T (new
+tab), Cmd+H (hide app) and Cmd+R (reload); a page cannot take them back, and
+stealing Cmd+R would cost the user reload. Ctrl+letter is effectively free
+there. On Windows / Linux the browser still owns Ctrl+T — a known limitation,
+stated in the shortcut list rather than worked around.
+
+Two rules keep the handler out of the user's way, and both matter for
+Japanese input:
+
+- **Composition is never a shortcut.** `e.isComposing` (and `keyCode === 229`)
+  short-circuits the handler, so keystrokes that belong to an IME conversion
+  cannot fire an action — including `Enter`, which confirms a conversion.
+- **Typing wins.** With focus in an input, textarea, select or contenteditable,
+  every shortcut except `Escape` is ignored.
+
+The **search modal** is the fast path: keyword mode only, scoped to the
+selected bucket, with the query debounced 150 ms and re-issued against
+`/api/search` on every keystroke. It reuses the server pipeline deliberately —
+the vaporetto morphological tokenizer, BM25 ranking and `**…**` snippets have
+no client-side equivalent, and the API is on localhost, so a round trip reads
+as instant. (A client-side index — DuckDB-WASM and friends — was considered
+and rejected: tens of MB in a binary that must stay self-contained
+[`scope.md` R6], and no way to reproduce Japanese tokenization.) Two tabs:
+documents, and tags — the tag list is small, so it is fetched once per bucket
+and filtered in the browser. Choosing a tag sets it as the document filter
+rather than navigating away. Vector and hybrid search stay on `/search`.
 
 ## Rendering pipeline
 

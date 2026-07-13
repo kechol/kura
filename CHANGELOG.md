@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Browser UI: a search modal (`Ctrl + K`, or the magnifier next to the logo)
+  that searches as you type, with separate document and tag tabs and a tag
+  filter. Keyboard shortcuts: `Ctrl + K` search, `Ctrl + ?` shortcut list,
+  `Ctrl + R` recently viewed, `Ctrl + H` home, `Ctrl + T` tags. The header
+  search box is gone. (Ctrl rather than Cmd: macOS reserves Cmd+T / Cmd+H /
+  Cmd+R.)
 - Browser UI: opening kura resumes the last document you were reading, and
   the home screen is now the reading history (50 most recently viewed
   documents in the selected bucket).
