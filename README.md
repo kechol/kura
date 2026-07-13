@@ -155,8 +155,9 @@ graph — stays inside it; the choice is remembered. Opening kura resumes the
 document you were last reading, and the home screen lists your reading
 history. The statistics screen counts what needs tidying (unfiled, untagged
 and orphaned documents, broken links, duplicate-looking tags) and names the
-command that fixes each. `Ctrl + K` opens a search modal that searches as you
-type; `Ctrl + ?` lists every shortcut. The UI text is currently Japanese.
+command that fixes each. `Ctrl + P` opens a search modal that searches as you
+type, `Ctrl + N` starts a new document, and `Ctrl + ?` lists every shortcut.
+The UI text is currently Japanese.
 
 ## Configuration
 

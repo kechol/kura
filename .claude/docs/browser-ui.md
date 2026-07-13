@@ -162,7 +162,8 @@ magnifier icon opens the same search modal the shortcut does.
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl + K` | Search modal |
+| `Ctrl + P` | Search modal |
+| `Ctrl + N` | New untitled document (created in the selected bucket, then opened) |
 | `Ctrl + ?` | Shortcut list |
 | `Ctrl + R` | Recently viewed documents |
 | `Ctrl + H` | Home |
@@ -171,10 +172,17 @@ magnifier icon opens the same search modal the shortcut does.
 | `↑` `↓` `Enter` | Move / choose inside a modal |
 
 **Why Ctrl and not Cmd.** On macOS the browser and the OS own Cmd+T (new
-tab), Cmd+H (hide app) and Cmd+R (reload); a page cannot take them back, and
-stealing Cmd+R would cost the user reload. Ctrl+letter is effectively free
-there. On Windows / Linux the browser still owns Ctrl+T — a known limitation,
-stated in the shortcut list rather than worked around.
+tab), Cmd+H (hide app), Cmd+R (reload), Cmd+N (new window) and Cmd+P (print);
+a page cannot take them back, and stealing Cmd+R would cost the user reload.
+Ctrl+letter is effectively free there. On Windows / Linux the browser owns
+Ctrl+T, Ctrl+N and Ctrl+P — a known limitation, stated in the shortcut list
+rather than worked around; where the page does receive the key, kura's action
+takes precedence over the browser's.
+
+**New document (`Ctrl + N`).** `POST /api/docs` creates 無題 at the root of the
+selected bucket and the UI opens it with the placeholder title selected, so the
+first thing typed replaces it. A colliding title retries as 無題 (2) server-side
+(`createDocumentWithRetry`), so pressing Ctrl+N twice never fails.
 
 Two rules keep the handler out of the user's way, and both matter for
 Japanese input:

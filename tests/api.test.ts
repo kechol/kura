@@ -116,6 +116,37 @@ describe("REST API (docs: http-api.md)", () => {
     expect(badSort.status).toBe(400);
   });
 
+  test("POST /api/docs creates a document, retrying a taken title", async () => {
+    const first = await api("/api/docs", {
+      method: "POST",
+      body: JSON.stringify({ title: "無題", bucket: "main" }),
+    });
+    expect(first.status).toBe(201);
+    expect(first.body.title).toBe("無題");
+    expect(first.body.content).toBe("");
+    expect(first.body.path).toBe("");
+
+    // The browser's Ctrl+N must not fail because the last untitled document is still untitled
+    const second = await api("/api/docs", {
+      method: "POST",
+      body: JSON.stringify({ title: "無題", bucket: "main" }),
+    });
+    expect(second.status).toBe(201);
+    expect(second.body.title).toBe("無題 (2)");
+
+    const blank = await api("/api/docs", {
+      method: "POST",
+      body: JSON.stringify({ title: "  ", bucket: "main" }),
+    });
+    expect(blank.status).toBe(400);
+
+    const missing = await api("/api/docs", {
+      method: "POST",
+      body: JSON.stringify({ title: "メモ", bucket: "nope" }),
+    });
+    expect(missing.status).toBe(404);
+  });
+
   test("GET/PUT/DELETE /api/docs/:key", async () => {
     const list = await api("/api/docs");
     const key: string = list.body.docs.find(

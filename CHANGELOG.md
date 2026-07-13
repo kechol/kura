@@ -16,12 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also lists documents sharing a tag or a path. The separate `/docs/:key/edit`
   editor is gone (the URL redirects to the document); clipped HTML documents
   stay read-only.
-- Browser UI: a search modal (`Ctrl + K`, or the magnifier next to the logo)
+- Browser UI: a search modal (`Ctrl + P`, or the magnifier next to the logo)
   that searches as you type, with separate document and tag tabs and a tag
-  filter. Keyboard shortcuts: `Ctrl + K` search, `Ctrl + ?` shortcut list,
-  `Ctrl + R` recently viewed, `Ctrl + H` home, `Ctrl + T` tags. The header
-  search box is gone. (Ctrl rather than Cmd: macOS reserves Cmd+T / Cmd+H /
-  Cmd+R.)
+  filter. Keyboard shortcuts: `Ctrl + P` search, `Ctrl + N` new document,
+  `Ctrl + ?` shortcut list, `Ctrl + R` recently viewed, `Ctrl + H` home,
+  `Ctrl + T` tags. The header search box is gone. (Ctrl rather than Cmd: macOS
+  reserves Cmd+T / Cmd+H / Cmd+R / Cmd+N / Cmd+P.)
+- Browser UI: `Ctrl + N` creates an untitled document in the selected bucket
+  and opens it with the title selected, ready to be typed over. New endpoint
+  `POST /api/docs` (retries a taken title as "title (2)").
 - Browser UI: opening kura resumes the last document you were reading, and
   the home screen is now the reading history (50 most recently viewed
   documents in the selected bucket).

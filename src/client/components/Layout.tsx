@@ -1,4 +1,4 @@
-import { Keyboard, Moon, Search, Sun } from "lucide-preact";
+import { FilePlus, Keyboard, Moon, Search, Sun } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
@@ -47,10 +47,19 @@ export function Layout({ children }: { children: ComponentChildren }) {
           type="button"
           class="icon-btn search-trigger"
           onClick={() => modal.open("search")}
-          aria-label="検索（Ctrl + K）"
-          title="検索（Ctrl + K）"
+          aria-label="検索（Ctrl + P）"
+          title="検索（Ctrl + P）"
         >
           <Search size={16} />
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          onClick={modal.createUntitled}
+          aria-label="新しいドキュメント（Ctrl + N）"
+          title="新しいドキュメント（Ctrl + N）"
+        >
+          <FilePlus size={16} />
         </button>
         <nav class="nav">
           <Link href="/docs">ドキュメント</Link>

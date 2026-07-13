@@ -3,6 +3,7 @@ import { listBuckets } from "../core/buckets";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
 import {
+  createDocumentWithRetry,
   type DocumentRecord,
   deleteDocument,
   docTree,
@@ -111,33 +112,58 @@ export function createApiRoutes(
 
     "/api/buckets": wrap(() => json(listBuckets(db))),
 
-    "/api/docs": wrap((req) => {
-      const url = new URL(req.url);
-      const bucket = url.searchParams.get("bucket") ?? undefined;
-      const tag = url.searchParams.get("tag") ?? undefined;
-      const rawPrefix = url.searchParams.get("prefix");
-      const prefix = rawPrefix === null ? undefined : normalizeDocPath(rawPrefix);
-      if (prefix === "") throw new UsageError("prefix must not be empty");
-      const sortParam = url.searchParams.get("sort") ?? "updated";
-      if (!["updated", "created", "accessed", "title"].includes(sortParam)) {
-        throw new UsageError(`invalid sort: ${sortParam}`);
-      }
-      const stale = url.searchParams.get("stale") === "1";
-      const per = Math.min(Number.parseInt(url.searchParams.get("per") ?? "50", 10) || 50, 200);
-      const page = Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1);
+    "/api/docs": {
+      GET: wrap((req) => {
+        const url = new URL(req.url);
+        const bucket = url.searchParams.get("bucket") ?? undefined;
+        const tag = url.searchParams.get("tag") ?? undefined;
+        const rawPrefix = url.searchParams.get("prefix");
+        const prefix = rawPrefix === null ? undefined : normalizeDocPath(rawPrefix);
+        if (prefix === "") throw new UsageError("prefix must not be empty");
+        const sortParam = url.searchParams.get("sort") ?? "updated";
+        if (!["updated", "created", "accessed", "title"].includes(sortParam)) {
+          throw new UsageError(`invalid sort: ${sortParam}`);
+        }
+        const stale = url.searchParams.get("stale") === "1";
+        const per = Math.min(Number.parseInt(url.searchParams.get("per") ?? "50", 10) || 50, 200);
+        const page = Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1);
 
-      const filter = {
-        bucket,
-        tag,
-        prefix,
-        sort: sortParam as "updated" | "created" | "accessed" | "title",
-        stale,
-        staleDays: config.general.stale_days,
-      };
-      const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
-      const total = listDocumentsCount(db, filter);
-      return json({ docs: docs.map((d) => docJson(d)), total, page, per });
-    }),
+        const filter = {
+          bucket,
+          tag,
+          prefix,
+          sort: sortParam as "updated" | "created" | "accessed" | "title",
+          stale,
+          staleDays: config.general.stale_days,
+        };
+        const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
+        const total = listDocumentsCount(db, filter);
+        return json({ docs: docs.map((d) => docJson(d)), total, page, per });
+      }),
+
+      POST: wrap(async (req) => {
+        const body = (await req.json().catch(() => null)) as {
+          title?: unknown;
+          content?: unknown;
+          bucket?: unknown;
+          path?: unknown;
+          tags?: unknown;
+        } | null;
+        const title = typeof body?.title === "string" ? body.title.trim() : "";
+        if (title === "") throw new UsageError("title must not be empty");
+
+        // The title retries as "無題 (2)" on a collision, so creating a document from the
+        // browser never fails just because the last untitled one is still called that
+        const doc = createDocumentWithRetry(db, {
+          title,
+          content: typeof body?.content === "string" ? body.content : "",
+          bucket: typeof body?.bucket === "string" ? body.bucket : config.general.default_bucket,
+          path: typeof body?.path === "string" ? body.path : undefined,
+          tags: Array.isArray(body?.tags) ? (body.tags as string[]) : undefined,
+        });
+        return json(docJson(doc, true), 201);
+      }),
+    },
 
     "/api/docs/tree": wrap((req) => {
       // Sidebar document tree; titles are bucket-scoped so the tree is too

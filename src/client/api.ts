@@ -233,6 +233,21 @@ export function fetchDoc(key: string): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`);
 }
 
+/** Create a document. A colliding title retries as "title (2)" server-side. */
+export function createDoc(body: {
+  title: string;
+  bucket: string;
+  content?: string;
+  path?: string;
+  tags?: string[];
+}): Promise<DocDetail> {
+  return request<DocDetail>("/api/docs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 /** Resolve a doc specifier (key / full path / unique title) via GET /api/resolve */
 export function resolveDocSpec(spec: string, bucket?: string): Promise<DocMeta> {
   return request<DocMeta>(`/api/resolve${qs({ doc: spec, bucket })}`);

@@ -157,6 +157,18 @@ Paged document listing (metadata only, no `content`).
 Response: `{docs: Document[], total, page, per}`. `total` is computed with
 the same filter by `listDocumentsCount()` so the UI can render pagination.
 
+### `POST /api/docs`
+
+Create a document (the browser's `Ctrl + N`). Body:
+`{title, bucket?, content?, path?, tags?}` — `title` is required and must not
+be blank (400); `bucket` defaults to `general.default_bucket` and an unknown
+one is a 404. Returns the created document **with `content`**, status **201**.
+
+Backed by `createDocumentWithRetry()`, so a title already taken in that
+(bucket, path) retries as `title (2)`, `title (3)`, … rather than failing with
+a 409 — pressing Ctrl+N twice must not error just because the last untitled
+document is still called 無題.
+
 ### `GET /api/docs/tree`
 
 Per-bucket document-path hierarchy for the sidebar, via `docTree()` /

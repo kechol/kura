@@ -10,7 +10,7 @@ import { useEffect } from "preact/hooks";
  * rather than worked around (docs: browser-ui.md).
  */
 
-export type ShortcutAction = "search" | "shortcuts" | "recent" | "home" | "tags";
+export type ShortcutAction = "search" | "shortcuts" | "recent" | "home" | "tags" | "new";
 
 export interface Shortcut {
   action: ShortcutAction;
@@ -23,7 +23,8 @@ export interface Shortcut {
 }
 
 export const SHORTCUTS: Shortcut[] = [
-  { action: "search", key: "k", combo: "Ctrl + K", label: "検索する" },
+  { action: "search", key: "p", combo: "Ctrl + P", label: "検索する" },
+  { action: "new", key: "n", combo: "Ctrl + N", label: "新しいドキュメントを作成" },
   { action: "shortcuts", key: "/", shift: true, combo: "Ctrl + ?", label: "ショートカット一覧" },
   { action: "recent", key: "r", combo: "Ctrl + R", label: "最近表示したドキュメント" },
   { action: "home", key: "h", combo: "Ctrl + H", label: "ホームへ移動" },
