@@ -18,10 +18,12 @@ export function Layout({ children }: { children: ComponentChildren }) {
   const { bucket, buckets, setBucket, loading } = useBucket();
   const modal = useModal();
   const currentDoc = useCurrentDoc();
-  // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current
+  // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current.
+  // On a document the tag tree gives way to that document's own sidebar, so it is not fetched.
+  const showTagTree = currentDoc.doc === null;
   const tags = useAsync(
-    () => (bucket === "" ? Promise.resolve([]) : fetchTagTree(bucket)),
-    [location, bucket],
+    () => (bucket === "" || !showTagTree ? Promise.resolve([]) : fetchTagTree(bucket)),
+    [location, bucket, showTagTree],
   );
   const docTree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),

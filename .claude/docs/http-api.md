@@ -126,12 +126,14 @@ Tidying findings for one bucket via `collectInsights()`
   tagDuplicates: [{from, to, reason, similarity}] }
 ```
 
-Each `docs` array is capped at 50 while `count` stays exact. Every field
-reuses an existing core query (`untaggedDocuments`, `listUnfiledDocuments`,
-`brokenLinks`, `auditTags`) plus one orphan query; **the tag audit always
-runs with a null provider**, so the endpoint needs no LLM and answers
-instantly (`invariants.md` R4). Nothing is repaired here — the UI shows the
-findings and names the CLI command that fixes them.
+Each `docs` array is capped at 50 while `count` stays exact. The document
+lists are projected queries (`key`, `path`, `title` — a statistics page must
+not read the bodies of a whole bucket to draw a count), the broken links come
+from `brokenLinks()`, and the duplicate tags from `tagMergeCandidates()` —
+the **synchronous, edit-distance half** of the gardening audit, split out of
+`auditTags()` precisely so this endpoint needs no LLM and no `await`
+(`invariants.md` R4). Nothing is repaired here: the UI shows the findings and
+names the CLI command that fixes them.
 
 ### `GET /api/buckets`
 

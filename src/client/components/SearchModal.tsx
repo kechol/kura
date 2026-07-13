@@ -1,10 +1,11 @@
 import { Search, X } from "lucide-preact";
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
-import { fetchDocs, fetchTags, searchDocs } from "../api";
+import { fetchRecentDocs, fetchTags, searchDocs } from "../api";
 import { useBucket } from "../bucket";
 import { snippetHtml } from "../format";
 import { useAsync, useDebounced, useListNavigation } from "../hooks";
+import { DocTitle, docHref } from "./DocLink";
 import { Modal, ModalHints } from "./Modal";
 
 const DEBOUNCE_MS = 150;
@@ -43,13 +44,8 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
     if (tab !== "docs") return [];
     // Empty query: offer the reading history instead of nothing
     if (term === "") {
-      const res = await fetchDocs({
-        bucket,
-        tag: tagFilter || undefined,
-        sort: "accessed",
-        per: 10,
-      });
-      return res.docs.map((d) => ({ key: d.key, title: d.title, path: d.path }));
+      const recent = await fetchRecentDocs(bucket, { limit: 10, tag: tagFilter || undefined });
+      return recent.map((d) => ({ key: d.key, title: d.title, path: d.path }));
     }
     const res = await searchDocs({
       q: term,
@@ -68,12 +64,13 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
 
   // The tag list is small: fetch once per bucket and filter in the browser
   const allTags = useAsync(() => fetchTags(bucket), [bucket]);
-  const tags: TagItem[] = (allTags.data ?? []).filter((t) =>
-    t.path.toLowerCase().includes(q.trim().toLowerCase()),
+  const tags: TagItem[] = useMemo(
+    () => (allTags.data ?? []).filter((t) => t.path.toLowerCase().includes(q.trim().toLowerCase())),
+    [allTags.data, q],
   );
 
   const openDoc = (d: DocItem) => {
-    navigate(`/docs/${encodeURIComponent(d.key)}`);
+    navigate(docHref(d.key));
     onClose();
   };
   const filterByTag = (t: TagItem) => {
@@ -81,9 +78,11 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
     setTab("docs");
   };
 
-  const docNav = useListNavigation(docs.data ?? [], openDoc);
-  const tagNav = useListNavigation(tags, filterByTag);
-  const nav = tab === "docs" ? docNav : tagNav;
+  // One navigator over whichever tab is showing — a second one would keep an index nobody reads
+  const nav = useListNavigation<DocItem | TagItem>(
+    tab === "docs" ? (docs.data ?? []) : tags,
+    (item) => ("key" in item ? openDoc(item) : filterByTag(item)),
+  );
 
   return (
     <Modal label="検索" onClose={onClose}>
@@ -142,8 +141,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
                     onClick={() => openDoc(d)}
                   >
                     <span class="result-title">
-                      {d.path !== "" && <span class="doc-path-prefix">{d.path}/</span>}
-                      {d.title}
+                      <DocTitle doc={d} />
                     </span>
                     {d.snippet !== undefined && d.snippet !== "" && (
                       // snippetHtml escapes first and only inserts <mark>

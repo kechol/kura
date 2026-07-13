@@ -59,7 +59,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `pages/Stats.tsx` | Statistics + tidying insights (`GET /api/stats`, `GET /api/insights`) |
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
-| `pages/DocEdit.tsx` | Plain editor (title / tags / textarea) |
+| `components/DocLink.tsx` | `DocTitle` (path prefix + title) and `DocLinkList` — the one place a list of document links is rendered |
 | `pages/DocByTitle.tsx` | `[[link]]` resolution route (`GET /api/resolve` + search fallback) |
 | `pages/Search.tsx` | 3-mode search |
 | `pages/Tags.tsx` | Tag browser |

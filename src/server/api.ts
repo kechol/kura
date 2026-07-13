@@ -103,10 +103,10 @@ export function createApiRoutes(
   const routes: Record<string, unknown> = {
     "/api/stats": wrap(() => json(collectStats(db, config))),
 
-    "/api/insights": wrap(async (req) => {
+    "/api/insights": wrap((req) => {
       const url = new URL(req.url);
       const bucket = url.searchParams.get("bucket") ?? config.general.default_bucket;
-      return json(await collectInsights(db, config, bucket));
+      return json(collectInsights(db, bucket));
     }),
 
     "/api/buckets": wrap(() => json(listBuckets(db))),

@@ -216,6 +216,19 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
   );
 }
 
+/**
+ * Reading history: the documents most recently opened, newest first. "Recent" means
+ * `last_accessed_at`, which `touchAccess()` bumps on every read — including reads from the
+ * CLI and MCP — and documents never opened are left out rather than padding the list.
+ */
+export async function fetchRecentDocs(
+  bucket: string,
+  opts: { limit: number; tag?: string } = { limit: 20 },
+): Promise<DocMeta[]> {
+  const res = await fetchDocs({ bucket, tag: opts.tag, sort: "accessed", per: opts.limit });
+  return res.docs.filter((d) => d.last_accessed_at !== null);
+}
+
 export function fetchDoc(key: string): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`);
 }

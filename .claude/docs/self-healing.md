@@ -120,13 +120,17 @@ Wiki-link health is maintained continuously, not just by doctor
 ### `kura tag audit [--apply]` (`auditTags` in `src/core/gardening.ts`)
 
 Pairwise scan of all tags, producing **merge candidates** and **oversized
-tags**:
+tags**. The edit-distance half lives on its own as `tagMergeCandidates(tags)`
+— pure, synchronous, no database and no provider — because the browser's
+statistics screen asks for it on every page view (`GET /api/insights`):
 
 - Skip any ancestor/descendant pair (`tech` vs `tech/db` is hierarchy, not
   duplication).
 - Flag a pair when the **normalized edit distance**
   (Levenshtein / max length) is **≤ 0.25** or it is a simple singular/plural
-  variant (`+s` / `+es`).
+  variant (`+s` / `+es`). Pairs whose lengths differ by more than the
+  threshold are skipped before the DP runs — the edit distance is at least the
+  length gap, so they cannot qualify.
 - If an LLM provider is available, embed all tag paths once and additionally
   flag pairs (not already flagged) with **cosine similarity > 0.85** —
   catches semantic duplicates like `db` / `database` that edit distance

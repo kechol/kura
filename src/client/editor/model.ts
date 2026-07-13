@@ -42,8 +42,6 @@ export type Block =
   | { id: string; type: "html"; html: string }
   | { id: string; type: "hr" };
 
-export type BlockType = Block["type"];
-
 let counter = 0;
 
 export function blockId(): string {
@@ -55,13 +53,36 @@ export function paragraph(inline: InlineNode[] = []): Block {
   return { id: blockId(), type: "paragraph", inline };
 }
 
-export function text(value: string, marks: InlineMark[] = []): InlineNode {
-  return { kind: "text", text: value, marks };
-}
-
 /** Blocks whose content is edited as raw text rather than rich inline nodes */
 export function isRawBlock(block: Block): boolean {
   return block.type === "code" || block.type === "table" || block.type === "html";
+}
+
+/** The raw-block text/withText pair, mirroring inlineOf / withInline below */
+export function rawText(block: Block): string {
+  switch (block.type) {
+    case "code":
+      return block.text;
+    case "table":
+      return block.markdown;
+    case "html":
+      return block.html;
+    default:
+      return "";
+  }
+}
+
+export function withRawText(block: Block, value: string): Block {
+  switch (block.type) {
+    case "code":
+      return { ...block, text: value };
+    case "table":
+      return { ...block, markdown: value };
+    case "html":
+      return { ...block, html: value };
+    default:
+      return block;
+  }
 }
 
 export function inlineOf(block: Block): InlineNode[] | null {
@@ -165,16 +186,6 @@ export function inlineText(nodes: InlineNode[]): string {
     }
   }
   return out;
-}
-
-export function isBlockEmpty(block: Block): boolean {
-  const inline = inlineOf(block);
-  if (inline !== null) return inlineText(inline) === "";
-  if (block.type === "code") return block.text === "";
-  if (block.type === "table") return block.markdown === "";
-  if (block.type === "html") return block.html === "";
-  if (block.type === "list") return block.items.every((i) => inlineText(i.inline) === "");
-  return false;
 }
 
 export function listItem(inline: InlineNode[] = [], depth = 0, ordered = false): ListItem {

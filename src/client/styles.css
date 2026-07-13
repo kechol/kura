@@ -799,25 +799,6 @@ mark {
 
 /* ---- Sidebar: buckets / tag tree ---- */
 
-.bucket-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.bucket-list li a {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.2rem 0.3rem;
-  border-radius: 5px;
-  color: var(--text);
-}
-
-.bucket-list li a:hover {
-  background: var(--bg-inset);
-  text-decoration: none;
-}
-
 .tag-tree {
   list-style: none;
   margin: 0;
@@ -1090,19 +1071,6 @@ mark {
 .stat-label {
   color: var(--text-muted);
   font-size: 0.8rem;
-}
-
-.home-columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.2rem;
-}
-
-.home-section {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.9rem 1.1rem;
 }
 
 .doc-links {
@@ -1441,33 +1409,6 @@ mark {
 }
 
 /* ---- Edit ---- */
-
-.edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  max-width: 860px;
-}
-
-.edit-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-}
-
-.edit-form textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  resize: vertical;
-}
-
-.edit-actions {
-  display: flex;
-  gap: 0.6rem;
-}
 
 /* ---- Search ---- */
 

@@ -9,10 +9,6 @@ export function forgetDoc(key: string): void {
   if (localStorage.getItem(STORAGE_KEY) === key) localStorage.removeItem(STORAGE_KEY);
 }
 
-export function lastDoc(): string | null {
-  return localStorage.getItem(STORAGE_KEY);
-}
-
 /**
  * Rewrite the URL to the last-read document before the first render, so opening kura
  * resumes reading instead of landing on an empty home. Only the bare entry point "/"
@@ -20,7 +16,7 @@ export function lastDoc(): string | null {
  * deleted document clears the memory on its 404 (DocDetail).
  */
 export function bootRedirect(): void {
-  const key = lastDoc();
+  const key = localStorage.getItem(STORAGE_KEY);
   if (key === null || window.location.pathname !== "/") return;
   window.history.replaceState(null, "", `/docs/${encodeURIComponent(key)}`);
 }

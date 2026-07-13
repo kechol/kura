@@ -20,7 +20,7 @@ function wrap(value: string, marks: InlineMark[]): string {
   return out;
 }
 
-export function serializeInline(nodes: InlineNode[]): string {
+function serializeInline(nodes: InlineNode[]): string {
   let out = "";
   for (const node of nodes) {
     switch (node.kind) {
@@ -44,25 +44,37 @@ export function serializeInline(nodes: InlineNode[]): string {
   return out;
 }
 
-/** Depth-tagged items back to nested markdown; ordered items are numbered per depth run */
-function serializeList(items: ListItem[]): string {
+/**
+ * Ordinal of every item in a flat, depth-tagged list: numbering restarts one level down and
+ * resumes where it left off on the way back up. The editor draws its bullets from the same
+ * function, so what the screen shows and what the file gets can never disagree.
+ */
+export function listOrdinals(items: ListItem[]): number[] {
   const counters: number[] = [];
-  const lines: string[] = [];
   let prevDepth = -1;
 
-  for (const item of items) {
+  return items.map((item) => {
     const depth = Math.max(item.depth, 0);
     if (depth > prevDepth) counters[depth] = 0;
     counters.length = depth + 1;
     counters[depth] = (counters[depth] ?? 0) + 1;
-
-    const indent = "  ".repeat(depth);
-    const marker = item.ordered ? `${counters[depth]}. ` : "- ";
-    const body = serializeInline(item.inline).replace(/\n/g, `\n${indent}  `);
-    lines.push(`${indent}${marker}${body}`);
     prevDepth = depth;
-  }
-  return lines.join("\n");
+    return counters[depth] as number;
+  });
+}
+
+/** Depth-tagged items back to nested markdown */
+function serializeList(items: ListItem[]): string {
+  const ordinals = listOrdinals(items);
+  return items
+    .map((item, i) => {
+      const depth = Math.max(item.depth, 0);
+      const indent = "  ".repeat(depth);
+      const marker = item.ordered ? `${ordinals[i]}. ` : "- ";
+      const body = serializeInline(item.inline).replace(/\n/g, `\n${indent}  `);
+      return `${indent}${marker}${body}`;
+    })
+    .join("\n");
 }
 
 function serializeBlock(block: Block): string {

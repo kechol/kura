@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useCallback, useContext, useState } from "preact/hooks";
+import { useCallback, useContext, useMemo, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
 import { type Bucket, fetchBuckets } from "./api";
 import { useAsync } from "./hooks";
@@ -13,7 +13,6 @@ export interface BucketState {
   buckets: Bucket[];
   setBucket: (name: string) => void;
   loading: boolean;
-  error: string | null;
 }
 
 const BucketContext = createContext<BucketState>({
@@ -21,7 +20,6 @@ const BucketContext = createContext<BucketState>({
   buckets: [],
   setBucket: () => {},
   loading: true,
-  error: null,
 });
 
 function storedBucket(): string {
@@ -55,13 +53,16 @@ export function BucketProvider({ children }: { children: ComponentChildren }) {
     setSelected(name);
   }, []);
 
-  const value: BucketState = {
-    bucket,
-    buckets: buckets.data ?? [],
-    setBucket,
-    loading: buckets.loading,
-    error: buckets.error,
-  };
+  // Memoized so a navigation that changes nothing does not re-render every consumer
+  const value = useMemo<BucketState>(
+    () => ({
+      bucket,
+      buckets: buckets.data ?? [],
+      setBucket,
+      loading: buckets.loading,
+    }),
+    [bucket, buckets.data, buckets.loading, setBucket],
+  );
   return <BucketContext.Provider value={value}>{children}</BucketContext.Provider>;
 }
 

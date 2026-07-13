@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import type { LLMProvider } from "./llm/provider";
-import { listTags } from "./tags";
+import { listTags, type TagEntry } from "./tags";
 
 export interface TagMergeCandidate {
   /** Merge source (the less-used or longer tag) */
@@ -78,59 +78,43 @@ const EDIT_DISTANCE_THRESHOLD = 0.25;
 const EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
 const OVERSIZED_SHARE = 0.3;
 
-export interface AuditTagsOptions {
-  /** Audit only the tags used inside this bucket, against its document count */
-  bucket?: string;
+const pairKey = (a: string, b: string): string => [a, b].sort().join("\x00");
+
+/** Merge direction: into the more-used tag (into the shorter path on a tie) */
+function direction(a: TagEntry, b: TagEntry): { from: string; to: string } {
+  if (a.count !== b.count) {
+    return a.count > b.count ? { from: b.path, to: a.path } : { from: a.path, to: b.path };
+  }
+  return a.path.length <= b.path.length
+    ? { from: b.path, to: a.path }
+    : { from: a.path, to: b.path };
 }
 
 /**
- * Tag gardening audit (docs: self-healing.md):
- * list merge candidates via normalized edit distance plus, when a provider is available,
- * cosine similarity of tag-name embeddings, and flag tags attached to more than 30% of
- * all documents as candidates for splitting.
+ * Spelling-variant merge candidates: normalized edit distance plus singular/plural.
+ * Pure and synchronous — no database, no LLM — so the browser's statistics screen can ask
+ * for it on every page view (docs: self-healing.md).
  */
-export async function auditTags(
-  db: Database,
-  provider: LLMProvider | null,
-  config: KuraConfig,
-  opts: AuditTagsOptions = {},
-): Promise<TagAuditResult> {
-  const tags = listTags(db, { bucket: opts.bucket });
-  const totalDocs = (
-    (opts.bucket
-      ? db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM documents d JOIN buckets b ON b.id = d.bucket_id
-             WHERE b.name = ?`,
-          )
-          .get(opts.bucket)
-      : db.prepare("SELECT COUNT(*) AS n FROM documents").get()) as { n: number }
-  ).n;
-
-  const merges = new Map<string, TagMergeCandidate>();
-  const pairKey = (a: string, b: string): string => [a, b].sort().join("\x00");
-  // Merge direction: into the more-used tag (into the shorter path on a tie)
-  const direction = (
-    a: (typeof tags)[number],
-    b: (typeof tags)[number],
-  ): { from: string; to: string } => {
-    if (a.count !== b.count) {
-      return a.count > b.count ? { from: b.path, to: a.path } : { from: a.path, to: b.path };
-    }
-    return a.path.length <= b.path.length
-      ? { from: b.path, to: a.path }
-      : { from: a.path, to: b.path };
-  };
-
+export function tagMergeCandidates(tags: TagEntry[]): TagMergeCandidate[] {
+  const merges: TagMergeCandidate[] = [];
   for (let i = 0; i < tags.length; i++) {
     for (let j = i + 1; j < tags.length; j++) {
       const a = tags[i]!;
       const b = tags[j]!;
       if (isAncestor(a.path, b.path)) continue;
-      const dist = normalizedDistance(a.path, b.path);
       const plural = isPluralVariant(a.path, b.path);
+      // The edit distance is at least the length gap, so a wide gap can never pass the
+      // threshold — skip the O(n·m) DP for the pairs that cannot qualify
+      if (
+        !plural &&
+        Math.abs(a.path.length - b.path.length) / Math.max(a.path.length, b.path.length) >
+          EDIT_DISTANCE_THRESHOLD
+      ) {
+        continue;
+      }
+      const dist = normalizedDistance(a.path, b.path);
       if (dist <= EDIT_DISTANCE_THRESHOLD || plural) {
-        merges.set(pairKey(a.path, b.path), {
+        merges.push({
           ...direction(a, b),
           reason: plural ? "singular/plural variant" : `close edit distance (${dist.toFixed(2)})`,
           similarity: 1 - dist,
@@ -138,6 +122,25 @@ export async function auditTags(
       }
     }
   }
+  return merges;
+}
+
+/**
+ * Tag gardening audit (docs: self-healing.md): the merge candidates above plus, when a
+ * provider is available, cosine similarity of tag-name embeddings, and tags attached to more
+ * than 30% of all documents flagged as candidates for splitting.
+ */
+export async function auditTags(
+  db: Database,
+  provider: LLMProvider | null,
+  config: KuraConfig,
+): Promise<TagAuditResult> {
+  const tags = listTags(db);
+  const totalDocs = (db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number }).n;
+
+  const merges = new Map<string, TagMergeCandidate>(
+    tagMergeCandidates(tags).map((m) => [pairKey(m.from, m.to), m]),
+  );
 
   // Embedding similarity (semantic duplicates, e.g. "db" and "database")
   let usedEmbeddings = false;
@@ -188,13 +191,12 @@ export async function auditTags(
 export interface UntaggedDoc {
   id: number;
   key: string;
-  path: string;
   title: string;
   bucket: string;
   content: string;
 }
 
-/** List untagged documents (for tag suggest --untagged) */
+/** List untagged documents, with their bodies (for tag suggest --untagged) */
 export function untaggedDocuments(db: Database, bucket?: string): UntaggedDoc[] {
   const params: string[] = [];
   let where = "NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)";
@@ -204,7 +206,7 @@ export function untaggedDocuments(db: Database, bucket?: string): UntaggedDoc[] 
   }
   return db
     .prepare(
-      `SELECT d.id, d.doc_key AS key, d.path, d.title, b.name AS bucket, d.content
+      `SELECT d.id, d.doc_key AS key, d.title, b.name AS bucket, d.content
        FROM documents d JOIN buckets b ON b.id = d.bucket_id
        WHERE ${where} ORDER BY d.updated_at DESC`,
     )

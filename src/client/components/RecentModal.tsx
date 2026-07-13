@@ -1,8 +1,9 @@
 import { useLocation } from "wouter-preact";
-import { type DocMeta, fetchDocs } from "../api";
+import { type DocMeta, fetchRecentDocs } from "../api";
 import { useBucket } from "../bucket";
 import { formatDateTime } from "../format";
 import { useAsync, useListNavigation } from "../hooks";
+import { DocTitle, docHref } from "./DocLink";
 import { Modal, ModalHints } from "./Modal";
 
 const LIMIT = 20;
@@ -11,11 +12,11 @@ const LIMIT = 20;
 export function RecentModal({ onClose }: { onClose: () => void }) {
   const [, navigate] = useLocation();
   const { bucket } = useBucket();
-  const recent = useAsync(() => fetchDocs({ bucket, sort: "accessed", per: LIMIT }), [bucket]);
-  const docs = (recent.data?.docs ?? []).filter((d) => d.last_accessed_at !== null);
+  const recent = useAsync(() => fetchRecentDocs(bucket, { limit: LIMIT }), [bucket]);
+  const docs = recent.data ?? [];
 
   const open = (d: DocMeta) => {
-    navigate(`/docs/${encodeURIComponent(d.key)}`);
+    navigate(docHref(d.key));
     onClose();
   };
   // No text field here, so the arrow keys are read from the window
@@ -41,8 +42,7 @@ export function RecentModal({ onClose }: { onClose: () => void }) {
                 onClick={() => open(d)}
               >
                 <span class="result-title">
-                  {d.path !== "" && <span class="doc-path-prefix">{d.path}/</span>}
-                  {d.title}
+                  <DocTitle doc={d} />
                 </span>
                 <span class="count">{formatDateTime(d.last_accessed_at)}</span>
               </button>

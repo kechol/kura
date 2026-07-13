@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter-preact";
 import { ApiError, deleteDoc, fetchDoc, fetchRelated, type RelatedDoc, updateDoc } from "../api";
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
+import { DocLinkList } from "../components/DocLink";
 import { useCurrentDoc } from "../currentdoc";
 import { Editor, type SaveStatus } from "../editor/Editor";
 import { formatDateTime } from "../format";
@@ -18,16 +19,7 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
 };
 
 function RelatedList({ docs }: { docs: RelatedDoc[] }) {
-  if (docs.length === 0) return <p class="empty">なし</p>;
-  return (
-    <ul class="related-list">
-      {docs.map((d) => (
-        <li key={d.key}>
-          <Link href={`/docs/${encodeURIComponent(d.key)}`}>{d.title}</Link>
-        </li>
-      ))}
-    </ul>
-  );
+  return <DocLinkList docs={docs} class="related-list" />;
 }
 
 export function DocDetail({ docKey }: { docKey: string }) {

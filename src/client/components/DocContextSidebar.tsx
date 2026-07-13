@@ -4,6 +4,7 @@ import { Link } from "wouter-preact";
 import { type DocDetail, fetchDocs, fetchTags, updateDoc } from "../api";
 import { useBucket } from "../bucket";
 import { useAsync } from "../hooks";
+import { DocLinkList } from "./DocLink";
 
 const TAG_SECTIONS = 3;
 const PER_SECTION = 6;
@@ -13,26 +14,6 @@ const SIBLINGS = 10;
 function parentPath(path: string): string {
   const at = path.lastIndexOf("/");
   return at < 0 ? "" : path.slice(0, at);
-}
-
-function DocList({
-  keys,
-  exclude,
-}: {
-  keys: Array<{ key: string; title: string }>;
-  exclude: string;
-}) {
-  const docs = keys.filter((d) => d.key !== exclude);
-  if (docs.length === 0) return <p class="empty">なし</p>;
-  return (
-    <ul class="sidebar-docs">
-      {docs.map((d) => (
-        <li key={d.key}>
-          <Link href={`/docs/${encodeURIComponent(d.key)}`}>{d.title}</Link>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 /**
@@ -142,13 +123,13 @@ export function DocContextSidebar({ doc, onChange }: { doc: DocDetail; onChange:
       {(byTag.data ?? []).map(({ tag, docs }) => (
         <section class="sidebar-section" key={tag}>
           <h2>#{tag}</h2>
-          <DocList keys={docs} exclude={doc.key} />
+          <DocLinkList docs={docs} class="sidebar-docs" exclude={doc.key} />
         </section>
       ))}
 
       <section class="sidebar-section">
         <h2>{siblingPath === "" ? "同じ階層（直下）" : `同じ階層（${siblingPath}）`}</h2>
-        <DocList keys={siblings.data?.docs ?? []} exclude={doc.key} />
+        <DocLinkList docs={siblings.data?.docs ?? []} class="sidebar-docs" exclude={doc.key} />
       </section>
     </>
   );

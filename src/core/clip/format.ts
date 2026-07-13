@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
-import TurndownService from "turndown";
 import type { KuraConfig } from "../config";
 import { sha256Hex } from "../documents";
 import { cached } from "../llm/cache";
 import type { LLMProvider } from "../llm/provider";
 import type { ExtractedPage } from "./extract";
+import { htmlToMarkdown } from "./turndown";
 
 export interface FormattedClip {
   title: string;
@@ -14,15 +14,7 @@ export interface FormattedClip {
 }
 
 /** Mechanical conversion via turndown (fallback for --no-llm / no provider) */
-export function htmlToMarkdown(html: string): string {
-  const turndown = new TurndownService({
-    headingStyle: "atx",
-    codeBlockStyle: "fenced",
-    bulletListMarker: "-",
-  });
-  turndown.remove(["script", "style", "iframe", "noscript"]);
-  return turndown.turndown(html).trim();
-}
+export { htmlToMarkdown } from "./turndown";
 
 // Intentionally Japanese — kura is a Japanese-first knowledge tool; this prompt is tuned for Japanese content.
 const FORMAT_PROMPT = `あなたは Web 記事をナレッジベース用の Markdown に整形するアシスタントです。

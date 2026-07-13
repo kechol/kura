@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { DocContent } from "../components/DocContent";
 import type { WikiResolver } from "../markdown";
 import { caretOffset, placeCaret, renderInlineTo } from "./dom";
-import type { Block, InlineNode } from "./model";
+import { type Block, type InlineNode, rawText } from "./model";
 import { serializeMarkdown } from "./serialize";
 
 export interface RichHandlers {
@@ -111,14 +111,7 @@ export function RawBlock({
   editable: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const value =
-    block.type === "code"
-      ? block.text
-      : block.type === "table"
-        ? block.markdown
-        : block.type === "html"
-          ? block.html
-          : "";
+  const value = rawText(block);
 
   if (!editable || !editing) {
     return (

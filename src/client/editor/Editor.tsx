@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import TurndownService from "turndown";
+import { htmlToMarkdownService } from "../../core/clip/turndown";
 import type { WikiResolver } from "../markdown";
 import { RawBlock, RichBlock, type RichHandlers } from "./blocks";
 import { caretOffset, placeCaret, readInline, splitInline } from "./dom";
@@ -14,11 +14,11 @@ import {
   type ListItem,
   listItem,
   normalizeInline,
-  paragraph,
   withInline,
+  withRawText,
 } from "./model";
 import { parseMarkdown } from "./parse";
-import { serializeMarkdown } from "./serialize";
+import { listOrdinals, serializeMarkdown } from "./serialize";
 import { Toolbar, type ToolbarPos } from "./Toolbar";
 
 const AUTOSAVE_MS = 1500;
@@ -36,20 +36,12 @@ const parseKey = (key: EditKey): { id: string; item: number | null } => {
   return { id: id ?? "", item: item === undefined ? null : Number(item) };
 };
 
-const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
+const turndown = htmlToMarkdownService();
 
-/** Display marker for a flat list item (mirrors the serializer's numbering) */
+/** Bullet or ordinal drawn next to a list item, numbered exactly as the serializer will */
 function markers(items: ListItem[]): string[] {
-  const counters: number[] = [];
-  let prevDepth = -1;
-  return items.map((item) => {
-    const depth = Math.max(item.depth, 0);
-    if (depth > prevDepth) counters[depth] = 0;
-    counters.length = depth + 1;
-    counters[depth] = (counters[depth] ?? 0) + 1;
-    prevDepth = depth;
-    return item.ordered ? `${counters[depth]}.` : "•";
-  });
+  const ordinals = listOrdinals(items);
+  return items.map((item, i) => (item.ordered ? `${ordinals[i]}.` : "•"));
 }
 
 export function Editor({
@@ -71,7 +63,7 @@ export function Editor({
   const [toolbar, setToolbar] = useState<ToolbarPos | null>(null);
 
   const root = useRef<HTMLDivElement>(null);
-  const elements = useRef(new Map<EditKey, HTMLElement>());
+  const elements = useRef<Map<EditKey, HTMLElement>>(new Map());
   const composing = useRef(false);
   const pendingFocus = useRef<{ key: EditKey; offset: number } | null>(null);
   const undoStack = useRef<Block[][]>([]);
@@ -79,16 +71,21 @@ export function Editor({
   const lastUndoPush = useRef(0);
 
   const markdown = useMemo(() => serializeMarkdown(blocks), [blocks]);
-  const saved = useRef(serializeMarkdown(parseMarkdown(initial)));
-  const [status, setStatus] = useState<SaveStatus>("idle");
+  // Lazily, once: useRef evaluates its argument on every render, and re-parsing the whole
+  // document per keystroke is the most expensive thing this component could do
+  const saved = useRef<string | null>(null);
+  if (saved.current === null) saved.current = markdown;
 
-  useEffect(() => onStatus?.(status), [status, onStatus]);
+  // Status is the parent's to render, not ours — keeping a copy here would re-render the
+  // whole editor on every save transition
+  const setStatus = useCallback((status: SaveStatus) => onStatus?.(status), [onStatus]);
 
   // ---- model updates -------------------------------------------------------
 
+  /** The one place the model is written, so undo depth and coalescing have a single home */
   const commit = useCallback(
     (
-      next: Block[],
+      update: Block[] | ((prev: Block[]) => Block[]),
       opts: {
         rerender?: boolean;
         focus?: { key: EditKey; offset: number };
@@ -96,18 +93,25 @@ export function Editor({
       } = {},
     ) => {
       const now = Date.now();
-      if (!opts.coalesce || now - lastUndoPush.current > UNDO_COALESCE_MS) {
-        undoStack.current.push(blocks);
-        if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
+      const push = !opts.coalesce || now - lastUndoPush.current > UNDO_COALESCE_MS;
+      if (push) {
         redoStack.current = [];
         lastUndoPush.current = now;
       }
-      setBlocks(next);
+      // The snapshot is taken from the state the update is applied to, never from a closure
+      // — during fast typing a captured `blocks` can already be a version nobody saw
+      setBlocks((prev) => {
+        if (push) {
+          undoStack.current.push(prev);
+          if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
+        }
+        return typeof update === "function" ? update(prev) : update;
+      });
       if (opts.rerender !== false) setNonce((n) => n + 1);
       if (opts.focus) pendingFocus.current = opts.focus;
       setStatus("dirty");
     },
-    [blocks],
+    [setStatus],
   );
 
   const replaceInline = useCallback(
@@ -144,7 +148,6 @@ export function Editor({
     const rest = (prefixLength: number): InlineNode[] => splitInline(nodes, prefixLength)[1];
 
     let next: Block | null = null;
-    let offset = 0;
     if (heading) {
       const level = Math.min(heading[1]?.length ?? 1, 6) as HeadingLevel;
       next = { id: block.id, type: "heading", level, inline: rest(heading[0].length) };
@@ -155,7 +158,6 @@ export function Editor({
         type: "list",
         items: [listItem(rest(prefix.length), 0, ordered !== null)],
       };
-      offset = 0;
     } else if (quote) {
       next = { id: block.id, type: "blockquote", inline: rest(quote[0].length) };
     } else if (fence) {
@@ -164,12 +166,12 @@ export function Editor({
     if (next === null) return null;
 
     const list = blocks.map((b) => (b.id === block.id ? (next as Block) : b));
+    // The caret lands at the start of what is left after the marker. A list item is addressed
+    // as an item, and a code block takes focus through its own textarea, so it asks for none.
     pendingFocus.current =
-      next.type === "list"
-        ? { key: keyOf(block.id, 0), offset: inlineText(rest(0)).length }
-        : next.type === "code"
-          ? null
-          : { key: keyOf(block.id), offset };
+      next.type === "code"
+        ? null
+        : { key: next.type === "list" ? keyOf(block.id, 0) : keyOf(block.id), offset: 0 };
     return list;
   };
 
@@ -182,20 +184,49 @@ export function Editor({
         return;
       }
       // Typing: update the model but leave the DOM alone (no nonce bump), coalescing undo
-      const now = Date.now();
-      if (now - lastUndoPush.current > UNDO_COALESCE_MS) {
-        undoStack.current.push(blocks);
-        if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
-        redoStack.current = [];
-        lastUndoPush.current = now;
-      }
-      setBlocks((current) => replaceInline(current, key, nodes));
-      setStatus("dirty");
+      commit((prev) => replaceInline(prev, key, nodes), { rerender: false, coalesce: true });
     },
-    [autoformat, blocks, commit, replaceInline],
+    [autoformat, commit, replaceInline],
   );
 
   // ---- structural editing --------------------------------------------------
+
+  /** Rewrite one list block's items in place */
+  const withItems = (
+    id: string,
+    items: ListItem[],
+    focus: { key: EditKey; offset: number },
+  ): void => {
+    commit(
+      blocks.map((b) => (b.id === id ? { ...b, items } : b)),
+      { focus },
+    );
+  };
+
+  /**
+   * One item leaves the list and becomes a paragraph: the list splits around it (Enter on an
+   * empty top-level item, and Backspace at the start of one, are the same move).
+   */
+  const leaveList = (
+    index: number,
+    block: Block & { type: "list" },
+    item: number,
+    inline: InlineNode[],
+  ): void => {
+    const head = block.items.slice(0, item);
+    const tail = block.items.slice(item + 1);
+    const fresh: Block = { id: blockId(), type: "paragraph", inline };
+    commit(
+      [
+        ...blocks.slice(0, index),
+        ...(head.length > 0 ? [{ ...block, items: head }] : []),
+        fresh,
+        ...(tail.length > 0 ? [{ id: blockId(), type: "list" as const, items: tail }] : []),
+        ...blocks.slice(index + 1),
+      ],
+      { focus: { key: keyOf(fresh.id), offset: 0 } },
+    );
+  };
 
   const onEnter = (key: EditKey, el: HTMLElement): boolean => {
     const { id, item } = parseKey(key);
@@ -211,41 +242,15 @@ export function Editor({
 
       // Enter on an empty item: outdent, or leave the list
       if (inlineText(current.inline) === "") {
-        if (current.depth > 0) {
-          const items = block.items.map((it, i) =>
-            i === item ? { ...it, depth: it.depth - 1 } : it,
-          );
-          commit(
-            blocks.map((b) => (b.id === id ? { ...b, items } : b)),
-            {
-              focus: { key, offset: 0 },
-            },
-          );
-          return true;
-        }
-        const head = block.items.slice(0, item);
-        const tail = block.items.slice(item + 1);
-        const fresh = paragraph();
-        const next: Block[] = [
-          ...blocks.slice(0, index),
-          ...(head.length > 0 ? [{ ...block, items: head }] : []),
-          fresh,
-          ...(tail.length > 0 ? [{ id: blockId(), type: "list" as const, items: tail }] : []),
-          ...blocks.slice(index + 1),
-        ];
-        commit(next, { focus: { key: keyOf(fresh.id), offset: 0 } });
+        if (current.depth > 0) return onIndent(key, -1);
+        leaveList(index, block, item, []);
         return true;
       }
 
       const items = [...block.items];
       items[item] = { ...current, inline: before };
       items.splice(item + 1, 0, listItem(after, current.depth, current.ordered));
-      commit(
-        blocks.map((b) => (b.id === id ? { ...b, items } : b)),
-        {
-          focus: { key: keyOf(id, item + 1), offset: 0 },
-        },
-      );
+      withItems(id, items, { key: keyOf(id, item + 1), offset: 0 });
       return true;
     }
 
@@ -256,8 +261,9 @@ export function Editor({
       block.type === "blockquote"
         ? { id: blockId(), type: "blockquote", inline: after }
         : { id: blockId(), type: "paragraph", inline: after };
-    const next = [...blocks.slice(0, index), head, tail, ...blocks.slice(index + 1)];
-    commit(next, { focus: { key: keyOf(tail.id), offset: 0 } });
+    commit([...blocks.slice(0, index), head, tail, ...blocks.slice(index + 1)], {
+      focus: { key: keyOf(tail.id), offset: 0 },
+    });
     return true;
   };
 
@@ -270,30 +276,9 @@ export function Editor({
     if (item !== null && block.type === "list") {
       const current = block.items[item];
       if (!current) return false;
-      if (current.depth > 0) {
-        const items = block.items.map((it, i) =>
-          i === item ? { ...it, depth: it.depth - 1 } : it,
-        );
-        commit(
-          blocks.map((b) => (b.id === id ? { ...b, items } : b)),
-          {
-            focus: { key, offset: 0 },
-          },
-        );
-        return true;
-      }
+      if (current.depth > 0) return onIndent(key, -1);
       // Depth 0: the item leaves the list and becomes a paragraph
-      const head = block.items.slice(0, item);
-      const tail = block.items.slice(item + 1);
-      const fresh: Block = { id: blockId(), type: "paragraph", inline: current.inline };
-      const next: Block[] = [
-        ...blocks.slice(0, index),
-        ...(head.length > 0 ? [{ ...block, items: head }] : []),
-        fresh,
-        ...(tail.length > 0 ? [{ id: blockId(), type: "list" as const, items: tail }] : []),
-        ...blocks.slice(index + 1),
-      ];
-      commit(next, { focus: { key: keyOf(fresh.id), offset: 0 } });
+      leaveList(index, block, item, current.inline);
       return true;
     }
 
@@ -314,19 +299,16 @@ export function Editor({
     if (prevInline === null) return false;
 
     const merged = normalizeInline([...prevInline, ...block.inline]);
-    const next = [
-      ...blocks.slice(0, index - 1),
-      withInline(prev, merged),
-      ...blocks.slice(index + 1),
-    ];
-    commit(next, { focus: { key: keyOf(prev.id), offset: inlineText(prevInline).length } });
+    commit([...blocks.slice(0, index - 1), withInline(prev, merged), ...blocks.slice(index + 1)], {
+      focus: { key: keyOf(prev.id), offset: inlineText(prevInline).length },
+    });
     return true;
   };
 
   const onIndent = (key: EditKey, delta: number): boolean => {
     const { id, item } = parseKey(key);
     const block = blocks.find((b) => b.id === id);
-    if (item === null || !block || block.type !== "list") return false;
+    if (item === null || block?.type !== "list") return false;
     const current = block.items[item];
     if (!current) return false;
 
@@ -335,30 +317,26 @@ export function Editor({
     const depth = Math.min(Math.max(current.depth + delta, 0), maxDepth);
     if (depth === current.depth) return false;
 
-    const items = block.items.map((it, i) => (i === item ? { ...it, depth } : it));
-    commit(
-      blocks.map((b) => (b.id === id ? { ...b, items } : b)),
+    const caret = elements.current.get(key);
+    withItems(
+      id,
+      block.items.map((it, i) => (i === item ? { ...it, depth } : it)),
       {
-        focus: { key, offset: caretOffset(elements.current.get(key) as HTMLElement) ?? 0 },
+        key,
+        offset: (caret && caretOffset(caret)) || 0,
       },
     );
     return true;
   };
 
-  const undo = () => {
-    const previous = undoStack.current.pop();
-    if (!previous) return;
-    redoStack.current.push(blocks);
-    setBlocks(previous);
-    setNonce((n) => n + 1);
-    setStatus("dirty");
-  };
-
-  const redo = () => {
-    const next = redoStack.current.pop();
-    if (!next) return;
-    undoStack.current.push(blocks);
-    setBlocks(next);
+  /** Undo and redo move a snapshot between the stacks; they must not push a new one */
+  const timeTravel = (from: typeof undoStack, to: typeof redoStack) => {
+    const snapshot = from.current.pop();
+    if (!snapshot) return;
+    setBlocks((prev) => {
+      to.current.push(prev);
+      return snapshot;
+    });
     setNonce((n) => n + 1);
     setStatus("dirty");
   };
@@ -374,7 +352,7 @@ export function Editor({
     } catch {
       setStatus("error");
     }
-  }, [markdown, onSave]);
+  }, [markdown, onSave, setStatus]);
 
   // ---- keyboard ------------------------------------------------------------
 
@@ -383,8 +361,8 @@ export function Editor({
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
-      if (e.shiftKey) redo();
-      else undo();
+      if (e.shiftKey) timeTravel(redoStack, undoStack);
+      else timeTravel(undoStack, redoStack);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -551,20 +529,10 @@ export function Editor({
               resolve={resolve}
               editable={editable}
               onChange={(value) =>
-                commit(
-                  blocks.map((b) =>
-                    b.id !== block.id
-                      ? b
-                      : b.type === "code"
-                        ? { ...b, text: value }
-                        : b.type === "table"
-                          ? { ...b, markdown: value }
-                          : b.type === "html"
-                            ? { ...b, html: value }
-                            : b,
-                  ),
-                  { rerender: false, coalesce: true },
-                )
+                commit((prev) => prev.map((b) => (b.id === block.id ? withRawText(b, value) : b)), {
+                  rerender: false,
+                  coalesce: true,
+                })
               }
             />
           );
