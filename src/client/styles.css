@@ -488,7 +488,164 @@ mark {
   color: var(--text-muted);
 }
 
-/* ---- Home ---- */
+/* ---- Home: reading history ---- */
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.recent-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.recent-list li:last-child {
+  border-bottom: none;
+}
+
+.recent-title {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.recent-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* ---- Statistics ---- */
+
+.stats-section {
+  margin-top: 1.8rem;
+}
+
+.bucket-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 320px;
+}
+
+.bucket-stats li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.insight-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.insight-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+}
+
+.insight-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.insight-head:disabled {
+  cursor: default;
+}
+
+.insight-title {
+  font-weight: 600;
+}
+
+.insight-count {
+  margin-left: auto;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.insight-count.zero {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.insight-toggle {
+  color: var(--text-muted);
+}
+
+.insight-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0.35rem 0 0;
+}
+
+.insight-body {
+  margin-top: 0.6rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.broken-links,
+.tag-dupes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.broken-links li,
+.tag-dupes li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.broken-links li:last-child,
+.tag-dupes li:last-child {
+  border-bottom: none;
+}
+
+.broken-target {
+  color: var(--danger);
+  white-space: nowrap;
+}
+
+.broken-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.tag-dupes .count {
+  margin-left: auto;
+}
+
+/* ---- Stat cards ---- */
 
 .stat-cards {
   display: grid;

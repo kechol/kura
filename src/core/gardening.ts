@@ -78,6 +78,11 @@ const EDIT_DISTANCE_THRESHOLD = 0.25;
 const EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
 const OVERSIZED_SHARE = 0.3;
 
+export interface AuditTagsOptions {
+  /** Audit only the tags used inside this bucket, against its document count */
+  bucket?: string;
+}
+
 /**
  * Tag gardening audit (docs: self-healing.md):
  * list merge candidates via normalized edit distance plus, when a provider is available,
@@ -88,9 +93,19 @@ export async function auditTags(
   db: Database,
   provider: LLMProvider | null,
   config: KuraConfig,
+  opts: AuditTagsOptions = {},
 ): Promise<TagAuditResult> {
-  const tags = listTags(db);
-  const totalDocs = (db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number }).n;
+  const tags = listTags(db, { bucket: opts.bucket });
+  const totalDocs = (
+    (opts.bucket
+      ? db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM documents d JOIN buckets b ON b.id = d.bucket_id
+             WHERE b.name = ?`,
+          )
+          .get(opts.bucket)
+      : db.prepare("SELECT COUNT(*) AS n FROM documents").get()) as { n: number }
+  ).n;
 
   const merges = new Map<string, TagMergeCandidate>();
   const pairKey = (a: string, b: string): string => [a, b].sort().join("\x00");
@@ -173,6 +188,7 @@ export async function auditTags(
 export interface UntaggedDoc {
   id: number;
   key: string;
+  path: string;
   title: string;
   bucket: string;
   content: string;
@@ -188,7 +204,7 @@ export function untaggedDocuments(db: Database, bucket?: string): UntaggedDoc[] 
   }
   return db
     .prepare(
-      `SELECT d.id, d.doc_key AS key, d.title, b.name AS bucket, d.content
+      `SELECT d.id, d.doc_key AS key, d.path, d.title, b.name AS bucket, d.content
        FROM documents d JOIN buckets b ON b.id = d.bucket_id
        WHERE ${where} ORDER BY d.updated_at DESC`,
     )

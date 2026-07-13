@@ -51,6 +51,54 @@ describe("REST API (docs: http-api.md)", () => {
     expect(body[0].documents).toBe(2);
   });
 
+  test("GET /api/insights (no provider: orphans, untagged, unfiled, broken links, dupes)", async () => {
+    // Linked to nothing, tagged with a near-duplicate of an existing tag, left at the root
+    createDocument(db, {
+      title: "孤立したメモ",
+      content:
+        "どこからもリンクされていない。[[存在しないページ]] へのリンクだけがある。 #tech/dbs",
+      bucket: "main",
+    });
+    createDocument(db, {
+      title: "タグなしメモ",
+      content: "分類していない下書き。",
+      bucket: "main",
+    });
+
+    const { status, body } = await api("/api/insights?bucket=main");
+    expect(status).toBe(200);
+
+    // The two fixture documents link to each other; the two new ones do not
+    expect(body.orphans.docs.map((d: { title: string }) => d.title).sort()).toEqual([
+      "タグなしメモ",
+      "孤立したメモ",
+    ]);
+    expect(body.untagged.docs.map((d: { title: string }) => d.title)).toEqual(["タグなしメモ"]);
+    // Every fixture document sits at the bucket root
+    expect(body.unfiled.count).toBe(4);
+    expect(body.brokenLinks.links[0].targetTitle).toBe("存在しないページ");
+    expect(body.brokenLinks.links[0].sources[0].title).toBe("孤立したメモ");
+    // tech/db vs tech/dbs — a plural variant
+    expect(
+      body.tagDuplicates.some(
+        (t: { from: string; to: string }) =>
+          [t.from, t.to].includes("tech/db") && [t.from, t.to].includes("tech/dbs"),
+      ),
+    ).toBe(true);
+  });
+
+  test("GET /api/insights is scoped to the bucket and 404s on an unknown one", async () => {
+    createBucket(db, "work");
+    createDocument(db, { title: "採用計画", content: "方針。", bucket: "work" });
+
+    const work = await api("/api/insights?bucket=work");
+    expect(work.body.untagged.docs.map((d: { title: string }) => d.title)).toEqual(["採用計画"]);
+
+    const missing = await api("/api/insights?bucket=nope");
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toBeTruthy();
+  });
+
   test("GET /api/docs filtering and pagination", async () => {
     const all = await api("/api/docs");
     expect(all.body.total).toBe(2);

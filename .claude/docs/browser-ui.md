@@ -35,6 +35,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
 | `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
 | `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
+| `lastdoc.ts` | Remembers the last-read document (`localStorage["kura-last-doc"]`) and rewrites `/` to it before the first render |
 | `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard); `useDocumentTitle()` sets `document.title` per screen |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
@@ -45,7 +46,8 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
-| `pages/Home.tsx` | Dashboard |
+| `pages/Home.tsx` | Reading history (most recently viewed documents) |
+| `pages/Stats.tsx` | Statistics + tidying insights (`GET /api/stats`, `GET /api/insights`) |
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
 | `pages/DocEdit.tsx` | Plain editor (title / tags / textarea) |
@@ -61,7 +63,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 
 | Path | Screen |
 | --- | --- |
-| `/` | Home |
+| `/` | Home — reading history (redirects to the last-read document on a fresh visit) |
 | `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `page`) |
 | `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
 | `/docs/:key/edit` | Editor |
@@ -69,6 +71,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `/search` | Search (`q`, `mode`, `tag` in query string) |
 | `/tags` | Tag browser |
 | `/graph` | Knowledge graph |
+| `/stats` | Statistics and tidying insights |
 | anything else | 404 page |
 
 The server serves `index.html` for unknown paths (SPA fallback,
@@ -85,12 +88,27 @@ name on the detail page, the screen name elsewhere, both suffixed with
 
 ## Screens
 
-- **Home** — stat cards from `/api/stats` (documents, buckets, tags, chunks,
-  embedding coverage, stale candidates, unresolved links, DB size, tokenizer,
-  embedding model) plus three lists: recently updated (`sort=updated`), most
-  referenced (`sort=accessed`), and staleness candidates (`stale=1`, with a
-  "see all" link into the filtered list). Staleness surfaces review
-  candidates; nothing is auto-deleted (see [self-healing.md](self-healing.md)).
+- **Home** — the reading history: the 50 most recently *viewed* documents in
+  the selected bucket (`sort=accessed`, filtered to those with a
+  `last_accessed_at`). It needs no new schema — `documents.last_accessed_at`
+  is already bumped by `touchAccess()` on every read, including reads from the
+  CLI and MCP, so the list reflects all of kura, not just the browser.
+  - **Resume on open.** `bootRedirect()` (`lastdoc.ts`) rewrites `/` to
+    `/docs/<last key>` *before the router reads the URL*, so a fresh visit
+    lands back where the user left off. Only the bare `/` entry point
+    redirects: the logo and the nav still reach the home screen, and a
+    document that 404s (deleted) clears the memory so the next boot stops
+    redirecting to it.
+- **Statistics (`/stats`)** — stat cards from `/api/stats` (documents,
+  buckets, tags, chunks, embedding coverage, stale candidates, unresolved
+  links, DB size, tokenizer, embedding model), per-bucket document counts,
+  and the **tidying insights** from `/api/insights` for the selected bucket:
+  unfiled (bucket root), untagged, orphaned (no resolved link either way),
+  broken wiki links, and duplicate-looking tags. Each card shows the count,
+  names the CLI command that fixes it, and expands to the list. This screen
+  never mutates anything — staleness and gardening surface review candidates;
+  nothing is auto-deleted or auto-merged (see
+  [self-healing.md](self-healing.md)).
 - **Document list** — table with a hierarchical tag filter (descendants
   included, matching the API), document-path filter (`prefix`, also
   descendant-inclusive), sort selector, stale-only checkbox, 20 per page

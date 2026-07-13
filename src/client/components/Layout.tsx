@@ -47,6 +47,7 @@ export function Layout({ children }: { children: ComponentChildren }) {
           <Link href="/docs">ドキュメント</Link>
           <Link href="/tags">タグ</Link>
           <Link href="/graph">グラフ</Link>
+          <Link href="/stats">統計</Link>
         </nav>
         <form class="search-form" onSubmit={submitSearch}>
           <input

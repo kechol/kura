@@ -13,6 +13,7 @@ import {
   updateDocument,
 } from "../core/documents";
 import { ConflictError, NotFoundError, UsageError } from "../core/errors";
+import { collectInsights } from "../core/insights";
 import { backlinks, outlinks, twoHopLinks } from "../core/links";
 import { requireProvider, resolveProvider } from "../core/llm/provider";
 import { hybridQuery } from "../core/search/hybrid";
@@ -101,6 +102,12 @@ export function createApiRoutes(
 
   const routes: Record<string, unknown> = {
     "/api/stats": wrap(() => json(collectStats(db, config))),
+
+    "/api/insights": wrap(async (req) => {
+      const url = new URL(req.url);
+      const bucket = url.searchParams.get("bucket") ?? config.general.default_bucket;
+      return json(await collectInsights(db, config, bucket));
+    }),
 
     "/api/buckets": wrap(() => json(listBuckets(db))),
 

@@ -112,6 +112,27 @@ keys: `documents`, `buckets` (`[{name, documents}]`), `tags`, `chunks`,
 `staleDocuments`, `unresolvedLinks`, `dbSizeBytes`, `tokenizer`,
 `embeddingModel` (nullable).
 
+### `GET /api/insights`
+
+Tidying findings for one bucket via `collectInsights()`
+(`src/core/insights.ts`), backing the statistics screen. Optional `bucket`
+(defaults to `general.default_bucket`); an unknown bucket is a 404.
+
+```
+{ orphans:  { count, docs: [{key, title, path}] },   // no resolved link either way
+  untagged: { count, docs: [...] },
+  unfiled:  { count, docs: [...] },                  // still at the bucket root
+  brokenLinks: { count, links: [{targetTitle, sources: [{key, title}]}] },
+  tagDuplicates: [{from, to, reason, similarity}] }
+```
+
+Each `docs` array is capped at 50 while `count` stays exact. Every field
+reuses an existing core query (`untaggedDocuments`, `listUnfiledDocuments`,
+`brokenLinks`, `auditTags`) plus one orphan query; **the tag audit always
+runs with a null provider**, so the endpoint needs no LLM and answers
+instantly (`invariants.md` R4). Nothing is repaired here — the UI shows the
+findings and names the CLI command that fixes them.
+
 ### `GET /api/buckets`
 
 Array of `{id, name, description, createdAt, documents}` from

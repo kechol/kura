@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Browser UI: opening kura resumes the last document you were reading, and
+  the home screen is now the reading history (50 most recently viewed
+  documents in the selected bucket).
+- Browser UI: a statistics screen (`/stats`) with the old dashboard numbers
+  plus tidying insights for the selected bucket — unfiled, untagged and
+  orphaned documents, broken wiki links, and duplicate-looking tags — each
+  naming the CLI command that fixes it. Backed by `GET /api/insights`;
+  needs no LLM provider.
 - Browser UI: the sidebar now picks one bucket for the whole app, and every
   screen — lists, search, the document and tag trees, the graph, wiki-link
   resolution — is scoped to it. The choice persists across restarts; opening

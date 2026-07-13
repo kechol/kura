@@ -147,8 +147,11 @@ Document viewer (rendered Markdown, backlinks, 2-hop links), editor,
 three-mode search, a sidebar document tree following your document paths,
 tag browser, and a d3-force knowledge graph (colored by tag, stale nodes
 dimmed). Pick a bucket in the sidebar and the whole UI — browsing, search,
-trees, graph — stays inside it; the choice is remembered. The UI text is
-currently Japanese.
+trees, graph — stays inside it; the choice is remembered. Opening kura
+resumes the document you were last reading, and the home screen lists your
+reading history. The statistics screen counts what needs tidying (unfiled,
+untagged and orphaned documents, broken links, duplicate-looking tags) and
+names the command that fixes each. The UI text is currently Japanese.
 
 ## Configuration
 

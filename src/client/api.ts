@@ -22,6 +22,32 @@ export interface Bucket {
   documents: number;
 }
 
+export interface InsightDoc {
+  key: string;
+  title: string;
+  path?: string;
+}
+
+export interface InsightGroup {
+  count: number;
+  docs: InsightDoc[];
+}
+
+export interface TagDuplicate {
+  from: string;
+  to: string;
+  reason: string;
+  similarity: number;
+}
+
+export interface Insights {
+  orphans: InsightGroup;
+  untagged: InsightGroup;
+  unfiled: InsightGroup;
+  brokenLinks: { count: number; links: Array<{ targetTitle: string; sources: InsightDoc[] }> };
+  tagDuplicates: TagDuplicate[];
+}
+
 export interface DocMeta {
   key: string;
   path: string;
@@ -159,6 +185,11 @@ export function fetchStats(): Promise<Stats> {
 
 export function fetchBuckets(): Promise<Bucket[]> {
   return request<Bucket[]>("/api/buckets");
+}
+
+/** Tidying insights for one bucket: orphans, untagged, unfiled, broken links, duplicate tags */
+export function fetchInsights(bucket: string): Promise<Insights> {
+  return request<Insights>(`/api/insights${qs({ bucket })}`);
 }
 
 export interface DocsQuery {

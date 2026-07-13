@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
-import { deleteDoc, fetchDoc, fetchRelated, type RelatedDoc } from "../api";
+import { ApiError, deleteDoc, fetchDoc, fetchRelated, type RelatedDoc } from "../api";
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
 import { formatDateTime } from "../format";
 import { useAsync, useDocumentTitle } from "../hooks";
+import { forgetDoc, rememberDoc } from "../lastdoc";
 
 function RelatedList({ docs }: { docs: RelatedDoc[] }) {
   if (docs.length === 0) return <p class="empty">なし</p>;
@@ -22,7 +23,17 @@ function RelatedList({ docs }: { docs: RelatedDoc[] }) {
 export function DocDetail({ docKey }: { docKey: string }) {
   const [, navigate] = useLocation();
   const { bucket, setBucket } = useBucket();
-  const doc = useAsync(() => fetchDoc(docKey), [docKey]);
+  const doc = useAsync(async () => {
+    try {
+      const fetched = await fetchDoc(docKey);
+      rememberDoc(docKey);
+      return fetched;
+    } catch (e) {
+      // A deleted document must not keep hijacking the boot redirect
+      if (e instanceof ApiError && e.status === 404) forgetDoc(docKey);
+      throw e;
+    }
+  }, [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
   const d = doc.data;
 
@@ -52,6 +63,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
     if (!confirm(`「${d.title}」を削除しますか？この操作は取り消せません。`)) return;
     try {
       await deleteDoc(d.key);
+      forgetDoc(d.key);
       navigate("/docs");
     } catch (e) {
       alert(`削除に失敗しました: ${e instanceof Error ? e.message : String(e)}`);

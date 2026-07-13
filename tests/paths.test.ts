@@ -145,8 +145,16 @@ describe("two-stage wiki-link resolution (docs: document-notation.md)", () => {
   });
 
   test("doctor bulk resolution follows the same rules (ambiguous stays unresolved)", () => {
-    const srcUnique = createDocument(db, { title: "元1", content: "[[一意なページ]]", bucket: "main" });
-    const srcAmbiguous = createDocument(db, { title: "元2", content: "[[重複ページ]]", bucket: "main" });
+    const srcUnique = createDocument(db, {
+      title: "元1",
+      content: "[[一意なページ]]",
+      bucket: "main",
+    });
+    const srcAmbiguous = createDocument(db, {
+      title: "元2",
+      content: "[[重複ページ]]",
+      bucket: "main",
+    });
     const unique = createDocument(db, {
       title: "一意なページ",
       content: "x",
@@ -242,7 +250,9 @@ describe("moveDocumentsByPrefix (kura mv --prefix)", () => {
     createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "db/sqlite" });
     createDocument(db, { title: "WAL", content: "x", bucket: "main", path: "db/sqlite/内部" });
     createDocument(db, { title: "無関係", content: "x", bucket: "main", path: "web" });
-    const bucketId = (db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }).id;
+    const bucketId = (
+      db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }
+    ).id;
     const { moved } = moveDocumentsByPrefix(db, bucketId, "db/sqlite", "database/sqlite3");
     expect(moved.map((m) => m.to).sort()).toEqual([
       "database/sqlite3/メモ",
@@ -254,14 +264,18 @@ describe("moveDocumentsByPrefix (kura mv --prefix)", () => {
   test("a destination conflict rolls back the whole move", () => {
     createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "旧" });
     createDocument(db, { title: "メモ", content: "y", bucket: "main", path: "新" });
-    const bucketId = (db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }).id;
+    const bucketId = (
+      db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }
+    ).id;
     expect(() => moveDocumentsByPrefix(db, bucketId, "旧", "新")).toThrow(/already exists/);
     expect(listDocuments(db, { prefix: "旧" }).length).toBe(1);
   });
 
   test("guards against moving under a descendant and unknown prefixes", () => {
     createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "a" });
-    const bucketId = (db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }).id;
+    const bucketId = (
+      db.prepare("SELECT id FROM buckets WHERE name = 'main'").get() as { id: number }
+    ).id;
     expect(() => moveDocumentsByPrefix(db, bucketId, "a", "a/b")).toThrow(/descendant/);
     expect(() => moveDocumentsByPrefix(db, bucketId, "存在しない", "x")).toThrow(/no documents/);
   });
@@ -306,7 +320,12 @@ describe("buildDocTree / docTree (docs: browser-ui.md)", () => {
   });
 
   test("a document whose full path is also a path prefix merges into the branch", () => {
-    const parent = createDocument(db, { title: "sqlite", content: "x", bucket: "main", path: "db" });
+    const parent = createDocument(db, {
+      title: "sqlite",
+      content: "x",
+      bucket: "main",
+      path: "db",
+    });
     createDocument(db, { title: "メモ", content: "x", bucket: "main", path: "db/sqlite" });
     const tree = docTree(db, "main");
     const sqlite = tree[0]!.children[0]!;
