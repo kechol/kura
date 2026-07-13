@@ -229,8 +229,9 @@ export function searchDocs(p: SearchQuery): Promise<SearchResult> {
   );
 }
 
-export function fetchTagTree(): Promise<TagTreeNode[]> {
-  return request<TagTreeNode[]>("/api/tags?tree=1");
+/** Tag tree, optionally counted within a single bucket (tags it does not use drop out) */
+export function fetchTagTree(bucket?: string): Promise<TagTreeNode[]> {
+  return request<TagTreeNode[]>(`/api/tags${qs({ tree: "1", bucket })}`);
 }
 
 export function fetchDocTree(bucket: string): Promise<DocTreeNode[]> {

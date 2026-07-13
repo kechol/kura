@@ -1,28 +1,26 @@
+import { Moon, Sun } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { Link, useLocation, useSearch } from "wouter-preact";
-import { fetchBuckets, fetchDocTree, fetchTagTree } from "../api";
+import { Link, useLocation } from "wouter-preact";
+import { fetchDocTree, fetchTagTree } from "../api";
+import { useBucket } from "../bucket";
 import { useAsync } from "../hooks";
 import { currentTheme, setTheme, type Theme } from "../theme";
 import { DocTree } from "./DocTree";
 import { TagTree } from "./TagTree";
 
-/** Shared layout: header (search, theme toggle) + left sidebar (buckets / doc tree / tag tree) */
+/** Shared layout: header (search) + left sidebar (bucket picker / doc tree / tag tree / theme) */
 export function Layout({ children }: { children: ComponentChildren }) {
   const [location, navigate] = useLocation();
-  const search = useSearch();
-  // Refetch on every navigation to keep counts current (cheap against the local API)
-  const buckets = useAsync(fetchBuckets, [location]);
-  const tags = useAsync(fetchTagTree, [location]);
-
-  // Document tree follows the bucket selected via ?bucket=; falls back to main / the first bucket
-  const bucketNames = (buckets.data ?? []).map((b) => b.name);
-  const treeBucket =
-    new URLSearchParams(search).get("bucket") ??
-    (bucketNames.includes("main") ? "main" : (bucketNames[0] ?? ""));
+  const { bucket, buckets, setBucket, loading } = useBucket();
+  // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current
+  const tags = useAsync(
+    () => (bucket === "" ? Promise.resolve([]) : fetchTagTree(bucket)),
+    [location, bucket],
+  );
   const docTree = useAsync(
-    () => (treeBucket === "" ? Promise.resolve([]) : fetchDocTree(treeBucket)),
-    [location, search, treeBucket],
+    () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
+    [location, bucket],
   );
   const [theme, setThemeState] = useState<Theme>(currentTheme());
   const [q, setQ] = useState("");
@@ -58,34 +56,48 @@ export function Layout({ children }: { children: ComponentChildren }) {
             onInput={(e) => setQ((e.target as HTMLInputElement).value)}
           />
         </form>
-        <button type="button" class="theme-toggle" onClick={toggleTheme}>
-          {theme === "dark" ? "ライト" : "ダーク"}
-        </button>
       </header>
       <div class="layout-body">
         <aside class="sidebar">
           <section class="sidebar-section">
             <h2>Bucket</h2>
-            <ul class="bucket-list">
-              {(buckets.data ?? []).map((b) => (
-                <li key={b.name}>
-                  <Link href={`/docs?bucket=${encodeURIComponent(b.name)}`}>
-                    {b.name} <span class="count">{b.documents}</span>
-                  </Link>
-                </li>
+            <select
+              class="bucket-select"
+              aria-label="Bucket を選択"
+              value={bucket}
+              onChange={(e) => setBucket((e.target as HTMLSelectElement).value)}
+            >
+              {buckets.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}（{b.documents}）
+                </option>
               ))}
-            </ul>
+            </select>
           </section>
           <section class="sidebar-section">
-            <h2>ドキュメント{treeBucket === "" ? "" : ` (${treeBucket})`}</h2>
+            <h2>ドキュメント</h2>
             <DocTree nodes={docTree.data ?? []} />
           </section>
           <section class="sidebar-section">
             <h2>タグ</h2>
             <TagTree nodes={tags.data ?? []} />
           </section>
+          <div class="sidebar-footer">
+            <button
+              type="button"
+              class="icon-btn"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "ライトテーマに切替" : "ダークテーマに切替"}
+              title={theme === "dark" ? "ライトテーマに切替" : "ダークテーマに切替"}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
         </aside>
-        <main class="main">{children}</main>
+        {/* Hold the screens back until the bucket resolves, so no list is ever rendered unscoped */}
+        <main class="main">
+          {bucket === "" && loading ? <p class="empty">読み込み中…</p> : children}
+        </main>
       </div>
     </div>
   );

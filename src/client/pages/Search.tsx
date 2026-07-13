@@ -1,8 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import { Link, useLocation, useSearch } from "wouter-preact";
-import { fetchBuckets, type SearchMode, searchDocs } from "../api";
+import { type SearchMode, searchDocs } from "../api";
+import { useBucket } from "../bucket";
 import { snippetHtml } from "../format";
-import { useAsync } from "../hooks";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 const MODES: Array<[SearchMode, string]> = [
   ["keyword", "キーワード"],
@@ -15,12 +16,13 @@ function parseMode(value: string | null): SearchMode {
 }
 
 export function SearchPage() {
+  useDocumentTitle("検索");
   const search = useSearch();
   const [, navigate] = useLocation();
+  const { bucket } = useBucket();
   const params = new URLSearchParams(search);
   const q = params.get("q") ?? "";
   const mode = parseMode(params.get("mode"));
-  const bucket = params.get("bucket") ?? "";
   const tag = params.get("tag") ?? "";
   const [input, setInput] = useState(q);
   const [tagInput, setTagInput] = useState(tag);
@@ -28,13 +30,12 @@ export function SearchPage() {
   useEffect(() => setInput(q), [q]);
   useEffect(() => setTagInput(tag), [tag]);
 
-  const buckets = useAsync(fetchBuckets, []);
   const result = useAsync(async () => {
     if (q.trim() === "") return null;
     return searchDocs({
       q,
       mode,
-      bucket: bucket || undefined,
+      bucket,
       tag: tag || undefined,
       limit: 30,
     });
@@ -85,20 +86,6 @@ export function SearchPage() {
           ))}
         </div>
         <label>
-          Bucket:
-          <select
-            value={bucket}
-            onChange={(e) => update({ bucket: (e.target as HTMLSelectElement).value })}
-          >
-            <option value="">すべて</option>
-            {(buckets.data ?? []).map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           タグ:
           <input
             type="text"
@@ -127,7 +114,6 @@ export function SearchPage() {
                 <Link href={`/docs/${encodeURIComponent(h.key)}`}>{h.title}</Link>
                 <span class="badge">{h.source}</span>
                 <span class="score">score {h.score.toFixed(3)}</span>
-                <span class="count">{h.bucket}</span>
               </div>
               {/* snippetHtml escapes first and only inserts <mark> */}
               <p class="snippet" dangerouslySetInnerHTML={{ __html: snippetHtml(h.snippet) }} />

@@ -245,6 +245,13 @@ recursive nodes `{segment, path, count, total, children}` where `count` is
 direct assignments (0 for intermediate nodes that are not tags themselves)
 and `total` includes descendants.
 
+Optional `bucket`: count only documents in that bucket, and drop tags it
+does not use (`listTags(db, { bucket })`). Unscoped, the query `LEFT JOIN`s
+so tags no document uses (count 0) stay visible to `kura tag gc` and the
+gardening audit; scoped, those tags simply do not appear. The browser UI
+always passes a bucket — every screen is scoped to the selected one
+(docs: browser-ui.md).
+
 ### `GET /api/graph`
 
 Knowledge-graph data for the d3-force view. Optional `bucket` / `tag`

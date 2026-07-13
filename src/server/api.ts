@@ -226,7 +226,7 @@ export function createApiRoutes(
 
     "/api/tags": wrap((req) => {
       const url = new URL(req.url);
-      const entries = listTags(db);
+      const entries = listTags(db, { bucket: url.searchParams.get("bucket") ?? undefined });
       if (url.searchParams.get("tree") === "1") {
         return json(buildTagTree(entries));
       }

@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Browser UI: the sidebar now picks one bucket for the whole app, and every
+  screen — lists, search, the document and tag trees, the graph, wiki-link
+  resolution — is scoped to it. The choice persists across restarts; opening
+  a document from another bucket follows the selection there.
+- `GET /api/tags` accepts `bucket` to count tags within a single bucket.
+- Browser UI: the tab title now names the current document or screen.
 - Browser UI: a collapsible per-bucket document tree in the sidebar
   (`GET /api/docs/tree`), a document-path filter on the list page
   (`prefix`, also on `GET /api/docs`), and a path breadcrumb on the
@@ -42,6 +48,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `kura_add` / `kura_update` accept an optional `path` parameter.
 - `kura clip` no longer fails on a duplicate title — it retries as
   "タイトル (2)", "タイトル (3)", ….
+- Browser UI: the theme toggle moved from the header to the bottom of the
+  sidebar and is now an icon (`lucide-preact`). The per-screen bucket
+  dropdowns and the bucket column on the list are gone — the sidebar picker
+  replaces them.
 
 ## [0.1.0] - 2026-07-08
 

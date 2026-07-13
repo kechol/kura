@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createBucket } from "../src/core/buckets";
 import { defaultConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
 import { createDocument } from "../src/core/documents";
@@ -136,6 +137,21 @@ describe("REST API (docs: http-api.md)", () => {
     const tree = await api("/api/tags?tree=1");
     const tech = tree.body.find((n: { segment: string }) => n.segment === "tech");
     expect(tech.total).toBe(2);
+  });
+
+  test("GET /api/tags?bucket= counts inside one bucket", async () => {
+    createBucket(db, "work");
+    createDocument(db, {
+      title: "週次ミーティング議事録",
+      content: "来期の設計方針を確認した。 #work/議事録",
+      bucket: "work",
+    });
+
+    const scoped = await api("/api/tags?bucket=work");
+    expect(scoped.body.map((t: { path: string }) => t.path)).toEqual(["work/議事録"]);
+
+    const tree = await api("/api/tags?tree=1&bucket=main");
+    expect(tree.body.map((n: { segment: string }) => n.segment)).toEqual(["tech"]);
   });
 
   test("GET /api/graph", async () => {

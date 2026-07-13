@@ -1,11 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
 import { fetchDoc, updateDoc } from "../api";
-import { useAsync } from "../hooks";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 export function DocEdit({ docKey }: { docKey: string }) {
   const [, navigate] = useLocation();
   const doc = useAsync(() => fetchDoc(docKey), [docKey]);
+  useDocumentTitle(doc.data ? `${doc.data.title}（編集）` : null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");

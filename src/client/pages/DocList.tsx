@@ -1,8 +1,9 @@
 import { useState } from "preact/hooks";
 import { Link, useLocation, useSearch } from "wouter-preact";
-import { fetchBuckets, fetchDocs } from "../api";
+import { fetchDocs } from "../api";
+import { useBucket } from "../bucket";
 import { formatDate } from "../format";
-import { useAsync } from "../hooks";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 const PER = 20;
 
@@ -14,10 +15,11 @@ const SORT_LABELS: Array<[string, string]> = [
 ];
 
 export function DocList() {
+  useDocumentTitle("ドキュメント");
   const search = useSearch();
   const [, navigate] = useLocation();
+  const { bucket } = useBucket();
   const params = new URLSearchParams(search);
-  const bucket = params.get("bucket") ?? "";
   const tag = params.get("tag") ?? "";
   const prefix = params.get("prefix") ?? "";
   const sort = params.get("sort") ?? "updated";
@@ -26,11 +28,10 @@ export function DocList() {
   const [tagInput, setTagInput] = useState(tag);
   const [prefixInput, setPrefixInput] = useState(prefix);
 
-  const buckets = useAsync(fetchBuckets, []);
   const result = useAsync(
     () =>
       fetchDocs({
-        bucket: bucket || undefined,
+        bucket,
         tag: tag || undefined,
         prefix: prefix || undefined,
         sort,
@@ -38,7 +39,7 @@ export function DocList() {
         page,
         per: PER,
       }),
-    [search],
+    [search, bucket],
   );
 
   const update = (patch: Record<string, string>) => {
@@ -59,20 +60,6 @@ export function DocList() {
     <div class="page">
       <h1>ドキュメント一覧</h1>
       <div class="filter-bar">
-        <label>
-          Bucket:
-          <select
-            value={bucket}
-            onChange={(e) => update({ bucket: (e.target as HTMLSelectElement).value })}
-          >
-            <option value="">すべて</option>
-            {(buckets.data ?? []).map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <form
           class="tag-filter"
           onSubmit={(e) => {
@@ -171,7 +158,6 @@ export function DocList() {
             <thead>
               <tr>
                 <th>タイトル</th>
-                <th>Bucket</th>
                 <th>タグ</th>
                 <th>更新日</th>
                 <th>参照数</th>
@@ -186,7 +172,6 @@ export function DocList() {
                       {d.title}
                     </Link>
                   </td>
-                  <td>{d.bucket}</td>
                   <td>
                     <span class="tag-cell">
                       {d.tags.map((t) => (

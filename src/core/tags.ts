@@ -24,14 +24,34 @@ export function getOrCreateTag(db: Database, rawPath: string): number {
   return row.id;
 }
 
-export function listTags(db: Database): TagEntry[] {
+export interface ListTagsOptions {
+  /** Count only documents in this bucket, and drop tags it does not use */
+  bucket?: string;
+}
+
+export function listTags(db: Database, opts: ListTagsOptions = {}): TagEntry[] {
+  const bucket = opts.bucket ?? "";
+  if (bucket === "") {
+    // Unscoped: LEFT JOIN keeps tags no document uses (count 0) visible to gc / audit
+    return db
+      .prepare(
+        `SELECT t.path, COUNT(dt.document_id) AS count
+         FROM tags t LEFT JOIN document_tags dt ON dt.tag_id = t.id
+         GROUP BY t.id ORDER BY t.path`,
+      )
+      .all() as TagEntry[];
+  }
   return db
     .prepare(
-      `SELECT t.path, COUNT(dt.document_id) AS count
-       FROM tags t LEFT JOIN document_tags dt ON dt.tag_id = t.id
+      `SELECT t.path, COUNT(d.id) AS count
+       FROM tags t
+       JOIN document_tags dt ON dt.tag_id = t.id
+       JOIN documents d ON d.id = dt.document_id
+       JOIN buckets b ON b.id = d.bucket_id
+       WHERE b.name = ?
        GROUP BY t.id ORDER BY t.path`,
     )
-    .all() as TagEntry[];
+    .all(bucket) as TagEntry[];
 }
 
 export function docTags(db: Database, docId: number): string[] {

@@ -8,8 +8,9 @@ import {
 } from "d3-force";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
-import { fetchBuckets, fetchGraph, type GraphData } from "../api";
-import { useAsync } from "../hooks";
+import { fetchGraph, type GraphData } from "../api";
+import { useBucket } from "../bucket";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 interface SimNode extends SimulationNodeDatum {
   key: string;
@@ -265,12 +266,12 @@ function setupGraph(
 }
 
 export function GraphPage() {
+  useDocumentTitle("グラフ");
   const [, navigate] = useLocation();
-  const [bucket, setBucket] = useState("");
+  const { bucket } = useBucket();
   const [showIsolated, setShowIsolated] = useState(true);
   const [legend, setLegend] = useState<LegendItem[]>([]);
-  const buckets = useAsync(fetchBuckets, []);
-  const graph = useAsync(() => fetchGraph({ bucket: bucket || undefined }), [bucket]);
+  const graph = useAsync(() => fetchGraph({ bucket }), [bucket]);
 
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -284,17 +285,6 @@ export function GraphPage() {
     <div class="page graph-page">
       <h1>ナレッジグラフ</h1>
       <div class="filter-bar">
-        <label>
-          Bucket:
-          <select value={bucket} onChange={(e) => setBucket((e.target as HTMLSelectElement).value)}>
-            <option value="">すべて</option>
-            {(buckets.data ?? []).map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <label class="checkbox-label">
           <input
             type="checkbox"

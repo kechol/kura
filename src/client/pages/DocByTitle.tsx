@@ -1,26 +1,29 @@
 import { useEffect } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
 import { ApiError, resolveDocSpec, searchDocs } from "../api";
-import { useAsync } from "../hooks";
+import { useBucket } from "../bucket";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 /**
  * [[link]] title → key resolution route. Tries GET /api/resolve first
  * (full path / unique title, same rules as the CLI), then falls back to a
- * keyword search for suggestions.
+ * keyword search for suggestions. Both stay inside the selected bucket.
  */
 export function DocByTitle({ title }: { title: string }) {
   const [, navigate] = useLocation();
+  const { bucket } = useBucket();
+  useDocumentTitle(title);
   const state = useAsync(async () => {
     try {
-      const doc = await resolveDocSpec(title);
+      const doc = await resolveDocSpec(title, bucket);
       return { exact: doc, hits: [] };
     } catch (e) {
       // 404: not created yet; 409: ambiguous — both fall back to suggestions
       if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 409)) throw e;
     }
-    const res = await searchDocs({ q: title, mode: "keyword", limit: 50 });
+    const res = await searchDocs({ q: title, mode: "keyword", bucket, limit: 50 });
     return { exact: null, hits: res.hits };
-  }, [title]);
+  }, [title, bucket]);
 
   useEffect(() => {
     if (state.data?.exact) {

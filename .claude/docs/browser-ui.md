@@ -5,10 +5,27 @@
 > (see [http-api.md](http-api.md)).
 
 The browser UI is a Preact SPA started with `kura browser`. It is a pure
-client of the REST API — no server-side rendering, no state beyond the URL
-and `localStorage` (theme). Everything is bundled into three fixed-name
-files (`index.html` / `index.js` / `index.css`) so the compiled binary can
-embed them with a static table.
+client of the REST API — no server-side rendering, and no state beyond the
+URL, `localStorage` (theme, selected bucket) and the one context built on it
+(`bucket.tsx`). Everything is bundled into three fixed-name files
+(`index.html` / `index.js` / `index.css`) so the compiled binary can embed
+them with a static table.
+
+## The selected bucket scopes everything
+
+One bucket is selected at a time, picked in the sidebar and held in
+`BucketProvider` (`bucket.tsx`, persisted as `localStorage["kura-bucket"]`).
+Every screen — lists, search, the sidebar document and tag trees, the graph,
+wiki-link resolution — passes that bucket to the API. **Nothing in the UI
+searches or browses across buckets.** Two consequences worth knowing:
+
+- Opening a document that lives in another bucket (direct URL, a wiki link)
+  moves the selection to that document's bucket, so the sidebar always
+  describes what is on screen (`DocDetail.tsx`).
+- The selection resolves against the fetched bucket list: a stored name that
+  no longer exists falls back to `main`, then to the first bucket. `Layout`
+  holds the screens back until it resolves, so no list is ever rendered
+  unscoped.
 
 ## File map
 
@@ -17,13 +34,14 @@ embed them with a static table.
 | `index.html` | Static shell: `<div id="app">`, loads `/index.js` + `/index.css`, `lang="ja"` |
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
 | `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
-| `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard) |
+| `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
+| `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard); `useDocumentTitle()` sets `document.title` per screen |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
 | `styles.css` | All styling; CSS custom properties per theme |
 | `types.d.ts` | Ambient module declarations for the bundler |
-| `components/Layout.tsx` | Header (nav, search box, theme toggle) + sidebar (buckets, document tree, tag tree); refetches counts on navigation |
+| `components/Layout.tsx` | Header (nav, search box) + sidebar (bucket picker, document tree, tag tree, theme toggle pinned at the bottom); refetches counts on navigation |
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
@@ -44,11 +62,11 @@ embed them with a static table.
 | Path | Screen |
 | --- | --- |
 | `/` | Home |
-| `/docs` | Document list (filters live in the query string: `bucket`, `tag`, `prefix`, `sort`, `stale`, `page`) |
+| `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `page`) |
 | `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
 | `/docs/:key/edit` | Editor |
 | `/docs/:key` | Document detail |
-| `/search` | Search (`q`, `mode`, `bucket`, `tag` in query string) |
+| `/search` | Search (`q`, `mode`, `tag` in query string) |
 | `/tags` | Tag browser |
 | `/graph` | Knowledge graph |
 | anything else | 404 page |
@@ -58,6 +76,12 @@ The server serves `index.html` for unknown paths (SPA fallback,
 
 Filter/sort/paging state is kept **in the URL**, not component state, so
 back/forward and copy-paste of links behave; changing a filter resets `page`.
+The **bucket is the exception**: it is app-wide state, not a per-screen
+filter, so it lives in the context above rather than in every query string.
+
+Each screen sets `document.title` through `useDocumentTitle()` — the document
+name on the detail page, the screen name elsewhere, both suffixed with
+`— kura`.
 
 ## Screens
 
@@ -67,13 +91,14 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
   referenced (`sort=accessed`), and staleness candidates (`stale=1`, with a
   "see all" link into the filtered list). Staleness surfaces review
   candidates; nothing is auto-deleted (see [self-healing.md](self-healing.md)).
-- **Document list** — table with bucket dropdown, hierarchical tag filter
-  (descendants included, matching the API), document-path filter
-  (`prefix`, also descendant-inclusive), sort selector, stale-only
-  checkbox, 20 per page with prev/next pagination against `total`. Titles
-  render with a muted `path/` prefix when the document has one.
+- **Document list** — table with a hierarchical tag filter (descendants
+  included, matching the API), document-path filter (`prefix`, also
+  descendant-inclusive), sort selector, stale-only checkbox, 20 per page
+  with prev/next pagination against `total`. Titles render with a muted
+  `path/` prefix when the document has one. There is no bucket column or
+  dropdown — the sidebar picker scopes the whole table.
 - **Document detail** — rendered body (pipeline below); a path breadcrumb
-  above the title (each segment links to `/docs?bucket=&prefix=`); header
+  above the title (each segment links to `/docs?prefix=`); header
   with edit / delete (confirm dialog) actions; right sidebar with metadata
   (bucket, access count, created/updated, source URL), tag chips,
   **backlinks**, and **two-hop links grouped by the shared target**, all
@@ -83,19 +108,19 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
   /api/docs/:key` with the full tag array (diff-sync contract — see
   [http-api.md](http-api.md)). A richer editor is roadmap
   ([roadmap.md](roadmap.md)).
-- **Search** — mode toggle (キーワード / ベクトル / ハイブリッド), bucket and tag
-  filters, `limit=30`. Renders API `warnings` (degraded mode) above results;
-  each hit shows title, source badge, score, snippet with `<mark>`
-  highlights, and tag chips.
-- **Sidebar document tree** — a third sidebar section ("ドキュメント
-  (bucket)") rendering `GET /api/docs/tree` for the bucket selected via
-  `?bucket=` (falling back to `main`, then the first bucket). Built by
+- **Search** — mode toggle (キーワード / ベクトル / ハイブリッド) and a tag
+  filter, `limit=30`, always within the selected bucket. Renders API
+  `warnings` (degraded mode) above results; each hit shows title, source
+  badge, score, snippet with `<mark>` highlights, and tag chips.
+- **Sidebar document tree** — a sidebar section rendering
+  `GET /api/docs/tree` for the selected bucket. Built by
   `buildDocTree` in core (mirrors `buildTagTree`): branch nodes come from
   path prefixes and toggle open/closed (component state, default closed);
   document nodes link to the detail page; a branch whose path is itself a
   document does both. Titles containing a literal `/` stay single leaves.
-- **Tag browser** — full tag tree with "direct / total including
-  descendants" counts; every node links to the filtered document list.
+- **Tag browser** — the selected bucket's tag tree with "direct / total
+  including descendants" counts; every node links to the filtered document
+  list. Tags no document in the bucket uses do not appear.
 - **Knowledge graph** — see below.
 - **Link resolution (`/docs/title/:title`)** — calls `GET /api/resolve`
   (`resolveDocSpec()` in `api.ts`) with the raw link text — full path or
@@ -160,7 +185,8 @@ markdown-it (html: true, linkify)
 
 1. `initTheme()` (run before first render) prefers `localStorage["kura-theme"]`,
    falling back to `prefers-color-scheme`.
-2. The header toggle calls `setTheme()`, which persists the choice.
+2. The toggle — an icon-only button (`lucide-preact` Sun / Moon) pinned to the
+   bottom of the sidebar — calls `setTheme()`, which persists the choice.
 3. All colors are CSS custom properties on `:root` /
    `:root[data-theme="dark"]` in `styles.css`; a
    `@media (prefers-color-scheme: dark)` block targeting
@@ -273,6 +299,12 @@ identifiers, and CSS class names stay English.
   is the product's only runtime external resource beyond the sanctioned list
   in `CLAUDE.md`; it is browser-initiated, lazy, and fails closed to a plain
   code block.
+- **The selected bucket is app-wide state, not a per-screen filter.** SPEC
+  §8.3 sketches a bucket dropdown on the list and search screens; the UI
+  instead picks one bucket in the sidebar, persists it, and scopes every
+  screen to it. Cross-bucket browsing and search were dropped deliberately:
+  a bucket is a workspace, and results that straddle two of them were noise.
+  This is also the single exception to "no state outside the URL".
 
 ## Related docs
 

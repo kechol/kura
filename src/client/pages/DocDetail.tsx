@@ -1,9 +1,10 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
 import { deleteDoc, fetchDoc, fetchRelated, type RelatedDoc } from "../api";
+import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
 import { formatDateTime } from "../format";
-import { useAsync } from "../hooks";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 function RelatedList({ docs }: { docs: RelatedDoc[] }) {
   if (docs.length === 0) return <p class="empty">なし</p>;
@@ -12,7 +13,6 @@ function RelatedList({ docs }: { docs: RelatedDoc[] }) {
       {docs.map((d) => (
         <li key={d.key}>
           <Link href={`/docs/${encodeURIComponent(d.key)}`}>{d.title}</Link>
-          <span class="count">{d.bucket}</span>
         </li>
       ))}
     </ul>
@@ -21,8 +21,19 @@ function RelatedList({ docs }: { docs: RelatedDoc[] }) {
 
 export function DocDetail({ docKey }: { docKey: string }) {
   const [, navigate] = useLocation();
+  const { bucket, setBucket } = useBucket();
   const doc = useAsync(() => fetchDoc(docKey), [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
+  const d = doc.data;
+
+  useDocumentTitle(d?.title ?? null);
+
+  // A document reached from another bucket (direct URL, wiki link) pulls the selection with it,
+  // so the sidebar and every search stay scoped to what is on screen
+  const docBucket = d?.bucket;
+  useEffect(() => {
+    if (docBucket !== undefined && docBucket !== bucket) setBucket(docBucket);
+  }, [docBucket, bucket, setBucket]);
 
   // [[link]] title → key resolution map (reuses the resolved outlinks)
   const resolve = useMemo(() => {
@@ -35,7 +46,6 @@ export function DocDetail({ docKey }: { docKey: string }) {
 
   if (doc.loading || related.loading) return <p class="empty">読み込み中…</p>;
   if (doc.error) return <p class="error">{doc.error}</p>;
-  const d = doc.data;
   if (!d) return null;
 
   const remove = async () => {
@@ -58,11 +68,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
               return (
                 <span key={prefix}>
                   {i > 0 && <span class="doc-breadcrumb-sep">/</span>}
-                  <Link
-                    href={`/docs?bucket=${encodeURIComponent(d.bucket)}&prefix=${encodeURIComponent(prefix)}`}
-                  >
-                    {seg}
-                  </Link>
+                  <Link href={`/docs?prefix=${encodeURIComponent(prefix)}`}>{seg}</Link>
                 </span>
               );
             })}
@@ -87,9 +93,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
           <dl class="meta-list">
             <div>
               <dt>Bucket</dt>
-              <dd>
-                <Link href={`/docs?bucket=${encodeURIComponent(d.bucket)}`}>{d.bucket}</Link>
-              </dd>
+              <dd>{d.bucket}</dd>
             </div>
             <div>
               <dt>参照数</dt>

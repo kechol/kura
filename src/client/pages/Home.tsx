@@ -1,7 +1,8 @@
 import { Link } from "wouter-preact";
 import { type DocMeta, fetchDocs, fetchStats } from "../api";
+import { useBucket } from "../bucket";
 import { formatBytes, formatDate, formatPercent } from "../format";
-import { useAsync } from "../hooks";
+import { useAsync, useDocumentTitle } from "../hooks";
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -36,10 +37,15 @@ function DocLinkList({
 }
 
 export function Home() {
+  useDocumentTitle(null);
+  const { bucket } = useBucket();
   const stats = useAsync(fetchStats, []);
-  const recent = useAsync(() => fetchDocs({ sort: "updated", per: 10 }), []);
-  const popular = useAsync(() => fetchDocs({ sort: "accessed", per: 10 }), []);
-  const stale = useAsync(() => fetchDocs({ stale: true, sort: "updated", per: 10 }), []);
+  const recent = useAsync(() => fetchDocs({ bucket, sort: "updated", per: 10 }), [bucket]);
+  const popular = useAsync(() => fetchDocs({ bucket, sort: "accessed", per: 10 }), [bucket]);
+  const stale = useAsync(
+    () => fetchDocs({ bucket, stale: true, sort: "updated", per: 10 }),
+    [bucket],
+  );
   const s = stats.data;
 
   return (

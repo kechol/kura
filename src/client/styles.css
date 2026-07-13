@@ -200,14 +200,24 @@ button:focus-visible {
   width: 240px;
 }
 
-.theme-toggle {
-  border: 1px solid var(--border);
-  background: var(--bg-inset);
-  color: var(--text);
+/* Quiet icon-only button (theme toggle, header actions) */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
   border-radius: 6px;
-  padding: 0.3rem 0.7rem;
+  padding: 0.3rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  line-height: 0;
+}
+
+.icon-btn:hover {
+  background: var(--bg-inset);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .layout-body {
@@ -223,10 +233,26 @@ button:focus-visible {
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-section {
   margin-bottom: 1.4rem;
+}
+
+/* Pinned to the bottom of the sidebar; holds the theme toggle */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bucket-select {
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .sidebar-section h2 {

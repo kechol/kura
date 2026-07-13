@@ -39,3 +39,10 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { data, error, loading, reload };
 }
+
+/** Set document.title for the current screen; pass null while the name is still loading */
+export function useDocumentTitle(title: string | null): void {
+  useEffect(() => {
+    document.title = title === null || title === "" ? "kura" : `${title} — kura`;
+  }, [title]);
+}
