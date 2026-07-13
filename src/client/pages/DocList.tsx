@@ -19,10 +19,12 @@ export function DocList() {
   const params = new URLSearchParams(search);
   const bucket = params.get("bucket") ?? "";
   const tag = params.get("tag") ?? "";
+  const prefix = params.get("prefix") ?? "";
   const sort = params.get("sort") ?? "updated";
   const stale = params.get("stale") === "1";
   const page = Math.max(Number.parseInt(params.get("page") ?? "1", 10) || 1, 1);
   const [tagInput, setTagInput] = useState(tag);
+  const [prefixInput, setPrefixInput] = useState(prefix);
 
   const buckets = useAsync(fetchBuckets, []);
   const result = useAsync(
@@ -30,6 +32,7 @@ export function DocList() {
       fetchDocs({
         bucket: bucket || undefined,
         tag: tag || undefined,
+        prefix: prefix || undefined,
         sort,
         stale,
         page,
@@ -102,6 +105,38 @@ export function DocList() {
             </button>
           )}
         </form>
+        <form
+          class="tag-filter"
+          onSubmit={(e) => {
+            e.preventDefault();
+            update({ prefix: prefixInput.trim() });
+          }}
+        >
+          <label>
+            パス:
+            <input
+              type="text"
+              placeholder="clips/技術 など"
+              value={prefixInput}
+              onInput={(e) => setPrefixInput((e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <button type="submit" class="btn">
+            絞り込む
+          </button>
+          {prefix !== "" && (
+            <button
+              type="button"
+              class="btn"
+              onClick={() => {
+                setPrefixInput("");
+                update({ prefix: "" });
+              }}
+            >
+              解除
+            </button>
+          )}
+        </form>
         <label>
           ソート:
           <select
@@ -146,7 +181,10 @@ export function DocList() {
               {result.data.docs.map((d) => (
                 <tr key={d.key}>
                   <td>
-                    <Link href={`/docs/${encodeURIComponent(d.key)}`}>{d.title}</Link>
+                    <Link href={`/docs/${encodeURIComponent(d.key)}`}>
+                      {d.path !== "" && <span class="doc-path-prefix">{d.path}/</span>}
+                      {d.title}
+                    </Link>
                   </td>
                   <td>{d.bucket}</td>
                   <td>

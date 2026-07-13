@@ -3,16 +3,18 @@ import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
 import { createDocument, type DocumentRecord } from "../../core/documents";
 import { type Frontmatter, parseFrontmatter } from "../../core/frontmatter";
+import { joinDocPath } from "../../core/wiki";
 import { boolOpt, EXIT, listOpt, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "Add documents from files or stdin";
 
 export const usage = `Usage:
-  kura add <file>... [--bucket b] [--tags t1,t2] [--title T] [--type markdown|html]
+  kura add <file>... [--bucket b] [--path p] [--tags t1,t2] [--title T] [--type markdown|html]
   kura add - --title T          # read body from stdin
 
 Options:
   --bucket <name>   Target bucket (default: general.default_bucket)
+  --path <path>     Document path (overrides frontmatter path; default: bucket root)
   --tags <t1,t2>    Comma-separated tags (overrides frontmatter tags)
   --title <title>   Document title (single input only; required for stdin)
   --type <type>     markdown | html (overrides frontmatter content_type)
@@ -26,6 +28,7 @@ function stripLeadingBlank(body: string): string {
 export async function run(argv: string[]): Promise<number> {
   const parsed = parseCommandArgs(argv, {
     bucket: { type: "string" },
+    path: { type: "string" },
     tags: { type: "string" },
     title: { type: "string" },
     type: { type: "string" },
@@ -79,6 +82,7 @@ export async function run(argv: string[]): Promise<number> {
       title,
       content: stripLeadingBlank(body),
       bucket: bucketOpt ?? fm?.bucket ?? config.general.default_bucket,
+      path: strOpt(parsed, "path") ?? fm?.path,
       contentType: typeOpt ?? fm?.content_type,
       sourceUrl: fm?.source_url ?? null,
       tags: tagsGiven ? tagsOpt : fm?.tags,
@@ -89,6 +93,7 @@ export async function run(argv: string[]): Promise<number> {
   if (boolOpt(parsed, "json")) {
     const out = created.map((d) => ({
       key: d.key,
+      path: d.path,
       title: d.title,
       bucket: d.bucket,
       tags: d.tags,
@@ -97,7 +102,7 @@ export async function run(argv: string[]): Promise<number> {
     console.log(JSON.stringify(out, null, 2));
   } else {
     for (const d of created) {
-      console.log(`#${d.key}  ${d.title}  (${d.bucket})`);
+      console.log(`#${d.key}  ${joinDocPath(d.path, d.title)}  (${d.bucket})`);
     }
   }
   return EXIT.OK;

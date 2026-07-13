@@ -1,17 +1,29 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { Link, useLocation } from "wouter-preact";
-import { fetchBuckets, fetchTagTree } from "../api";
+import { Link, useLocation, useSearch } from "wouter-preact";
+import { fetchBuckets, fetchDocTree, fetchTagTree } from "../api";
 import { useAsync } from "../hooks";
 import { currentTheme, setTheme, type Theme } from "../theme";
+import { DocTree } from "./DocTree";
 import { TagTree } from "./TagTree";
 
-/** Shared layout: header (search, theme toggle) + left sidebar (buckets / tag tree) */
+/** Shared layout: header (search, theme toggle) + left sidebar (buckets / doc tree / tag tree) */
 export function Layout({ children }: { children: ComponentChildren }) {
   const [location, navigate] = useLocation();
+  const search = useSearch();
   // Refetch on every navigation to keep counts current (cheap against the local API)
   const buckets = useAsync(fetchBuckets, [location]);
   const tags = useAsync(fetchTagTree, [location]);
+
+  // Document tree follows the bucket selected via ?bucket=; falls back to main / the first bucket
+  const bucketNames = (buckets.data ?? []).map((b) => b.name);
+  const treeBucket =
+    new URLSearchParams(search).get("bucket") ??
+    (bucketNames.includes("main") ? "main" : (bucketNames[0] ?? ""));
+  const docTree = useAsync(
+    () => (treeBucket === "" ? Promise.resolve([]) : fetchDocTree(treeBucket)),
+    [location, search, treeBucket],
+  );
   const [theme, setThemeState] = useState<Theme>(currentTheme());
   const [q, setQ] = useState("");
 
@@ -63,6 +75,10 @@ export function Layout({ children }: { children: ComponentChildren }) {
                 </li>
               ))}
             </ul>
+          </section>
+          <section class="sidebar-section">
+            <h2>ドキュメント{treeBucket === "" ? "" : ` (${treeBucket})`}</h2>
+            <DocTree nodes={docTree.data ?? []} />
           </section>
           <section class="sidebar-section">
             <h2>タグ</h2>

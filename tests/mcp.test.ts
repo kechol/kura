@@ -143,4 +143,28 @@ describe("kura mcp server", () => {
     })) as { isError?: boolean };
     expect(result.isError).toBe(true);
   });
+
+  test("kura_add files a document under a path; kura_get resolves the full path", async () => {
+    const added = await client.callTool({
+      name: "kura_add",
+      arguments: { title: "vec 拡張の調査", content: "本文", path: "db/sqlite" },
+    });
+    expect(contentText(added)).toContain("db/sqlite/vec 拡張の調査");
+
+    const got = await client.callTool({
+      name: "kura_get",
+      arguments: { key: "db/sqlite/vec 拡張の調査" },
+    });
+    const md = contentText(got);
+    expect(md).toContain("# vec 拡張の調査");
+    expect(md).toContain("path: db/sqlite");
+  });
+
+  test("kura_update moves a document with path", async () => {
+    const result = await client.callTool({
+      name: "kura_update",
+      arguments: { key: "トランザクション設計", path: "db" },
+    });
+    expect(contentText(result)).toContain("db/トランザクション設計");
+  });
 });

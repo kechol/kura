@@ -2,14 +2,18 @@ import { fetchAndExtract } from "../../core/clip/extract";
 import { formatClip, suggestTagsForText } from "../../core/clip/format";
 import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
-import { createDocument, updateDocument } from "../../core/documents";
+import { createDocumentWithRetry, updateDocument } from "../../core/documents";
 import { resolveProvider } from "../../core/llm/provider";
 import { addTagsToDoc, listTags } from "../../core/tags";
+import { joinDocPath, normalizeDocPath } from "../../core/wiki";
 import { boolOpt, EXIT, listOpt, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "Clip a web page into the knowledge base";
 
 export const usage = `Usage: kura clip <url> [--bucket b] [--tags t1,t2] [--no-llm] [--dry-run] [--force]
+
+Clips are filed under the clip.path document path (config, default "clips").
+A title collision is retried as "title (2)", "title (3)", ...
 
 Options:
   --no-llm    Convert mechanically with turndown, without LLM formatting or tag suggestions
@@ -57,11 +61,13 @@ export async function run(argv: string[]): Promise<number> {
     }
   }
 
+  const clipPath = normalizeDocPath(config.clip.path);
+
   if (boolOpt(parsed, "dry-run")) {
     console.log(`# ${formatted.title}`);
     console.log("");
     console.log(
-      `> url: ${url} / formatter: ${formatted.llmFormatted ? "llm" : "turndown"} / tags: ${[...manualTags, ...suggested].join(", ") || "(none)"}`,
+      `> url: ${url} / path: ${clipPath || "(root)"} / formatter: ${formatted.llmFormatted ? "llm" : "turndown"} / tags: ${[...manualTags, ...suggested].join(", ") || "(none)"}`,
     );
     console.log("");
     console.log(formatted.markdown);
@@ -106,17 +112,18 @@ export async function run(argv: string[]): Promise<number> {
     return EXIT.OK;
   }
 
-  const record = createDocument(db, {
+  const record = createDocumentWithRetry(db, {
     title: formatted.title,
     content: formatted.markdown,
     bucket,
+    path: clipPath,
     sourceUrl: url,
     tags: manualTags,
   });
   if (suggested.length > 0) addTagsToDoc(db, record.id, suggested, "auto");
   const allTags = [...record.tags, ...suggested];
   console.log(
-    `clipped #${record.key}  ${record.title}  (${bucket})${allTags.length > 0 ? `  tags: ${[...new Set(allTags)].join(", ")}` : ""}`,
+    `clipped #${record.key}  ${joinDocPath(record.path, record.title)}  (${bucket})${allTags.length > 0 ? `  tags: ${[...new Set(allTags)].join(", ")}` : ""}`,
   );
   return EXIT.OK;
 }

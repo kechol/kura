@@ -65,10 +65,13 @@ repaired state. Order (from `runFixes`):
 5. **`fts-rebuild`** (`rebuildFtsIfNeeded`) — if `documents_fts` and
    `documents` row counts differ, wipe FTS and re-insert every document with
    its synthesized `tags` column (space-joined tag paths).
-6. **`resolve-links`** (`resolveAllUnresolvedLinks`) — one bulk `UPDATE` that
-   resolves every `target_id IS NULL` link whose `target_title` matches an
-   existing document title, **scoped to the source document's bucket**,
-   case-insensitive, self-links excluded.
+6. **`resolve-links`** (`resolveAllUnresolvedLinks`) — re-runs the shared
+   two-stage resolution (`resolveLinkTarget` in `src/core/links.ts`) for
+   every `target_id IS NULL` link, **scoped to the source document's
+   bucket**, case-insensitive, self-links excluded: full-path spellings
+   resolve exactly; a short-form title resolves only when exactly one
+   candidate exists — **ambiguous short forms are skipped, not
+   force-resolved** (they stay visible in `kura link broken`).
 7. **`fts-retokenize`** (`retokenizeFts`) — only when the DB tokenizer is
    `trigram` but vaporetto loaded in this process: drop `documents_fts`,
    recreate it with `tokenize='vaporetto'`, re-insert all rows, and update
@@ -85,20 +88,29 @@ Wiki-link health is maintained continuously, not just by doctor
 (SPEC §10.1; implementation in `src/core/links.ts` and
 `src/core/documents.ts`):
 
-- **Write-first linking.** Saving a document records every `[[title]]` in
-  `links`, resolving targets case-insensitively within the bucket;
-  non-matches are stored with `target_id = NULL` (unresolved), not dropped.
-- **Auto-resolution on create/rename.** `createDocument` and any
-  title/bucket-changing `updateDocument` call `resolveUnresolvedLinks`, which
-  rewires unresolved links whose `target_title` matches the new title
-  (same bucket, case-insensitive) — the "write the link first, it
-  connects when the page appears" behavior.
+- **Write-first linking.** Saving a document records every `[[title]]` /
+  `[[full/path/Title]]` in `links`, resolving targets through the shared
+  two-stage resolution (`resolveLinkTarget`: full path first, then
+  title-only-when-exactly-one-candidate; same bucket, case-insensitive —
+  see [document-notation.md](document-notation.md)); non-matches **and
+  ambiguous short forms** are stored with `target_id = NULL` (unresolved),
+  not dropped or force-resolved.
+- **Auto-resolution on create/rename/move.** `createDocument` and any
+  title/path/bucket-changing `updateDocument` call `resolveUnresolvedLinks`,
+  which rewires unresolved links whose `target_title` matches the new title
+  or full path (same bucket, case-insensitive, ambiguity guard applies) —
+  the "write the link first, it connects when the page appears" behavior.
+  Already-resolved links are **sticky**: creating a second same-title
+  document later does not retro-unresolve them.
 - **Rename rewires, delete unresolves.** `kura mv` rewrites `[[old title]]`
-  occurrences in referrers' bodies inside the same transaction. Deleting a
-  document flips incoming links back to unresolved via the schema's
-  `ON DELETE SET NULL` — the link text survives and re-resolves if the page
-  is recreated. Moving a document to another bucket explicitly nulls its
-  incoming links, because resolution is bucket-scoped.
+  and `[[old/full/path]]` occurrences in referrers' bodies inside the same
+  transaction (a path-only move rewrites just the full-path spelling — the
+  rewrite matrix lives in
+  [document-notation.md](document-notation.md#unresolved-links-and-rename-rewriting)).
+  Deleting a document flips incoming links back to unresolved via the
+  schema's `ON DELETE SET NULL` — the link text survives and re-resolves if
+  the page is recreated. Moving a document to another bucket explicitly
+  nulls its incoming links, because resolution is bucket-scoped.
 - **Visibility.** `kura link broken` lists unresolved links grouped by
   target title; `kura status` reports the unresolved-link count; doctor's
   `resolve-links` fix handles bulk repair after imports or bucket surgery.

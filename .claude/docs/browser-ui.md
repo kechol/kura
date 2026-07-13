@@ -16,21 +16,22 @@ embed them with a static table.
 | --- | --- |
 | `index.html` | Static shell: `<div id="app">`, loads `/index.js` + `/index.css`, `lang="ja"` |
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
-| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses; `ApiError` carries the HTTP status |
+| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
 | `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard) |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
 | `styles.css` | All styling; CSS custom properties per theme |
 | `types.d.ts` | Ambient module declarations for the bundler |
-| `components/Layout.tsx` | Header (nav, search box, theme toggle) + sidebar (buckets, tag tree); refetches counts on navigation |
+| `components/Layout.tsx` | Header (nav, search box, theme toggle) + sidebar (buckets, document tree, tag tree); refetches counts on navigation |
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
+| `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
 | `pages/Home.tsx` | Dashboard |
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
 | `pages/DocEdit.tsx` | Plain editor (title / tags / textarea) |
-| `pages/DocByTitle.tsx` | `[[link]]` title-resolution route |
+| `pages/DocByTitle.tsx` | `[[link]]` resolution route (`GET /api/resolve` + search fallback) |
 | `pages/Search.tsx` | 3-mode search |
 | `pages/Tags.tsx` | Tag browser |
 | `pages/Graph.tsx` | d3-force knowledge graph |
@@ -43,8 +44,8 @@ embed them with a static table.
 | Path | Screen |
 | --- | --- |
 | `/` | Home |
-| `/docs` | Document list (filters live in the query string: `bucket`, `tag`, `sort`, `stale`, `page`) |
-| `/docs/title/:title` | Title → key resolution (wikilink fallback) |
+| `/docs` | Document list (filters live in the query string: `bucket`, `tag`, `prefix`, `sort`, `stale`, `page`) |
+| `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
 | `/docs/:key/edit` | Editor |
 | `/docs/:key` | Document detail |
 | `/search` | Search (`q`, `mode`, `bucket`, `tag` in query string) |
@@ -67,13 +68,16 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
   "see all" link into the filtered list). Staleness surfaces review
   candidates; nothing is auto-deleted (see [self-healing.md](self-healing.md)).
 - **Document list** — table with bucket dropdown, hierarchical tag filter
-  (descendants included, matching the API), sort selector, stale-only
-  checkbox, 20 per page with prev/next pagination against `total`.
-- **Document detail** — rendered body (pipeline below); header with edit /
-  delete (confirm dialog) actions; right sidebar with metadata (bucket,
-  access count, created/updated, source URL), tag chips, **backlinks**, and
-  **two-hop links grouped by the shared target**, all from
-  `/api/docs/:key/related`.
+  (descendants included, matching the API), document-path filter
+  (`prefix`, also descendant-inclusive), sort selector, stale-only
+  checkbox, 20 per page with prev/next pagination against `total`. Titles
+  render with a muted `path/` prefix when the document has one.
+- **Document detail** — rendered body (pipeline below); a path breadcrumb
+  above the title (each segment links to `/docs?bucket=&prefix=`); header
+  with edit / delete (confirm dialog) actions; right sidebar with metadata
+  (bucket, access count, created/updated, source URL), tag chips,
+  **backlinks**, and **two-hop links grouped by the shared target**, all
+  from `/api/docs/:key/related`.
 - **Editor** — deliberately plain (SPEC §8.3): title input, comma-separated
   tags input, `<textarea>` body, save/cancel. Save issues `PUT
   /api/docs/:key` with the full tag array (diff-sync contract — see
@@ -83,14 +87,23 @@ back/forward and copy-paste of links behave; changing a filter resets `page`.
   filters, `limit=30`. Renders API `warnings` (degraded mode) above results;
   each hit shows title, source badge, score, snippet with `<mark>`
   highlights, and tag chips.
+- **Sidebar document tree** — a third sidebar section ("ドキュメント
+  (bucket)") rendering `GET /api/docs/tree` for the bucket selected via
+  `?bucket=` (falling back to `main`, then the first bucket). Built by
+  `buildDocTree` in core (mirrors `buildTagTree`): branch nodes come from
+  path prefixes and toggle open/closed (component state, default closed);
+  document nodes link to the detail page; a branch whose path is itself a
+  document does both. Titles containing a literal `/` stay single leaves.
 - **Tag browser** — full tag tree with "direct / total including
   descendants" counts; every node links to the filtered document list.
 - **Knowledge graph** — see below.
-- **Title resolution (`/docs/title/:title`)** — runs a keyword search for
-  the title; on an exact (case-insensitive) title match it redirects to the
-  detail page (`replace: true` so history stays clean). Otherwise it shows an
-  "unresolved link" page listing the closest matches — the click-through
-  target for red wikilinks.
+- **Link resolution (`/docs/title/:title`)** — calls `GET /api/resolve`
+  (`resolveDocSpec()` in `api.ts`) with the raw link text — full path or
+  unique title, the same `resolveDoc` grammar as the CLI — and redirects to
+  the detail page on success (`replace: true` so history stays clean). A 404
+  (not created yet) or 409 (ambiguous) falls back to a keyword search and
+  shows an "unresolved link" page listing the closest matches with their
+  full paths — the click-through target for red wikilinks.
 
 ## Rendering pipeline
 
@@ -243,10 +256,11 @@ identifiers, and CSS class names stay English.
 
 ## Deviations from SPEC
 
-- **`/docs/title/:title` resolution route is an addition.** SPEC §8.3 only
-  asks for `[[リンク]]` to become clickable; the implementation gives
-  unresolved links a landing page with near-match suggestions, and resolved
-  navigation happens client-side by title lookup when needed.
+- **The `/docs/title/:title` route and `GET /api/resolve` are additions.**
+  SPEC §8.3 only asks for `[[リンク]]` to become clickable; the
+  implementation resolves link text server-side via `resolveDoc` (full path
+  / unique title — [http-api.md](http-api.md)) and gives unresolved or
+  ambiguous links a landing page with near-match suggestions.
 - **`[[Title|display text]]` is not special-cased** in the renderer: the raw
   inner text (including the `|display`) is used as both label and lookup key,
   whereas SPEC §4 defines the pipe form. Core extraction handles it; the

@@ -27,6 +27,7 @@ describe("config", () => {
     expect(c.llm.models.embedding_dimensions).toBe(1024);
     expect(c.search.rrf_k).toBe(60);
     expect(c.search.rerank_top_k).toBe(20);
+    expect(c.clip.path).toBe("clips");
     expect(c.browser.port).toBe(7578);
   });
 
@@ -87,6 +88,7 @@ describe("config", () => {
     const keys = listConfigEntries(defaultConfig()).map(([k]) => k);
     expect(keys).toContain("general.default_bucket");
     expect(keys).toContain("llm.models.reranker");
+    expect(keys).toContain("clip.path");
     expect(keys).toContain("browser.port");
   });
 });

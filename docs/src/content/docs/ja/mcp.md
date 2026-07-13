@@ -29,9 +29,9 @@ kura mcp --print-config     # .mcp.json 用のエントリを表示
 |---|---|
 | `kura_query` | ハイブリッド検索（キーワード + セマンティック + リランク）。既定の検索ツール |
 | `kura_search` | キーワード検索（FTS5 BM25） |
-| `kura_get` | key またはタイトルでドキュメントを取得 |
-| `kura_add` | ドキュメントを作成 |
-| `kura_update` | 既存ドキュメントを更新 |
+| `kura_get` | key・フルパス（`clips/タイトル`）・タイトルでドキュメントを取得 |
+| `kura_add` | ドキュメントを作成。任意の `path` でフォルダ風のドキュメント path 配下に置ける |
+| `kura_update` | 既存ドキュメントを更新。`title` / `path` の変更は参照元の `[[リンク]]` を書き換え |
 | `kura_list_tags` | タグ階層を一覧 |
 | `kura_related` | 指定ドキュメントに関連するドキュメント（リンク + 類似度） |
 | `kura_status` | ストアの統計 |

@@ -1,13 +1,13 @@
 ---
 title: Concept
-description: Why kura drops the folder hierarchy and how buckets, hierarchical tags, and wiki links organize documents instead.
+description: Why kura refuses forced filing and how buckets, hierarchical tags, wiki links, and optional document paths organize documents instead.
 ---
 
-kura is built on a single bet: **the folder is the wrong primitive for
-notes.** Every hierarchy forces one filing decision per document, and
-that decision is wrong the moment a note belongs in two places. kura
-removes the hierarchy and lets structure emerge from the content
-instead.
+kura is built on a single bet: **forced filing is the wrong primitive
+for notes.** A mandatory hierarchy demands one filing decision per
+document, and that decision is wrong the moment a note belongs in two
+places. kura never requires that decision and lets structure emerge
+from the content instead.
 
 ## Three ways things connect
 
@@ -38,6 +38,22 @@ exists.** kura records it as an unresolved link, and the moment a
 document with that title is created, the link connects automatically.
 Backlinks and two-hop links (documents that share a neighbor) fall out
 of the same graph for free.
+
+## Optional document paths
+
+Documents can also carry an optional **path** — a slash-separated,
+folder-like name such as `clips` or `db/sqlite`. The path is part of a
+document's identity (uniqueness is per bucket, path, and title), so two
+documents named "Notes" can coexist under `db/sqlite/` and `ml/`. What
+kura refuses is not the folder shape but the *mandatory* decision: a
+path is never required, and documents without one live at the bucket
+root, which works naturally as an inbox. `kura clip` files new clips
+under `clips/` by default, `kura ls --prefix db` lists a subtree, and
+`kura mv` renames or moves documents while rewriting the wiki links
+that point at them. When a title alone is ambiguous,
+`[[db/sqlite/Notes]]` pins the link by full path. Paths complement
+buckets, tags, and links as a naming and browsing namespace — they
+never replace them.
 
 ## Hybrid search, tuned for Japanese
 

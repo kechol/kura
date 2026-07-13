@@ -160,7 +160,7 @@ export async function vectorSearchDetailed(
          SELECT chunk_id, distance FROM chunks_vec
          WHERE embedding MATCH ? AND k = ?
        )
-       SELECT d.id, d.doc_key, d.title, b.name AS bucket,
+       SELECT d.id, d.doc_key, d.path, d.title, b.name AS bucket,
               (SELECT group_concat(t.path, ' ') FROM document_tags dt
                 JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id) AS tag_paths,
               c.text AS chunk_text, knn.distance
@@ -174,6 +174,7 @@ export async function vectorSearchDetailed(
     .all(toBlob(queryVec), k, ...params) as Array<{
     id: number;
     doc_key: string;
+    path: string;
     title: string;
     bucket: string;
     tag_paths: string | null;
@@ -190,6 +191,7 @@ export async function vectorSearchDetailed(
       hit: {
         docId: row.id,
         key: row.doc_key,
+        path: row.path,
         title: row.title,
         bucket: row.bucket,
         tags: row.tag_paths ? row.tag_paths.split(" ") : [],

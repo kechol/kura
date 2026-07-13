@@ -27,6 +27,9 @@ embedding = "qwen3-embedding:0.6b"
 embedding_dimensions = 1024
 reranker = "dengcao/Qwen3-Reranker-0.6B"
 generation = "qwen3:4b"
+
+[clip]
+path = "clips"
 ```
 
 ### `[general]`
@@ -62,6 +65,12 @@ After changing the embedding model or its dimensions, run
 regenerate every vector at the new dimensions. Old vectors are not
 compatible across models.
 :::
+
+### `[clip]`
+
+| Key | Meaning |
+|---|---|
+| `path` | Document path new clips are filed under (default `clips`); set `""` to clip into the bucket root |
 
 ## Environment variables
 

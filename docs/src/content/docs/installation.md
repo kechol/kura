@@ -87,8 +87,9 @@ kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
 A document viewer (rendered Markdown, backlinks, two-hop links), an
-editor, three-mode search, a tag browser, and a d3-force knowledge
-graph — all served locally. The UI text is Japanese.
+editor, three-mode search, a sidebar document tree that follows your
+document paths, a tag browser, and a d3-force knowledge graph — all
+served locally. The UI text is Japanese.
 
 ## Where your data lives
 

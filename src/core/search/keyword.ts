@@ -19,6 +19,7 @@ export function buildTrigramQuery(query: string, all: boolean): string {
 interface HitRow {
   id: number;
   doc_key: string;
+  path: string;
   title: string;
   bucket: string;
   tag_paths: string | null;
@@ -30,6 +31,7 @@ function toHit(row: HitRow): SearchHit {
   return {
     docId: row.id,
     key: row.doc_key,
+    path: row.path,
     title: row.title,
     bucket: row.bucket,
     tags: row.tag_paths ? row.tag_paths.split(" ") : [],
@@ -79,7 +81,7 @@ export function keywordSearch(
   params.push(limit);
 
   const sql = `
-    SELECT d.id, d.doc_key, d.title, b.name AS bucket, ${TAGS_SELECT} AS tag_paths,
+    SELECT d.id, d.doc_key, d.path, d.title, b.name AS bucket, ${TAGS_SELECT} AS tag_paths,
            bm25(documents_fts, 5.0, 1.0, 3.0) AS rank_score,
            snippet(documents_fts, 1, '**', '**', '…', 20) AS snip
     FROM documents_fts
@@ -135,7 +137,7 @@ function likeFallback(
 
   const rows = db
     .prepare(
-      `SELECT d.id, d.doc_key, d.title, b.name AS bucket, ${TAGS_SELECT} AS tag_paths, d.content
+      `SELECT d.id, d.doc_key, d.path, d.title, b.name AS bucket, ${TAGS_SELECT} AS tag_paths, d.content
        FROM documents d JOIN buckets b ON b.id = d.bucket_id
        WHERE ${where.join(" AND ")}
        ORDER BY d.updated_at DESC

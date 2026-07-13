@@ -51,6 +51,23 @@ export function DocDetail({ docKey }: { docKey: string }) {
   return (
     <div class="doc-detail">
       <article class="doc-main">
+        {d.path !== "" && (
+          <nav class="doc-breadcrumb" aria-label="ドキュメントパス">
+            {d.path.split("/").map((seg, i, segs) => {
+              const prefix = segs.slice(0, i + 1).join("/");
+              return (
+                <span key={prefix}>
+                  {i > 0 && <span class="doc-breadcrumb-sep">/</span>}
+                  <Link
+                    href={`/docs?bucket=${encodeURIComponent(d.bucket)}&prefix=${encodeURIComponent(prefix)}`}
+                  >
+                    {seg}
+                  </Link>
+                </span>
+              );
+            })}
+          </nav>
+        )}
         <div class="doc-header">
           <h1>{d.title}</h1>
           <div class="doc-actions">

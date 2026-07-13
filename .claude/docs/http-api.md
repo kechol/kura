@@ -90,12 +90,13 @@ never throws it (it degrades with warnings instead).
 
 ## Common JSON shapes
 
-- **Document** (`docJson()`): `key`, `title`, `bucket`, `tags` (string
-  array), `content_type`, `source_url`, `created_at`, `updated_at`,
+- **Document** (`docJson()`): `key`, `path` (slash-separated document path,
+  `""` = bucket root), `title`, `bucket`, `tags` (string array),
+  `content_type`, `source_url`, `created_at`, `updated_at`,
   `last_accessed_at`, `access_count`, plus `content` where noted. Timestamps
   are SQLite `YYYY-MM-DD HH:MM:SS` strings (UTC).
-- **Search hit** (`hitJson()`): `key`, `title`, `bucket`, `tags`, `score`,
-  `snippet` (matches wrapped in `**…**`), `source`
+- **Search hit** (`hitJson()`): `key`, `path`, `title`, `bucket`, `tags`,
+  `score`, `snippet` (matches wrapped in `**…**`), `source`
   (`keyword` | `vector` | `hybrid`).
 
 `src/client/api.ts` mirrors these shapes as TypeScript interfaces; keep the
@@ -124,6 +125,7 @@ Paged document listing (metadata only, no `content`).
 | --- | --- | --- |
 | `bucket` | all buckets | exact bucket name |
 | `tag` | — | hierarchical: matches the tag itself **and descendants** (`t.path = ? OR t.path LIKE ? || '/%'`) |
+| `prefix` | — | document-path filter: matches the path itself **and descendants**, case-insensitively. Normalized (`normalizeDocPath`); a value that normalizes to `""` → 400 |
 | `sort` | `updated` | one of `updated` / `created` / `accessed` / `title`; anything else → 400 |
 | `stale` | off | `stale=1` keeps only docs with `updated_at` older than `general.stale_days` |
 | `page` | 1 | clamped to ≥ 1 |
@@ -131,6 +133,39 @@ Paged document listing (metadata only, no `content`).
 
 Response: `{docs: Document[], total, page, per}`. `total` is computed with
 the same filter by `listDocumentsCount()` so the UI can render pagination.
+
+### `GET /api/docs/tree`
+
+Per-bucket document-path hierarchy for the sidebar, via `docTree()` /
+`buildDocTree()` (`src/core/documents.ts`, mirroring `buildTagTree`).
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `bucket` | **required** | titles are bucket-scoped, so the tree is too; missing → 400 |
+
+Response: `DocTreeNode[]` — `{segment, path, key?, total, children}`.
+Branch nodes come from path prefixes (`key` absent); document nodes carry
+their `doc_key` as `key`; a branch whose path equals a document's computed
+full path is merged (both `key` and `children`). Subtrees sort before
+documents, then alphabetically. Note the static route must keep winning
+over `/api/docs/:key` (Bun.serve prefers exact segments over params).
+
+### `GET /api/resolve`
+
+Doc-specifier resolution for the browser's wiki-link navigation — a thin
+wrapper over `resolveDoc()` (`src/core/documents.ts`), accepting the same
+grammar as the CLI: key / `#key` / full path / unique title.
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `doc` | **required** | the specifier; trimmed, empty → 400 |
+| `bucket` | all buckets | scopes full-path / title resolution |
+
+Responses: `200` with the document JSON (metadata only, no `content`; **no
+`touchAccess` side effect**, unlike `GET /api/docs/:key`); `404`
+(`NotFoundError`) when nothing matches; `409` (`ConflictError`) when the
+specifier is ambiguous — the candidate list (keys, buckets, paths) is the
+`error` message string.
 
 ### `GET /api/docs/:key`
 
@@ -141,12 +176,13 @@ incremented count. 404 when the key is unknown.
 
 ### `PUT /api/docs/:key`
 
-Body: `{title?, content?, tags?}` (all optional). This is the browser
-editor's save path and re-parses the body exactly like a CLI edit
+Body: `{title?, path?, content?, tags?}` (all optional). This is the
+browser editor's save path and re-parses the body exactly like a CLI edit
 (`updateDocument()` re-extracts `[[links]]` and `#hashtags`, re-syncs FTS,
 rebuilds chunks when content or title changed, and rewrites `[[old title]]`
-in referring documents on rename — see
-[document-notation.md](document-notation.md)).
+/ `[[old/full/path]]` in referring documents on rename or move — see
+[document-notation.md](document-notation.md)). `path` moves the document
+(`""` = bucket root).
 
 **Tag diff-sync semantics**: unlike the repository layer (add-only), the PUT
 handler treats `tags` as the *complete* desired tag set — the editor state is
@@ -156,8 +192,8 @@ hashtags still written inline in the body are re-extracted on save, so a tag
 cannot be removed via the array while `#tag` remains in the content.
 Omitting `tags` (or sending a non-array) leaves tags untouched.
 
-Returns the updated document including `content`. Renaming onto an existing
-title in the same bucket → 409.
+Returns the updated document including `content`. Renaming or moving onto
+an existing computed full path in the same bucket → 409.
 
 ### `DELETE /api/docs/:key`
 
@@ -253,6 +289,11 @@ detection, 60 s TTL). Lets the UI say whether vector/hybrid modes will work.
 
 - **`GET /api/llm` is an addition** — SPEC §8.2 does not list it. The SPA
   uses it to surface provider availability.
+- **`GET /api/resolve` is an addition** — SPEC §8.2 does not list it; the
+  SPA's wiki-link route uses it before falling back to search
+  ([browser-ui.md](browser-ui.md)).
+- **`prefix` on `/api/docs` is an addition** — hierarchical document paths
+  post-date SPEC §8.2.
 - **`limit` on `/api/search`** is an addition; SPEC lists only
   `q`, `mode`, `bucket`, `tag`.
 - **`per` is capped at 200**; SPEC only specifies the default of 50.

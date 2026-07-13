@@ -50,7 +50,7 @@ const commands: Record<string, CommandDef> = {
     load: () => import("./commands/rm"),
   },
   mv: {
-    summary: "Rename a document (relinks [[references]])",
+    summary: "Rename or move a document (relinks [[references]])",
     load: () => import("./commands/mv"),
   },
   ls: {

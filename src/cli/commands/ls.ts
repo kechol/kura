@@ -2,16 +2,18 @@ import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
 import { type ListFilter, listDocuments } from "../../core/documents";
 import { staleDocuments } from "../../core/stale";
+import { joinDocPath, normalizeDocPath } from "../../core/wiki";
 import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "List documents";
 
-export const usage = `Usage: kura ls [--bucket b] [--tag t] [--sort updated|created|accessed|title]
+export const usage = `Usage: kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title]
                [--stale] [--limit n] [--json]
 
 Options:
   --bucket <name>   Only documents in this bucket (default: all buckets)
   --tag <path>      Only documents with this tag (descendants included)
+  --prefix <path>   Only documents under this document path (descendants included)
   --sort <key>      updated (default) | created | accessed | title
   --stale           Only documents older than general.stale_days
   --limit <n>       Maximum number of documents
@@ -23,6 +25,7 @@ export function run(argv: string[]): number {
   const parsed = parseCommandArgs(argv, {
     bucket: { type: "string" },
     tag: { type: "string" },
+    prefix: { type: "string" },
     sort: { type: "string" },
     stale: { type: "boolean", default: false },
     limit: { type: "string" },
@@ -32,6 +35,9 @@ export function run(argv: string[]): number {
   if (sort !== undefined && !(SORTS as readonly string[]).includes(sort)) {
     throw new UsageError(`--sort must be one of ${SORTS.join("|")}, got: ${sort}`);
   }
+  const rawPrefix = strOpt(parsed, "prefix");
+  const prefix = rawPrefix === undefined ? undefined : normalizeDocPath(rawPrefix);
+  if (prefix === "") throw new UsageError("--prefix must not be empty");
 
   const { db } = getDb();
   const config = loadConfig();
@@ -39,6 +45,7 @@ export function run(argv: string[]): number {
   let docs = listDocuments(db, {
     bucket: strOpt(parsed, "bucket"),
     tag: strOpt(parsed, "tag"),
+    prefix,
     sort: sort as ListFilter["sort"],
     stale,
     staleDays: config.general.stale_days,
@@ -58,6 +65,7 @@ export function run(argv: string[]): number {
   if (boolOpt(parsed, "json")) {
     const out = docs.map((d) => ({
       key: d.key,
+      path: d.path,
       title: d.title,
       bucket: d.bucket,
       tags: d.tags,
@@ -71,7 +79,7 @@ export function run(argv: string[]): number {
   }
 
   for (const d of docs) {
-    const parts = [`#${d.key}`, d.title, `[${d.bucket}]`];
+    const parts = [`#${d.key}`, joinDocPath(d.path, d.title), `[${d.bucket}]`];
     if (d.tags.length > 0) parts.push(d.tags.join(","));
     parts.push(d.updatedAt);
     console.log(parts.join("  "));

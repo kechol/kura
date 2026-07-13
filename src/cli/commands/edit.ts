@@ -13,8 +13,8 @@ export const summary = "Edit a document with $EDITOR";
 export const usage = `Usage: kura edit <doc> [--bucket b]
 
 Writes frontmatter + body to a temporary file and opens it with
-general.editor (config) → $EDITOR → vi. Changes to title / tags / bucket
-in the frontmatter are applied on save. kura_key must not be changed.`;
+general.editor (config) → $EDITOR → vi. Changes to title / path / tags /
+bucket in the frontmatter are applied on save. kura_key must not be changed.`;
 
 /**
  * Recover kura_key from raw text when YAML parses it as a number
@@ -37,6 +37,7 @@ export function run(argv: string[]): number {
     kura_key: doc.key,
     title: doc.title,
     bucket: doc.bucket,
+    path: doc.path,
     tags: doc.tags,
     source_url: doc.sourceUrl,
     content_type: doc.contentType,
@@ -91,6 +92,8 @@ export function run(argv: string[]): number {
     // Strip the single separator blank line right after the frontmatter
     content: body.replace(/^\r?\n/, ""),
     bucket: fm?.bucket ?? doc.bucket,
+    // A removed path: line means the bucket root (the serializer omits it when empty)
+    path: fm?.path ?? "",
     tags: fmTags,
   });
   if (removed.length > 0) removeTagsFromDoc(db, record.id, removed);

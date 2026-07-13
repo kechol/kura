@@ -24,6 +24,7 @@ export interface Bucket {
 
 export interface DocMeta {
   key: string;
+  path: string;
   title: string;
   bucket: string;
   tags: string[];
@@ -72,6 +73,7 @@ export type SearchMode = "keyword" | "vector" | "hybrid";
 
 export interface SearchHit {
   key: string;
+  path: string;
   title: string;
   bucket: string;
   tags: string[];
@@ -96,6 +98,15 @@ export interface TagTreeNode {
   count: number;
   total: number;
   children: TagTreeNode[];
+}
+
+export interface DocTreeNode {
+  segment: string;
+  path: string;
+  /** Present when this node is a document (a branch can also be one) */
+  key?: string;
+  total: number;
+  children: DocTreeNode[];
 }
 
 export interface GraphNode {
@@ -153,6 +164,7 @@ export function fetchBuckets(): Promise<Bucket[]> {
 export interface DocsQuery {
   bucket?: string;
   tag?: string;
+  prefix?: string;
   sort?: string;
   stale?: boolean;
   page?: number;
@@ -164,6 +176,7 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
     `/api/docs${qs({
       bucket: q.bucket,
       tag: q.tag,
+      prefix: q.prefix,
       sort: q.sort,
       stale: q.stale ? "1" : undefined,
       page: q.page,
@@ -174,6 +187,11 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
 
 export function fetchDoc(key: string): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`);
+}
+
+/** Resolve a doc specifier (key / full path / unique title) via GET /api/resolve */
+export function resolveDocSpec(spec: string, bucket?: string): Promise<DocMeta> {
+  return request<DocMeta>(`/api/resolve${qs({ doc: spec, bucket })}`);
 }
 
 export function updateDoc(
@@ -213,6 +231,10 @@ export function searchDocs(p: SearchQuery): Promise<SearchResult> {
 
 export function fetchTagTree(): Promise<TagTreeNode[]> {
   return request<TagTreeNode[]>("/api/tags?tree=1");
+}
+
+export function fetchDocTree(bucket: string): Promise<DocTreeNode[]> {
+  return request<DocTreeNode[]>(`/api/docs/tree${qs({ bucket })}`);
 }
 
 export function fetchGraph(q: { bucket?: string; tag?: string } = {}): Promise<GraphData> {

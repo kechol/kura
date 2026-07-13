@@ -24,6 +24,24 @@ export function normalizeTagPath(raw: string): string | null {
   return segments.length > 0 ? segments.join("/") : null;
 }
 
+/**
+ * Normalize a document path: strip leading/trailing slashes, collapse repeated
+ * slashes, trim each segment. Unlike tag paths, case is preserved.
+ * '' means the bucket root (docs: document-notation.md).
+ */
+export function normalizeDocPath(raw: string): string {
+  return raw
+    .split("/")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join("/");
+}
+
+/** Computed full path of a document; a root path ('') yields the title alone */
+export function joinDocPath(path: string, title: string): string {
+  return path === "" ? title : `${path}/${title}`;
+}
+
 /** [[title]] / [[title|display]]. The title part cannot contain [ ] | */
 const LINK_RE = /\[\[([^[\]|\n]*)(?:\|([^[\]\n]*))?\]\]/g;
 
@@ -105,12 +123,26 @@ function findClosingRun(line: string, from: number, n: number): number {
   return -1;
 }
 
+export interface WikiLinkReplacement {
+  from: string;
+  to: string;
+}
+
 /**
- * Replace the title part of [[oldTitle]] / [[oldTitle|display]] with newTitle (link rewriting for kura mv).
- * Matches case-insensitively; code blocks and inline code are left untouched.
+ * Replace the title part of [[target]] / [[target|display]] for every entry in
+ * replacements (link rewriting for kura mv — a rename may need both the title
+ * and the full-path spelling swapped in one pass). Matches case-insensitively;
+ * code blocks and inline code are left untouched.
  */
-export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitle: string): string {
-  const oldKey = oldTitle.trim().toLowerCase();
+export function replaceWikiLinkTargets(
+  content: string,
+  replacements: WikiLinkReplacement[],
+): string {
+  const map = new Map<string, string>();
+  for (const r of replacements) {
+    const key = r.from.trim().toLowerCase();
+    if (!map.has(key)) map.set(key, r.to);
+  }
   let fenceChar = "";
   let fenceLen = 0;
   const out: string[] = [];
@@ -141,10 +173,11 @@ export function replaceWikiLinkTarget(content: string, oldTitle: string, newTitl
     let last = 0;
     for (const m of masked.matchAll(LINK_RE)) {
       const target = (m[1] ?? "").trim();
-      if (target.toLowerCase() !== oldKey) continue;
+      const to = map.get(target.toLowerCase());
+      if (to === undefined) continue;
       const titleStart = m.index + 2;
       const titleEnd = titleStart + (m[1] ?? "").length;
-      rewritten += line.slice(last, titleStart) + newTitle;
+      rewritten += line.slice(last, titleStart) + to;
       last = titleEnd;
     }
     out.push(rewritten + line.slice(last), sep);
