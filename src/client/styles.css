@@ -196,6 +196,212 @@ button:focus-visible {
   margin-left: auto;
 }
 
+/* ---- Inline editor ---- */
+
+.editor {
+  position: relative;
+}
+
+/* A newline inside a paragraph must survive editing, so blocks keep their whitespace */
+.editor-block {
+  white-space: pre-wrap;
+  outline: none;
+  border-radius: 4px;
+  padding: 0.1rem 0.2rem;
+  margin: 0.5rem -0.2rem;
+}
+
+/*
+ * Every block is a <div>: changing a paragraph into a heading must not swap the DOM node
+ * (that would blur it mid-typing), so the heading look lives here rather than in the tag.
+ */
+.editor-block.h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 1.2rem -0.2rem 0.6rem;
+}
+
+.editor-block.h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 1.1rem -0.2rem 0.5rem;
+}
+
+.editor-block.h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 1rem -0.2rem 0.4rem;
+}
+
+.editor-block.h4,
+.editor-block.h5,
+.editor-block.h6 {
+  font-weight: 700;
+  margin: 0.9rem -0.2rem 0.4rem;
+}
+
+.editor-block.quote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8rem;
+  color: var(--text-muted);
+}
+
+.editor-block:focus {
+  background: var(--bg-inset);
+}
+
+.editor-block:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+}
+
+.doc-title {
+  outline: none;
+  border-radius: 4px;
+}
+
+.doc-title:focus {
+  background: var(--bg-inset);
+}
+
+/* The bullet is drawn by CSS, so it is not part of the editable text and cannot be deleted */
+.editor-block.li {
+  margin: 0.15rem -0.2rem;
+  padding-left: 1.5rem;
+  text-indent: -1.5rem;
+}
+
+.editor-block.li::before {
+  content: attr(data-marker) " ";
+  display: inline-block;
+  width: 1.3rem;
+  text-indent: 0;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.editor-toolbar {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  gap: 0.1rem;
+  padding: 0.2rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.editor-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 0.3rem;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.editor-tool:hover {
+  background: var(--bg-inset);
+}
+
+.editor-raw {
+  position: relative;
+}
+
+.editor-raw-edit {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  opacity: 0;
+}
+
+.editor-raw:hover .editor-raw-edit,
+.editor-raw-edit:focus {
+  opacity: 1;
+}
+
+.editor-raw-input {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  background: var(--code-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  resize: vertical;
+}
+
+.editor-raw-done {
+  margin-top: 0.3rem;
+}
+
+.save-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.save-status.error {
+  color: var(--danger);
+}
+
+/* ---- Document context sidebar ---- */
+
+.tag-chip.editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.tag-chip.add {
+  cursor: pointer;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+}
+
+.tag-remove {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.tag-remove:hover {
+  color: var(--danger);
+}
+
+.tag-add-form {
+  margin-top: 0.4rem;
+}
+
+.tag-add-form input {
+  width: 100%;
+}
+
+.sidebar-docs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+
+.sidebar-docs li {
+  padding: 0.15rem 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Modals (search / recent / shortcuts) ---- */
 
 .modal-overlay {

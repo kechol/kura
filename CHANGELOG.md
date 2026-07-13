@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Browser UI: documents are now edited where they are read. The rendered
+  document is editable in place — headings, lists, quotes, bold/italic/code and
+  links, with Markdown shortcuts (`# `, `- `, `1. `, `> `, ` ``` `) and a
+  selection toolbar — and saves itself 1.5 s after you stop typing (`Ctrl + S`
+  saves at once). Code blocks, tables and raw HTML keep a text editing surface
+  behind a rendered preview. Tags are added and removed in the sidebar, which
+  also lists documents sharing a tag or a path. The separate `/docs/:key/edit`
+  editor is gone (the URL redirects to the document); clipped HTML documents
+  stay read-only.
 - Browser UI: a search modal (`Ctrl + K`, or the magnifier next to the logo)
   that searches as you type, with separate document and tag tabs and a tag
   filter. Keyboard shortcuts: `Ctrl + K` search, `Ctrl + ?` shortcut list,

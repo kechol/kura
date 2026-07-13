@@ -4,9 +4,11 @@ import { useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
 import { fetchDocTree, fetchTagTree } from "../api";
 import { useBucket } from "../bucket";
+import { useCurrentDoc } from "../currentdoc";
 import { useAsync } from "../hooks";
 import { useModal } from "../modal";
 import { currentTheme, setTheme, type Theme } from "../theme";
+import { DocContextSidebar } from "./DocContextSidebar";
 import { DocTree } from "./DocTree";
 import { TagTree } from "./TagTree";
 
@@ -15,6 +17,7 @@ export function Layout({ children }: { children: ComponentChildren }) {
   const [location] = useLocation();
   const { bucket, buckets, setBucket, loading } = useBucket();
   const modal = useModal();
+  const currentDoc = useCurrentDoc();
   // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current
   const tags = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchTagTree(bucket)),
@@ -84,10 +87,15 @@ export function Layout({ children }: { children: ComponentChildren }) {
             <h2>ドキュメント</h2>
             <DocTree nodes={docTree.data ?? []} />
           </section>
-          <section class="sidebar-section">
-            <h2>タグ</h2>
-            <TagTree nodes={tags.data ?? []} />
-          </section>
+          {/* On a document, the tag tree gives way to that document's own tags and neighbours */}
+          {currentDoc.doc !== null ? (
+            <DocContextSidebar doc={currentDoc.doc} onChange={currentDoc.reload} />
+          ) : (
+            <section class="sidebar-section">
+              <h2>タグ</h2>
+              <TagTree nodes={tags.data ?? []} />
+            </section>
+          )}
           <div class="sidebar-footer">
             <button
               type="button"

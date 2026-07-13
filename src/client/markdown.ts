@@ -89,6 +89,15 @@ export function renderMarkdown(content: string, resolve: WikiResolver): string {
   return DOMPurify.sanitize(md.render(content, { resolve }));
 }
 
+/**
+ * Block/inline token stream, for the editor's markdown → block-model parser
+ * (editor/parse.ts). Shared with the renderer so both see the same `[[wikilink]]`
+ * rule and the same markdown dialect.
+ */
+export function parseMarkdownTokens(content: string): ReturnType<typeof md.parse> {
+  return md.parse(content, {});
+}
+
 /** Sanitization for displaying content_type=html documents */
 export function sanitizeHtml(content: string): string {
   return DOMPurify.sanitize(content);

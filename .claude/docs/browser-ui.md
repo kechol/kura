@@ -50,7 +50,10 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `components/RecentModal.tsx` | Recently-viewed documents (Ctrl+R) |
 | `components/ShortcutsModal.tsx` | The shortcut list (Ctrl+?), generated from `SHORTCUTS` |
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
+| `components/DocContextSidebar.tsx` | The open document's tags (add / remove) and its same-tag / same-path neighbours |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
+| `currentdoc.tsx` | `CurrentDocProvider` — the detail screen publishes the document it fetched so the sidebar can show it without fetching again |
+| `editor/` | The inline editor: `model.ts` (block model), `parse.ts` / `serialize.ts` (markdown ⇄ model), `dom.ts` (model ⇄ contenteditable, caret math), `Editor.tsx`, `blocks.tsx`, `Toolbar.tsx` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
 | `pages/Home.tsx` | Reading history (most recently viewed documents) |
 | `pages/Stats.tsx` | Statistics + tidying insights (`GET /api/stats`, `GET /api/insights`) |
@@ -72,8 +75,8 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `/` | Home — reading history (redirects to the last-read document on a fresh visit) |
 | `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `page`) |
 | `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
-| `/docs/:key/edit` | Editor |
-| `/docs/:key` | Document detail |
+| `/docs/:key/edit` | Gone — redirects to the document (reading and editing are the same screen) |
+| `/docs/:key` | Document detail — read and edit in place |
 | `/search` | Search (`q`, `mode`, `tag` in query string) |
 | `/tags` | Tag browser |
 | `/graph` | Knowledge graph |
@@ -121,17 +124,13 @@ name on the detail page, the screen name elsewhere, both suffixed with
   with prev/next pagination against `total`. Titles render with a muted
   `path/` prefix when the document has one. There is no bucket column or
   dropdown — the sidebar picker scopes the whole table.
-- **Document detail** — rendered body (pipeline below); a path breadcrumb
-  above the title (each segment links to `/docs?prefix=`); header
-  with edit / delete (confirm dialog) actions; right sidebar with metadata
-  (bucket, access count, created/updated, source URL), tag chips,
-  **backlinks**, and **two-hop links grouped by the shared target**, all
-  from `/api/docs/:key/related`.
-- **Editor** — deliberately plain (SPEC §8.3): title input, comma-separated
-  tags input, `<textarea>` body, save/cancel. Save issues `PUT
-  /api/docs/:key` with the full tag array (diff-sync contract — see
-  [http-api.md](http-api.md)). A richer editor is roadmap
-  ([roadmap.md](roadmap.md)).
+- **Document detail** — reading and editing are the same screen (below). A path
+  breadcrumb above the title (each segment links to `/docs?prefix=`); the title
+  itself is editable in place; a save-status line and delete (confirm dialog);
+  the **left** sidebar becomes the document's own (tags, same-tag and same-path
+  neighbours), and the right one keeps metadata (bucket, access count,
+  created/updated, source URL), **backlinks** and **two-hop links grouped by the
+  shared target** from `/api/docs/:key/related`.
 - **Search page (`/search`)** — mode toggle (キーワード / ベクトル /
   ハイブリッド) and a tag filter, `limit=30`, always within the selected
   bucket. Renders API `warnings` (degraded mode) above results; each hit
@@ -197,6 +196,67 @@ and rejected: tens of MB in a binary that must stay self-contained
 documents, and tags — the tag list is small, so it is fetched once per bucket
 and filtered in the browser. Choosing a tag sets it as the document filter
 rather than navigating away. Vector and hybrid search stay on `/search`.
+
+## The inline editor (`src/client/editor/`)
+
+There is no separate editor screen: a Markdown document is rendered as editable
+blocks, and typing into one is the edit. `PUT /api/docs/:key` is issued 1.5 s
+after the last change (Ctrl+S saves at once); the status is shown next to the
+title, and a dirty document warns on unload.
+
+```
+markdown ──parse.ts──► Block[] ──dom.ts──► contenteditable DOM
+   ▲                      │                        │
+   └───serialize.ts───────┘◄────dom.ts (read)──────┘
+```
+
+**The model is the source of truth; Markdown is what it serializes to.** A save
+is `serializeMarkdown(blocks)`. `tests/editor.test.ts` pins the round trip on
+Japanese fixtures: `parse → serialize` must be a fixed point, or an edit would
+silently rewrite parts of the document the user never touched.
+
+Load-bearing decisions, each of which was a bug first:
+
+- **One contenteditable per block, and every block is a `<div>`.** Not one big
+  editable region (the browser invents and destroys structure in those), and not
+  a `<p>`/`<h2>`/`<li>` per block type: changing a paragraph into a heading or a
+  list item must not swap the DOM node, because a swap blurs the element and the
+  keystrokes that arrive before focus is restored are simply lost. The heading
+  look, the quote bar and the list bullet are all CSS on one `div` (the bullet is
+  a `::before` from `data-marker`, so it cannot be deleted as text).
+- **The DOM is re-rendered only when the model moved behind its back** (undo,
+  toolbar, autoformat, structural edits — signalled by a `nonce`). Typing does
+  *not* re-render: the DOM is already right and the model follows it. Re-rendering
+  on every keystroke rebuilds the text nodes under the caret and drops characters.
+- **IME safety.** `compositionstart` suspends model sync entirely and
+  `compositionend` resumes it; every key handler ignores `isComposing`
+  (and `keyCode === 229`). Enter during a conversion confirms it — it must not
+  split the block.
+- **A trailing space in a contenteditable arrives as U+00A0**, so the autoformat
+  prefixes (`# `, `- `, `1. `, `> `, ```` ``` ````) normalize it before matching.
+- **Inline marks go through `execCommand`** (bold / italic / strike / link): the
+  browser edits the DOM and keeps the caret, then the model is re-read from the
+  DOM. `<b>`/`<i>` are mapped back to `strong`/`em` when reading.
+- **Nothing reaches the DOM as HTML.** `dom.ts` builds nodes one by one and reads
+  them back by walking; a pasted `<script>` can never become live markup. Pasted
+  `text/html` goes through turndown → `parse.ts` → blocks.
+- **Lists are flat in the model** (`{inline, depth, ordered}` per item). Nesting is
+  a rendering and serialization concern; a flat list is what makes Enter, Backspace
+  and Tab tractable, and a bullet list with an ordered list nested inside still
+  round-trips.
+- **Code, tables and raw HTML are edited as text** and shown as a rendered preview
+  otherwise (with a pencil to switch). A WYSIWYG table editor is not worth
+  building, and the preview is what keeps mermaid and highlighted code readable
+  now that this screen is also the reader.
+- **`content_type: "html"` documents (clips) stay read-only** — their markup is
+  not ours to restructure.
+
+Undo is a stack of model snapshots (typing coalesced at 500 ms, structural edits
+pushed immediately), so Ctrl+Z / Ctrl+Shift+Z never fight the browser's own
+history.
+
+Known limits: selection cannot span two blocks (each is its own editable), and
+`[[wikilinks]]` are edited as their own source text rather than as chips.
 
 ## Rendering pipeline
 
@@ -359,8 +419,13 @@ identifiers, and CSS class names stay English.
   inner text (including the `|display`) is used as both label and lookup key,
   whereas SPEC §4 defines the pipe form. Core extraction handles it; the
   browser renderer currently does not split it.
-- **The editor also edits title and tags**, not just the body ("textarea +
-  save" in SPEC §8.3) — a benign extension riding on the PUT contract.
+- **There is no separate editor and no `<textarea>`.** SPEC §8.3 asks for a
+  plain textarea editor on its own route; the UI edits the rendered document in
+  place (block-level contenteditable, autosaved), and `/docs/:key/edit`
+  redirects to the document. Title and tags are edited on the same screen — the
+  title inline, the tags in the sidebar — both riding the existing PUT contract.
+  Code, tables and raw HTML keep a text editing surface, and clipped
+  `content_type: "html"` documents stay read-only.
 - **Graph node coloring** is by *top-level segment of the first tag* with a
   frequency-ordered palette; SPEC just says "colored by tag".
 - **Mermaid via CDN** matches SPEC §8.3 ("Mermaid lazy-loaded") but note it

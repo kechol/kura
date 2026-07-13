@@ -1,11 +1,21 @@
-import { useEffect, useMemo } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
-import { ApiError, deleteDoc, fetchDoc, fetchRelated, type RelatedDoc } from "../api";
+import { ApiError, deleteDoc, fetchDoc, fetchRelated, type RelatedDoc, updateDoc } from "../api";
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
+import { useCurrentDoc } from "../currentdoc";
+import { Editor, type SaveStatus } from "../editor/Editor";
 import { formatDateTime } from "../format";
 import { useAsync, useDocumentTitle } from "../hooks";
 import { forgetDoc, rememberDoc } from "../lastdoc";
+
+const SAVE_LABEL: Record<SaveStatus, string> = {
+  idle: "",
+  dirty: "未保存",
+  saving: "保存中…",
+  saved: "保存しました",
+  error: "保存に失敗しました",
+};
 
 function RelatedList({ docs }: { docs: RelatedDoc[] }) {
   if (docs.length === 0) return <p class="empty">なし</p>;
@@ -35,6 +45,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
     }
   }, [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
+  const [status, setStatus] = useState<SaveStatus>("idle");
   const d = doc.data;
 
   useDocumentTitle(d?.title ?? null);
@@ -45,6 +56,14 @@ export function DocDetail({ docKey }: { docKey: string }) {
   useEffect(() => {
     if (docBucket !== undefined && docBucket !== bucket) setBucket(docBucket);
   }, [docBucket, bucket, setBucket]);
+
+  // Hand the fetched document to the sidebar (tags, same-tag and same-path neighbours)
+  const { publish } = useCurrentDoc();
+  const reload = doc.reload;
+  useEffect(() => {
+    publish(d ?? null, reload);
+    return () => publish(null, reload);
+  }, [d, publish, reload]);
 
   // [[link]] title → key resolution map (reuses the resolved outlinks)
   const resolve = useMemo(() => {
@@ -58,6 +77,21 @@ export function DocDetail({ docKey }: { docKey: string }) {
   if (doc.loading || related.loading) return <p class="empty">読み込み中…</p>;
   if (doc.error) return <p class="error">{doc.error}</p>;
   if (!d) return null;
+
+  const markdown = d.content_type !== "html";
+
+  const renameTo = async (title: string) => {
+    const next = title.trim();
+    if (next === "" || next === d.title) return;
+    setStatus("saving");
+    try {
+      await updateDoc(d.key, { title: next });
+      setStatus("saved");
+      doc.reload();
+    } catch {
+      setStatus("error");
+    }
+  };
 
   const remove = async () => {
     if (!confirm(`「${d.title}」を削除しますか？この操作は取り消せません。`)) return;
@@ -87,17 +121,38 @@ export function DocDetail({ docKey }: { docKey: string }) {
           </nav>
         )}
         <div class="doc-header">
-          <h1>{d.title}</h1>
+          <h1
+            class="doc-title"
+            contentEditable={markdown}
+            onBlur={(e) => void renameTo((e.currentTarget as HTMLElement).textContent ?? "")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.isComposing) {
+                e.preventDefault();
+                (e.currentTarget as HTMLElement).blur();
+              }
+            }}
+          >
+            {d.title}
+          </h1>
           <div class="doc-actions">
-            <Link href={`/docs/${encodeURIComponent(d.key)}/edit`} class="btn">
-              編集
-            </Link>
+            <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
             <button type="button" class="btn btn-danger" onClick={remove}>
               削除
             </button>
           </div>
         </div>
-        <DocContent content={d.content} contentType={d.content_type} resolve={resolve} />
+        {markdown ? (
+          <Editor
+            key={d.key}
+            initial={d.content}
+            resolve={resolve}
+            onStatus={setStatus}
+            onSave={(content) => updateDoc(d.key, { content }).then(() => undefined)}
+          />
+        ) : (
+          // Clipped HTML documents stay read-only: their markup is not ours to restructure
+          <DocContent content={d.content} contentType={d.content_type} resolve={resolve} />
+        )}
       </article>
       <aside class="doc-side">
         <section class="side-box">
@@ -130,20 +185,6 @@ export function DocDetail({ docKey }: { docKey: string }) {
               </div>
             )}
           </dl>
-        </section>
-        <section class="side-box">
-          <h2>タグ</h2>
-          {d.tags.length === 0 ? (
-            <p class="empty">なし</p>
-          ) : (
-            <div class="tag-cell">
-              {d.tags.map((t) => (
-                <Link key={t} class="tag-chip" href={`/docs?tag=${encodeURIComponent(t)}`}>
-                  #{t}
-                </Link>
-              ))}
-            </div>
-          )}
         </section>
         <section class="side-box">
           <h2>バックリンク</h2>

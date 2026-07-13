@@ -6,9 +6,6 @@
 These items were considered during the v1 design so that implementing them
 later does not require breaking changes. None of them are commitments.
 
-- **Rich editor in the browser UI** (CodeMirror). v1 ships a plain
-  `<textarea>` editor on purpose; the PUT `/api/docs/:key` contract already
-  carries everything a richer editor needs.
 - **`kura watch`** — auto-import via filesystem watching. v1 deliberately has
   no implicit ingestion; everything enters through `add` / `import` / `clip` /
   MCP. A watcher would reuse `importDocument` (frontmatter round-trip).

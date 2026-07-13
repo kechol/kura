@@ -143,17 +143,20 @@ Every read command also supports machine-readable output via `--json`.
 kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
-Document viewer (rendered Markdown, backlinks, 2-hop links), editor,
-three-mode search, a sidebar document tree following your document paths,
+Documents are read and edited on the same screen: the rendered Markdown is
+editable in place (Markdown shortcuts, a selection toolbar, autosave), with
+backlinks and 2-hop links alongside, and tags edited in the sidebar. Plus
+three-mode search, a sidebar document tree following your document paths, a
 tag browser, and a d3-force knowledge graph (colored by tag, stale nodes
-dimmed). Pick a bucket in the sidebar and the whole UI — browsing, search,
-trees, graph — stays inside it; the choice is remembered. Opening kura
-resumes the document you were last reading, and the home screen lists your
-reading history. The statistics screen counts what needs tidying (unfiled,
-untagged and orphaned documents, broken links, duplicate-looking tags) and
-names the command that fixes each. `Ctrl + K` opens a search modal that
-searches as you type; `Ctrl + ?` lists every shortcut. The UI text is
-currently Japanese.
+dimmed).
+
+Pick a bucket in the sidebar and the whole UI — browsing, search, trees,
+graph — stays inside it; the choice is remembered. Opening kura resumes the
+document you were last reading, and the home screen lists your reading
+history. The statistics screen counts what needs tidying (unfiled, untagged
+and orphaned documents, broken links, duplicate-looking tags) and names the
+command that fixes each. `Ctrl + K` opens a search modal that searches as you
+type; `Ctrl + ?` lists every shortcut. The UI text is currently Japanese.
 
 ## Configuration
 
