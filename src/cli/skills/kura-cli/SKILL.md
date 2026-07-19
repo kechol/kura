@@ -19,8 +19,9 @@ features degrade gracefully (see "Degraded operation").
 ## Essentials
 
 - Pass `--json` to read commands for machine-readable output
-  (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `add`, `config list`,
-  `bucket ls`, `tag ls`, `link ls`, `link broken`, `alias ls`, `mv suggest`).
+  (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `ask`, `add`,
+  `config list`, `bucket ls`, `tag ls`, `link ls`, `link broken`,
+  `alias ls`, `mv suggest`).
 - Exit codes: `0` ok, `1` error, `2` usage, `3` not found,
   `4` LLM provider unavailable.
 - `<doc>` arguments accept a doc key (`a1b2c3d4` or `#a1b2c3d4`), a full
@@ -47,7 +48,7 @@ features degrade gracefully (see "Degraded operation").
 - **doc key** (`kura_key`) — stable 8-hex identity used by
   `get` / `export` / `import`.
 
-## Three search modes — pick deliberately
+## Searching — pick deliberately
 
 - `kura search "<query>"` — keyword FTS5 BM25. Fast, exact terms, no LLM.
   `--all` = AND search.
@@ -56,12 +57,17 @@ features degrade gracefully (see "Degraded operation").
 - `kura query "<query>"` — hybrid RAG: FTS + vector fused with RRF, then
   reranked; `--expand` adds LLM query expansion. Falls back to keyword-only
   with a warning when no provider is reachable.
+- `kura ask "<question>"` — answers the question from the top hybrid hits
+  with cited sources (`[1]`, `[2]`, …). Falls back to plain search results
+  without a provider. `--json` →
+  `{answer, sources: [{n, key, path, title, bucket}], hits}`.
 
-Start with `search` when the user knows the words; use `query` for questions
-and vague recall. All three accept `--bucket`, `--tag`, `--limit`, `--json`.
+Start with `search` when the user knows the words, `query` for vague recall
+returning documents, `ask` when the user wants an answer rather than a hit
+list. All four accept `--bucket`, `--tag`, `--limit`, `--json`.
 A search result row (`--json`) has
 `{key, title, bucket, tags, score, snippet, source}` — follow up with
-`kura get <key>` to read the document.
+`kura get <key>` to read the document (and to verify `ask` citations).
 
 ## Command reference
 
@@ -139,9 +145,9 @@ kura import /tmp/kura-out
 
 kura guarantees keyword search, CRUD, links and tags with **no LLM provider
 and no vaporetto tokenizer**. Without a provider: `vsearch` exits 4, `query`
-falls back to keyword-only, `clip` still works (`--no-llm` skips LLM
-formatting entirely), and `tag suggest` / `mv suggest` lose their LLM
-signals. Without the vaporetto extension, FTS falls back to a trigram
+falls back to keyword-only, `ask` shows search results instead of an
+answer, `clip` still works (`--no-llm` skips LLM formatting entirely), and
+`tag suggest` / `mv suggest` lose their LLM signals. Without the vaporetto extension, FTS falls back to a trigram
 tokenizer (`kura doctor --fix` re-fetches it).
 
 ## MCP alternative

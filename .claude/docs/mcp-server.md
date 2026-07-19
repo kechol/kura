@@ -54,9 +54,10 @@ deliberately encode the intended workflow (SPEC §9):
   search first and pass a hit's key to `kura_get`; `kura_get`'s description
   explains that `key` is the 8-character ID from search results. The
   cross-references are what steer agents through the two-step flow.
-- **Disambiguation between the two search tools**: `kura_query` points to
+- **Disambiguation between the search tools**: `kura_query` points to
   `kura_search` "when speed or exact matches matter"; `kura_search` points
-  back to `kura_query` "when semantic search is needed".
+  back to `kura_query` "when semantic search is needed"; `kura_ask` points
+  to `kura_query` "when you want raw hits instead of an answer".
 - **Taxonomy reuse**: `kura_list_tags` tells agents to check the existing
   hierarchy *before* tagging, which keeps LLM-assigned tags convergent.
 - Behavioral gotchas live in the description too: `kura_update` states that
@@ -84,7 +85,7 @@ describe them as "doc_key (8 characters), full path, or title". An
 ambiguous title or alias returns a `ConflictError`-flavored error result
 listing candidates with their buckets and paths.
 
-## Tool reference (8 tools)
+## Tool reference (9 tools)
 
 ### `kura_query`
 
@@ -96,6 +97,23 @@ Hybrid search (keyword + semantic + rerank) via `hybridQuery()`
 - **Degrades, never fails**: with no LLM provider it answers keyword-only and
   prefixes `> ⚠ …` warning lines (provider unreachable, embedding backlog,
   rerank failure). Output: hit list Markdown as above.
+
+### `kura_ask`
+
+Answer generation with cited sources via `askQuestion()`
+([search-pipeline.md](search-pipeline.md)) — hybrid search, then the
+generation model answers strictly from the top 5 hits.
+
+- Input: `question` (natural language, Japanese supported) + `filterShape`.
+  Default limit: `config.search.default_limit` (10).
+- Output: warning lines (`> ⚠ …`), the answer with `[1]`-style citations, a
+  `## Sources` list (`- [n] **path/title** (key: \`key\`)` in citation
+  order), and a hint to verify a source via `kura_get`.
+- **Degrades, never fails**: with no provider, a generation failure, or zero
+  hits, the answer is skipped and the standard hit list Markdown is returned
+  instead (same shape as `kura_query`), with the warning explaining why.
+- Answers are cached in `llm_cache` (purpose `ask`) keyed on the question
+  plus each source's content hash.
 
 ### `kura_search`
 
@@ -225,7 +243,7 @@ The server uses the global `~/.kura` database (respecting `KURA_HOME` /
 4. Wrap the body in `try/catch` returning `errorResult(e)`; return via
    `text(markdown)`.
 5. Extend `tests/mcp.test.ts`: update the expected tool-name list (the
-   8-tool assertion will fail until you do — by design) and add a call test
+   9-tool assertion will fail until you do — by design) and add a call test
    through the in-memory client.
 6. Update this document and, if the tool changes user-facing behavior, the
    READMEs.

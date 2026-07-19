@@ -80,7 +80,8 @@ false positive is allowlisted deliberately, not skipped with
 
 Two intentional Japanese surfaces in the product: the browser UI strings
 (`src/client/`) and the LLM prompt templates (clip formatting, tag
-suggestion, query expansion). Keep the surrounding comments English. See
+suggestion, query expansion, answer generation). Keep the surrounding
+comments English. See
 `CLAUDE.md` for the full policy and `terminology.md` for the CJK-test-data
 rule.
 

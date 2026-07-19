@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   document JSON (`PUT /api/docs/:key` diff-syncs the set), or the 別名 row
   in the browser's document sidebar. Useful for orthographic variants
   (サーバー/サーバ) and abbreviations.
+- `kura ask` — answer a question from the knowledge base with cited
+  sources. Runs the hybrid search, then the local generation model answers
+  strictly from the top 5 hits, citing them as `[1]`, `[2]`, …; answers are
+  cached in `llm_cache` and invalidated when a cited document changes. Also
+  exposed as the `kura_ask` MCP tool. Without an LLM provider (or on a
+  generation failure) it degrades to plain search results with a warning.
 - `kura skills` — manage an agent skill that teaches AI coding agents to
   drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`

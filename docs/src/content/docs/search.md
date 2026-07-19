@@ -1,6 +1,6 @@
 ---
 title: Search
-description: The three search modes — keyword, semantic, and hybrid — how they differ, and how each degrades without an LLM provider.
+description: The three search modes — keyword, semantic, and hybrid — plus question answering with cited sources, and how each degrades without an LLM provider.
 ---
 
 kura offers three search commands that trade speed for quality. All
@@ -56,6 +56,21 @@ kura query "SQLite concurrency"
 | only the idea, not the words | `kura vsearch` |
 | you want the best answer, wording aside | `kura query` |
 
+## Asking questions — `kura ask`
+
+When you want an **answer** rather than a list of documents, `kura ask`
+runs the hybrid search and then has the local LLM answer your question
+using only the top hits, citing them as `[1]`, `[2]`, …:
+
+```sh
+kura ask "WAL モードで reader は writer をブロックする？"
+```
+
+The answer is followed by a numbered source list so every claim can be
+traced back to a document. Answers come strictly from your knowledge
+base — if it holds nothing relevant, kura says so instead of guessing.
+Without an LLM provider, `kura ask` simply shows the search results.
+
 ## Embeddings
 
 Semantic and hybrid search read from a vector index that has to be
@@ -76,6 +91,8 @@ a model:
 - **`kura query`** falls back toward keyword results when semantic
   search or reranking is unavailable, so you still get an answer — just
   without the model-driven quality boost.
+- **`kura ask`** falls back to showing the search results instead of a
+  generated answer.
 - **`kura vsearch`** is the exception: it requires an embedding provider
   and does not fall back. With none reachable it exits with code `4`
   (LLM provider unavailable). Use `kura query` when you want a result

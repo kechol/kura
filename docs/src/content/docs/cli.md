@@ -50,6 +50,7 @@ description: Every kura command grouped by task, with global conventions, --json
 | `kura search <q>` | Keyword | FTS5 BM25; always available; < 100 ms |
 | `kura vsearch <q>` | Semantic | Vector KNN over local embeddings |
 | `kura query <q>` | Hybrid | Fuse keyword + vector, then local-LLM rerank |
+| `kura ask <question>` | Answer | Answer the question from the top hits, citing sources as `[1]`, `[2]`, … |
 | `kura embed` | — | (Re)generate embeddings for documents missing them |
 
 See [Search](/kura/search/) for how the modes differ and their

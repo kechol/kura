@@ -46,17 +46,18 @@ Five minutes from zero to a searchable, local knowledge base.
    A document path (`--path`) is always optional — documents without
    one live at the bucket root, which works fine as an inbox.
 
-4. **Search three ways.**
+4. **Search three ways — or just ask.**
 
    ```sh
    kura search "WAL checkpoint"            # keyword (FTS5 BM25, < 100ms)
    kura vsearch "how writes stay readable" # semantic (vector KNN)
    kura query "SQLite concurrency"         # hybrid + rerank (best quality)
+   kura ask "does WAL block readers?"      # answer with cited sources
    ```
 
-   Keyword search always works. `vsearch` and `query` use a local LLM
-   when one is available and degrade gracefully when it isn't — see
-   [Search](/kura/search/).
+   Keyword search always works. The others use a local LLM when one is
+   available and degrade gracefully when it isn't — `ask` falls back to
+   plain search results. See [Search](/kura/search/).
 
 5. **Read, link, and browse.**
 

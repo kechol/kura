@@ -76,7 +76,7 @@ three fit simultaneously on a 32 GB Mac (< 4 GB total, SPEC §6):
 | --- | --- | --- |
 | embedding | `qwen3-embedding:0.6b` | 1024 dimensions (matches `embedding_dimensions` and the `chunks_vec` schema), multilingual with good Japanese recall, small footprint. SPEC names `kun432/cl-nagoya-ruri-large` as a Japanese-accuracy alternative — change dimensions in config alongside it. |
 | reranker | `dengcao/Qwen3-Reranker-0.6B` | Purpose-built yes/no relevance judge; the prompt in `src/core/search/rerank.ts` follows the Qwen3-Reranker instruct format. |
-| generation | `qwen3:4b` | Clip formatting, tag suggestion, and query expansion need a general instruct model; 4B runs comfortably alongside the other two. |
+| generation | `qwen3:4b` | Clip formatting, tag suggestion, query expansion, and answer generation (`kura ask`) need a general instruct model; 4B runs comfortably alongside the other two. |
 
 **Changing models**: edit config (`kura config set llm.models.…`), then run
 `kura embed --all` for embedding changes. `kura doctor` detects a
@@ -105,10 +105,13 @@ Purpose ledger — every purpose, its key composition, and its single writer:
 | `rerank` | `llm.models.reranker` | `query \x00 candidateText` (text pre-truncated to 2,000 chars) | `rerankCandidates()` — `src/core/search/rerank.ts` | relevance score (`1 \| 0 \| 0.5`) |
 | `tag` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 existing-tag list (≤ 200 tags)` | `suggestTagsForText()` — `src/core/clip/format.ts` | up to 5 tag paths (`string[]`) |
 | `clip` | `llm.models.generation` | `page URL \x00 sha256(turndown markdown)` | `formatClip()` — `src/core/clip/format.ts` | `{ title, markdown }` |
+| `ask` | `llm.models.generation` | `question \x00 key1:contentHash1,key2:contentHash2,…` (the cited sources) | `askQuestion()` — `src/core/search/ask.ts` | answer text (`string`, `<think>` blocks stripped) |
 
 Note the `tag` key includes the existing-tag list: growing the taxonomy
 intentionally invalidates old suggestions so the "reuse existing tags"
-instruction sees fresh context.
+instruction sees fresh context. Likewise the `ask` key includes each cited
+source's `content_hash`, so editing a source document invalidates the
+cached answer.
 
 ## Degradation matrix
 
@@ -122,6 +125,7 @@ never silently misbehaves.
 | `kura vsearch` | `requireProvider` | `LLMUnavailableError`, **exit 4**. |
 | `kura query` | `resolveProvider` | Keyword-only results + warning pointing at `kura doctor`; exit 0. |
 | `kura query --expand` | via `hybridQuery` | Expansion skipped with a warning; original query only. |
+| `kura ask` | `resolveProvider` | Answer generation skipped with a warning; the plain hybrid hit list is shown instead (`answer: null`); exit 0. A generation failure degrades the same way. |
 | rerank stage (inside `query`) | via `hybridQuery` | RRF order returned as-is (`usedRerank: false`); also the fallback when the rerank call throws. |
 | `kura clip` | `resolveProvider` | Warning, then mechanical turndown conversion (`llmFormatted: false`) and **no tag suggestions**. `--no-llm` forces the same path. A formatting failure or an LLM answer that dropped the body (< 40 chars) also falls back to turndown. |
 | `kura tag suggest` | `requireProvider` | `LLMUnavailableError`, **exit 4** — suggestions are the whole feature. |
@@ -133,7 +137,7 @@ the network.
 
 ## Intentionally-Japanese prompts
 
-kura is a Japanese-first knowledge tool; exactly **three prompt templates
+kura is a Japanese-first knowledge tool; exactly **four prompt templates
 are deliberately written in Japanese** and tuned for Japanese content
 (policy in `CLAUDE.md`). Each is marked with an
 `// Intentionally Japanese` comment; the surrounding code comments stay
@@ -142,6 +146,7 @@ English:
 1. Query expansion — `PROMPT` in `src/core/search/expand.ts`
 2. Clip formatting — `FORMAT_PROMPT` in `src/core/clip/format.ts`
 3. Tag suggestion — `TAG_PROMPT` in `src/core/clip/format.ts`
+4. Answer generation — `PROMPT` in `src/core/search/ask.ts`
 
 Do not translate these to English "for consistency" — that would degrade
 output quality on Japanese content. The **rerank prompt is intentionally

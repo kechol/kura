@@ -55,7 +55,7 @@ There is no single global default; each command class behaves differently:
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
 | `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias` (title resolution) | all buckets, ambiguity is an error |
 | `mv --prefix` (bulk path move) | `general.default_bucket` |
-| `ls`, `search`, `vsearch`, `query`, `export`, `link broken` (filters) | all buckets |
+| `ls`, `search`, `vsearch`, `query`, `ask`, `export`, `link broken` (filters) | all buckets |
 
 ### Exit codes
 
@@ -73,17 +73,17 @@ dispatcher does the translation.
 
 Exception classes live in `src/core/errors.ts` and are re-exported through
 `src/cli/args.ts`. Only `vsearch`, `embed`, and `tag suggest` call
-`requireProvider` and can exit 4; `query`, `clip`, and `tag audit` use
-`resolveProvider` and degrade with warnings instead (SPEC §5.1 degraded
+`requireProvider` and can exit 4; `query`, `ask`, `clip`, and `tag audit`
+use `resolveProvider` and degrade with warnings instead (SPEC §5.1 degraded
 mode).
 
 ### `--json`
 
 Accepted by every command (parser-level), but only read commands and the
 bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
-`export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `search`,
-`vsearch`, `query`. Write commands like `rm`, `mv`, `edit` silently ignore
-it. JSON goes to stdout; warnings and progress always go to stderr, so
+`export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `alias ls`,
+`search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
+silently ignore it. JSON goes to stdout; warnings and progress always go to stderr, so
 `--json` output stays parseable when piped.
 
 ### TTY and ANSI rendering
@@ -98,7 +98,8 @@ characters as width 2). Rules:
 - `kura get` renders pretty output when stdout is a TTY (or `--pretty` is
   forced) and emits the raw body when piped (or `--raw`).
 - Search results, `ls`, `status`, etc. print plain line-oriented text
-  regardless of TTY; only `get` uses the renderer.
+  regardless of TTY; only `get` and `ask` (the generated answer) use the
+  renderer.
 - Interactive confirmations (`rm`, `clip`, `tag suggest/audit --apply`)
   require both stdin and stdout to be TTYs; see the individual commands for
   their non-TTY behavior.
@@ -420,8 +421,8 @@ positionals joined with spaces; an empty query is a usage error.
 kura search "<query>" [--bucket b] [--tag t] [--all] [--limit 20] [--json]
 ```
 
-Pure FTS5 BM25 (`src/core/search/keyword.ts`), no LLM. Title/content/tags
-are weighted 5.0/1.0/3.0. With vaporetto, the input goes through
+Pure FTS5 BM25 (`src/core/search/keyword.ts`), no LLM. Title/content/tags/
+aliases are weighted 5.0/1.0/3.0/5.0. With vaporetto, the input goes through
 `vaporetto_or_query()` (or `vaporetto_and_query()` with `--all`); with
 trigram, each whitespace-separated term is phrase-quoted and joined with
 OR/AND. Trigram cannot match terms shorter than 3 chars: when such a term
@@ -462,6 +463,34 @@ of the top `rerank_top_k` → position-weighted blend (RRF ranks 1–3: 75/25,
 alone; failed vector search, expansion, or rerank each degrade independently
 with a stderr `warning:` line. The auto-backfill rule from `vsearch` also
 applies here.
+
+### `kura ask`
+
+```
+kura ask "<question>" [--bucket b] [--tag t] [--expand] [--limit 10] [--json]
+```
+
+Answer generation on top of the hybrid pipeline (`askQuestion` in
+`src/core/search/ask.ts`, [search-pipeline.md](search-pipeline.md)): the
+question runs through `hybridQuery` (same options as `kura query`, including
+`--expand`), the top 5 hits become numbered sources (first 1,600 body chars
+each), and the generation model answers strictly from them, citing `[1]`,
+`[2]`, … Answers are cached in `llm_cache` (purpose `ask`) keyed on the
+question plus each source's `content_hash`, so editing a source invalidates
+the cache. The question is all positionals joined with spaces; an empty
+question is a usage error (exit 2).
+
+Output does **not** use the shared search format: on a TTY the answer is
+ANSI-rendered Markdown followed by a `sources:` list of
+`[n] #key full/path/Title [bucket]` lines; piped, the raw answer text.
+`--json` →
+`{answer, sources: [{n, key, path, title, bucket}], hits: [{key, title, bucket}]}`
+where `answer` is `null` in degraded mode and `hits` are the hybrid hits
+beyond the cited sources.
+
+`ask` **never exits 4**: with no provider, a generation failure, or zero
+hits, it prints a stderr `warning:` and falls back to the plain `kura query`
+hit list (exit 0). All hybrid warnings pass through unchanged.
 
 ### `kura embed`
 

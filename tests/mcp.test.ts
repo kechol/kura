@@ -45,11 +45,12 @@ afterEach(async () => {
 });
 
 describe("kura mcp server", () => {
-  test("exposes 8 tools with guidance in descriptions", async () => {
+  test("exposes 9 tools with guidance in descriptions", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "kura_add",
+      "kura_ask",
       "kura_get",
       "kura_list_tags",
       "kura_query",
@@ -79,6 +80,17 @@ describe("kura mcp server", () => {
       access_count: number;
     };
     expect(row.access_count).toBe(1);
+  });
+
+  test("kura_ask degrades to search results when no provider is available", async () => {
+    const result = await client.callTool({
+      name: "kura_ask",
+      arguments: { question: "トランザクションの分離レベル" },
+    });
+    const md = contentText(result);
+    expect(md).toContain("⚠");
+    expect(md).toContain("トランザクション設計");
+    expect(md).not.toContain("## Sources");
   });
 
   test("kura_query responds even in degraded mode (with warnings)", async () => {

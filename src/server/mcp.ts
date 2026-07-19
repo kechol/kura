@@ -6,6 +6,7 @@ import type { FtsTokenizer } from "../core/db";
 import { createDocument, resolveDoc, touchAccess, updateDocument } from "../core/documents";
 import { backlinks, outlinks, twoHopLinks } from "../core/links";
 import { KURA_VERSION } from "../core/paths";
+import { askQuestion } from "../core/search/ask";
 import { hybridQuery } from "../core/search/hybrid";
 import { keywordSearch } from "../core/search/keyword";
 import type { SearchHit } from "../core/search/types";
@@ -62,7 +63,7 @@ function sliceLines(content: string, lines?: string): string {
   return all.slice(Math.max(0, start - 1), end).join("\n");
 }
 
-/** kura MCP server (docs: mcp-server.md). Exposes 8 tools; results are returned as Markdown strings */
+/** kura MCP server (docs: mcp-server.md). Exposes 9 tools; results are returned as Markdown strings */
 export function createMcpServer(deps: McpDeps): McpServer {
   const { db, tokenizer, config } = deps;
   const server = new McpServer({ name: "kura", version: KURA_VERSION });
@@ -99,6 +100,44 @@ export function createMcpServer(deps: McpDeps): McpServer {
           limit: limit ?? config.search.default_limit,
         });
         return text(hitsToMarkdown(outcome.hits, outcome.warnings));
+      } catch (e) {
+        return errorResult(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "kura_ask",
+    {
+      description:
+        "Answer a question from the knowledge base with cited sources. Runs a hybrid " +
+        "search, then generates an answer strictly from the top hits, citing them as " +
+        "[1], [2], ... Falls back to plain search results when no LLM provider is " +
+        "available. Use kura_query when you want raw hits instead of an answer.",
+      inputSchema: {
+        question: z.string().describe("Question in natural language (Japanese supported)"),
+        ...filterShape,
+      },
+    },
+    async ({ question, bucket, tag, limit }) => {
+      try {
+        const outcome = await askQuestion(db, tokenizer, config, question, {
+          bucket,
+          tag,
+          limit: limit ?? config.search.default_limit,
+        });
+        const lines: string[] = [];
+        for (const w of outcome.warnings) lines.push(`> ⚠ ${w}`);
+        if (outcome.answer === null) {
+          lines.push(hitsToMarkdown(outcome.hits));
+          return text(lines.join("\n"));
+        }
+        lines.push(outcome.answer, "", "## Sources");
+        outcome.sources.forEach((s, i) => {
+          lines.push(`- [${i + 1}] **${joinDocPath(s.path, s.title)}** (key: \`${s.key}\`)`);
+        });
+        lines.push("", "Pass a key to `kura_get` to verify a source.");
+        return text(lines.join("\n"));
       } catch (e) {
         return errorResult(e);
       }

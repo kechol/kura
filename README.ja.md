@@ -67,10 +67,11 @@ kura add notes/sqlite-wal.md --tags tech/db/sqlite
 echo "# メモ本文" | kura add - --title "今日のメモ"
 kura clip https://example.com/article        # Web ページを整形して取り込み（clips/ に保存）
 
-# 検索（3 モード）
+# 検索（3 モード）と質問
 kura search "WAL チェックポイント"           # キーワード（FTS5 BM25、< 100ms）
 kura vsearch "書き込み中も読める仕組み"      # セマンティック（KNN）
 kura query "SQLite の並行性"                 # ハイブリッド + リランク（最高精度）
+kura ask "WAL は reader をブロックする？"    # 出典付きで回答（[1], [2] … で引用）
 
 # 閲覧・編集
 kura get "今日のメモ"          # doc_key / #key / フルパス / 一意なタイトル / 別名で指定
@@ -108,7 +109,7 @@ kura mcp --print-config             # .mcp.json 用スニペット
 kura skills install                 # エージェントスキル（CLI ガイド）→ ~/.agents/skills
 ```
 
-MCP ツール: `kura_query`（ハイブリッド検索）, `kura_search`, `kura_get`, `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`
+MCP ツール: `kura_query`（ハイブリッド検索）, `kura_ask`（出典付き回答）, `kura_search`, `kura_get`, `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`
 
 `kura_add` / `kura_update` は任意の `path` / `aliases` パラメータを受け付け、`kura_get` はフルパス（`clips/タイトル`）や一意な別名でも解決できます。
 

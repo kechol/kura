@@ -3,8 +3,9 @@
 > Covers SPEC §5. Key sources: `src/core/search/keyword.ts`,
 > `src/core/search/vector.ts`, `src/core/search/hybrid.ts`,
 > `src/core/search/rerank.ts`, `src/core/search/expand.ts`,
-> `src/core/chunker.ts`. Tests: `tests/search.test.ts`,
-> `tests/regression-search.test.ts`, `tests/chunker.test.ts`.
+> `src/core/search/ask.ts`, `src/core/chunker.ts`. Tests:
+> `tests/search.test.ts`, `tests/regression-search.test.ts`,
+> `tests/chunker.test.ts`, `tests/ask.test.ts`.
 
 ## Search modes (SPEC §5.1)
 
@@ -13,11 +14,14 @@
 | `kura search` | FTS5 BM25 only | < 100 ms | none | Always works. Trigram DBs get a LIKE fallback for sub-3-char terms (see below). A vaporetto DB whose extension fails to load errors with a `kura doctor` hint. |
 | `kura vsearch` | Vector KNN only | < 500 ms (incl. query embedding) | embedding | No degraded mode by design: `requireProvider` throws `LLMUnavailableError` (exit 4). Degradation is `kura query`'s job. |
 | `kura query` | Hybrid + rerank | < 5 s | embedding + reranker (both optional) | Never fails hard. Missing provider → keyword-only + warning; vector or rerank failure → warning and continue. |
+| `kura ask` | Hybrid + answer generation | LLM-bound | generation (optional) | Never fails hard. Missing provider or generation failure → `answer: null` + warning; callers show the plain hybrid hits instead (see below). |
 
-The same three modes back the REST endpoint (`/api/search?mode=`) and the
-MCP tools (`kura_search`, `kura_query`) — see [http-api.md](http-api.md) and
-[mcp-server.md](mcp-server.md). All handlers reuse the `src/core/search/`
-functions; nothing is reimplemented server-side.
+The same three search modes back the REST endpoint (`/api/search?mode=`) and
+the MCP tools (`kura_search`, `kura_query`) — see [http-api.md](http-api.md)
+and [mcp-server.md](mcp-server.md). Answer generation is exposed as the
+`kura_ask` MCP tool but has **no REST endpoint** (the browser UI does not
+surface it). All handlers reuse the `src/core/search/` functions; nothing is
+reimplemented server-side.
 
 ## Hybrid pipeline (`kura query`)
 
@@ -128,6 +132,49 @@ Every LLM dependency degrades with a warning on stderr and exit 0:
 
 `tests/search.test.ts` and `tests/regression-search.test.ts` pin all of
 these paths with a mock provider / `setProviderForTests(null)`.
+
+## Answer generation (`kura ask`, not in SPEC)
+
+`askQuestion()` (`src/core/search/ask.ts`) layers one generation step on top
+of the hybrid pipeline and returns an `AskOutcome`
+(`{ answer, sources, hits, warnings }`):
+
+```
+question
+  │
+  ├─ hybridQuery() ·········· full pipeline above, incl. --expand / degraded paths
+  │
+  ├─ top MAX_SOURCES (5) hits → numbered sources ····· "[n] # full/path/Title" +
+  │     first MAX_SOURCE_CHARS (1,600) body characters each
+  │
+  └─ generation model, temperature 0.2 ·············· llm_cache('ask')
+        answer strictly from the sources, cited as [1], [2], …
+```
+
+- **Prompt**: Japanese — an intentional Japanese product surface like the
+  clip / tag / expand prompts ([llm-providers.md](llm-providers.md)). It
+  instructs the model to answer only from the numbered 資料 blocks, to cite
+  them as `[n]`, and to say the knowledge base has no answer rather than
+  guess. Qwen3-style `<think>` blocks are stripped from the answer.
+- **Sources vs hits**: `sources` are the up-to-5 documents shown to the
+  model, in citation order (`[1]` = `sources[0]`); `hits` are the remaining
+  hybrid hits beyond them. In degraded mode `sources` is empty and `hits`
+  carries the full hybrid result.
+- **Caching**: read-through `llm_cache` under purpose `ask`, keyed by
+  `question \x00 key1:contentHash1,key2:contentHash2,…` and the generation
+  model — editing any source document changes its `content_hash` and
+  invalidates the cached answer.
+- **Degraded operation** (invariants R4, exit 0 in all cases):
+  - zero hybrid hits → `answer: null`, no LLM call;
+  - no provider → `answer: null` plus a "cannot generate an answer without
+    an LLM provider; showing search results only" warning;
+  - generation throws → `answer: null` plus an "answer generation failed …"
+    warning.
+  The CLI then prints the hits exactly like `kura query`; the MCP tool
+  returns the standard hits list.
+
+`tests/ask.test.ts` pins the citation flow, cache invalidation by content
+hash, and every degraded path with a mock provider.
 
 ## FTS query conventions (SPEC §5.4)
 
@@ -288,6 +335,9 @@ backlog is large.
    confidence "when available"; the implementation never requests logprobs
    and scores strictly 1 / 0 / 0.5 from the yes/no answer text (see
    [llm-providers.md](llm-providers.md)).
+5. **`kura ask` is an addition** — SPEC §5 defines retrieval only; the
+   answer-generation stage (`askQuestion`, the `ask` cache purpose, the
+   `kura_ask` MCP tool) is implementation-defined (see above).
 
 ## Related docs
 

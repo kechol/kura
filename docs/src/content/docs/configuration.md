@@ -75,7 +75,7 @@ together on a 32 GB Mac:
 | `embedding` | Vectors for semantic and hybrid search |
 | `embedding_dimensions` | Vector width; must match the embedding model |
 | `reranker` | Reranking in `kura query` |
-| `generation` | `kura clip` cleanup, tag suggestion, query expansion |
+| `generation` | `kura clip` cleanup, tag suggestion, query expansion, `kura ask` answers |
 
 :::caution
 After changing the embedding model or its dimensions, run

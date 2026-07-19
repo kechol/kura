@@ -93,6 +93,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Hybrid RAG search (FTS + vector + rerank)",
     load: () => import("./commands/query"),
   },
+  ask: {
+    summary: "Answer a question from the knowledge base (cited sources)",
+    load: () => import("./commands/ask"),
+  },
   embed: {
     summary: "Generate embeddings for pending chunks",
     load: () => import("./commands/embed"),

@@ -88,10 +88,11 @@ kura add notes/sqlite-wal.md --tags tech/db/sqlite
 echo "# Note body" | kura add - --title "Today's note"
 kura clip https://example.com/article        # capture a web page, cleaned up by the LLM (filed under clips/)
 
-# Search (three modes)
+# Search (three modes) — or ask
 kura search "WAL checkpoint"          # keyword (FTS5 BM25, < 100ms)
 kura vsearch "how writes stay readable"   # semantic (KNN)
 kura query "SQLite concurrency"       # hybrid + rerank (best quality)
+kura ask "does WAL block readers?"    # answer with cited sources ([1], [2], ...)
 
 # View & edit
 kura get "Today's note"        # by doc key, #key, full path, unique title, or alias
@@ -133,8 +134,9 @@ kura mcp --print-config             # snippet for .mcp.json
 kura skills install                 # agent skill (CLI guide) → ~/.agents/skills
 ```
 
-MCP tools: `kura_query` (hybrid search), `kura_search`, `kura_get`,
-`kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`.
+MCP tools: `kura_query` (hybrid search), `kura_ask` (answers with cited
+sources), `kura_search`, `kura_get`, `kura_add`, `kura_update`,
+`kura_list_tags`, `kura_related`, `kura_status`.
 `kura_add` / `kura_update` accept an optional document `path` and `aliases`,
 and `kura_get` also resolves a full path (`clips/Title`) or a unique alias.
 
