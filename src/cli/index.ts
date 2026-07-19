@@ -89,6 +89,10 @@ const commands: Record<string, CommandDef> = {
     summary: "List documents created or updated since a point in time",
     load: () => import("./commands/changes"),
   },
+  audit: {
+    summary: "Audit the knowledge base for contradictions (requires an LLM)",
+    load: () => import("./commands/audit"),
+  },
   search: {
     summary: "Fast keyword search (FTS5 BM25)",
     load: () => import("./commands/search"),

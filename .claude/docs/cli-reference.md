@@ -55,7 +55,7 @@ There is no single global default; each command class behaves differently:
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
 | `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias`, `history` (title resolution) | all buckets, ambiguity is an error |
 | `mv --prefix` (bulk path move) | `general.default_bucket` |
-| `ls`, `search`, `vsearch`, `query`, `ask`, `changes`, `export`, `link broken` (filters) | all buckets |
+| `ls`, `search`, `vsearch`, `query`, `ask`, `changes`, `audit`, `export`, `link broken` (filters) | all buckets |
 
 ### Exit codes
 
@@ -72,7 +72,7 @@ dispatcher does the translation.
 | 4 | `NO_LLM` | `LLMUnavailableError` | thrown by `requireProvider` (`src/core/llm/provider.ts`); dispatcher appends a "Run 'kura doctor'" hint |
 
 Exception classes live in `src/core/errors.ts` and are re-exported through
-`src/cli/args.ts`. Only `vsearch`, `embed`, and `tag suggest` call
+`src/cli/args.ts`. Only `vsearch`, `embed`, `tag suggest`, and `audit` call
 `requireProvider` and can exit 4; `query`, `ask`, `clip`, and `tag audit`
 use `resolveProvider` and degrade with warnings instead (SPEC §5.1 degraded
 mode).
@@ -82,7 +82,7 @@ mode).
 Accepted by every command (parser-level), but only read commands and the
 bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
 `export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `alias ls`,
-`history`, `changes`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
+`history`, `changes`, `audit`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
 silently ignore it. JSON goes to stdout; warnings and progress always go to stderr, so
 `--json` output stays parseable when piped.
 
@@ -563,7 +563,8 @@ slashes trimmed/collapsed — `src/core/wiki.ts::normalizeTagPath`).
   only prints suggestions; with `--apply` each document asks `[y/N]` on a
   TTY and **applies without asking on a non-TTY** (the confirm helper's
   non-TTY default is "yes"). Applied tags get `source='auto'`.
-- `audit`: works without a provider (edit-distance only, with a warning);
+- `audit` (tag audit — distinct from the document-level `kura audit`
+  below): works without a provider (edit-distance only, with a warning);
   with one, tag-name embeddings add similarity-based merge candidates.
   Reports singular/plural variants and merge candidates
   (`merge: a -> b (reason)`) plus oversized tags (attached to >30% of all
@@ -679,6 +680,50 @@ updated  #b2c3d4e5  検索設計  [main]  2026-07-19 04:01:02  (content, renamed
 updated_at, content_changed, renamed, moved, previous_title,
 previous_path}]}` (`since` is the normalized SQLite datetime actually
 used).
+
+### `kura audit`
+
+```
+kura audit [--bucket b] [--limit 10] [--json]
+```
+
+Contradiction audit (`src/cli/commands/audit.ts`, core `src/core/audit.ts`):
+finds semantically close passages from different documents and asks the
+generation model whether their statements contradict each other.
+**LLM-required** — it calls `requireProvider` and exits 4 without a
+reachable provider (the documented degraded path, like `tag suggest`).
+`ensureEmbeddings` runs first (small backlogs backfill, large ones warn).
+
+Candidate-pair pipeline (`candidatePairs`):
+
+1. Chunks of the `MAX_AUDIT_DOCS = 50` most recently updated documents
+   (bucket-scoped with `--bucket`) that have embeddings.
+2. Each chunk's stored vector is KNN-matched against `chunks_vec`
+   (`k = 6`); cross-document pairs are deduplicated (unordered, keeping the
+   smallest distance).
+3. Pairs sort by distance and are capped at `--limit` (default 10).
+
+Each pair is judged with an **intentionally Japanese prompt** (`PROMPT` in
+`src/core/audit.ts` — topic overlap or differing detail is explicitly not a
+contradiction) via the shared `parseYesNo`; only a hard "yes" flags the
+pair. Verdicts are cached in `llm_cache` (purpose `audit`) keyed on the
+sorted pair of excerpt SHA256 hashes (1200 chars per side), so re-runs are
+free until either side's text changes. `similarity = 1 / (1 + L2 distance)`,
+the same scale as vector-search scores.
+
+Plain output lists only contradictory pairs:
+
+```
+⚠ #a1b2c3d4 猫と牛乳（推奨） <-> #b2c3d4e5 猫と牛乳（注意）  (similarity 0.873)
+    A: 猫に牛乳を与えてよい。毎日あげよう。
+    B: 猫に牛乳は禁物。お腹を壊すことがある。
+1 contradiction(s) among 3 pair(s)
+```
+
+or `no contradictions found (N pair(s) examined)`. `--json` →
+`{examined_pairs, contradictions: [{a: {key, title, path, bucket, excerpt},
+b: {…}, similarity}]}` (excerpts display-trimmed to 200 chars). Bad flags
+are a usage error (exit 2). There is no MCP counterpart yet.
 
 ### `kura bucket`
 

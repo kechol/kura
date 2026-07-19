@@ -21,7 +21,7 @@ features degrade gracefully (see "Degraded operation").
 - Pass `--json` to read commands for machine-readable output
   (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `ask`, `add`,
   `config list`, `bucket ls`, `tag ls`, `link ls`, `link broken`,
-  `alias ls`, `history`, `changes`, `mv suggest`).
+  `alias ls`, `history`, `changes`, `audit`, `mv suggest`).
 - Starting a session? `kura changes --since 7d --json` lists what was
   created or updated since you last looked (renames and moves included;
   deletions are not tracked).
@@ -122,9 +122,13 @@ Maintenance:
 ```sh
 kura doctor [--fix]        # diagnose / repair extensions, FTS, links, embeddings
 kura embed [--all]         # generate (or regenerate) chunk embeddings
+kura audit [--bucket b] [--limit n] [--json]  # LLM contradiction check between close passages (exit 4 without a provider; verdicts cached)
 kura config list | get <key> | set <key> <value>
 kura init [--no-download]  # first-time setup
 ```
+
+`kura audit --json` → `{examined_pairs, contradictions: [{a, b, similarity}]}`
+where `a` / `b` are `{key, title, path, bucket, excerpt}`.
 
 ## Recipes
 
@@ -153,10 +157,10 @@ kura import /tmp/kura-out
 ## Degraded operation
 
 kura guarantees keyword search, CRUD, links and tags with **no LLM provider
-and no vaporetto tokenizer**. Without a provider: `vsearch` exits 4, `query`
-falls back to keyword-only, `ask` shows search results instead of an
-answer, `clip` still works (`--no-llm` skips LLM formatting entirely), and
-`tag suggest` / `mv suggest` lose their LLM signals. Without the vaporetto extension, FTS falls back to a trigram
+and no vaporetto tokenizer**. Without a provider: `vsearch` and `audit`
+exit 4, `query` falls back to keyword-only, `ask` shows search results
+instead of an answer, `clip` still works (`--no-llm` skips LLM formatting
+entirely), and `tag suggest` / `mv suggest` lose their LLM signals. Without the vaporetto extension, FTS falls back to a trigram
 tokenizer (`kura doctor --fix` re-fetches it).
 
 ## MCP alternative

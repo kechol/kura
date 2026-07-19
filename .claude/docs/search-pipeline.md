@@ -284,7 +284,7 @@ they only write chunks with `embedded_at = NULL`. Embeddings appear via
   ≤ `AUTO_BACKFILL_LIMIT = 100` → silent full backfill. Pending > 100 →
   return a warning ("N chunk(s) are not embedded yet … run 'kura embed'")
   and search anyway with the embeddings that exist. Callers: the `vsearch`
-  command, `hybridQuery`, and `/api/search?mode=vector`.
+  command, `hybridQuery`, `/api/search?mode=vector`, and `kura audit`.
 - **Dimension mismatch**: if the provider returns vectors whose length
   differs from `llm.models.embedding_dimensions`, the batch transaction
   aborts with an error pointing at `kura embed --all`. The `chunks_vec`
@@ -316,6 +316,11 @@ accepts as a float32 vector for both `INSERT` and `MATCH`.
 The `vsearch` command itself uses `requireProvider` (exit 4 without a
 provider) and prints the `ensureEmbeddings` warning to stderr when the
 backlog is large.
+
+Search is not the only KNN consumer: `kura audit` reuses `chunks_vec` to
+pair each recent chunk's stored vector with its nearest cross-document
+neighbours as contradiction candidates (`src/core/audit.ts`; see
+[cli-reference.md](cli-reference.md) for the pipeline).
 
 ## Deviations from SPEC
 

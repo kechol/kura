@@ -115,6 +115,7 @@ kura tag audit                 # merge candidates for similar tags, oversized-ta
 # Maintenance
 kura status                    # stats (embedding coverage, stale candidates, ...)
 kura ls --stale                # long-untouched, rarely-read documents
+kura audit                     # LLM contradiction check between similar passages
 kura doctor --fix              # index repair, link re-resolution, and more
 kura export --dir backup/      # write Markdown with frontmatter (paths become subdirectories)
 kura import backup/            # round-trips via kura_key (subdirectories become paths)

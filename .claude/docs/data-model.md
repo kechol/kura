@@ -190,7 +190,7 @@ The unit of embedding, rebuilt from the body by `rebuildChunks`
 ### `llm_cache`
 
 Keyed by `cache_key = sha256(purpose + model + input)`; `purpose` is one of
-`'expand' | 'rerank' | 'tag' | 'clip' | 'path' | 'ask'`; `value` is JSON. Managed
+`'expand' | 'rerank' | 'tag' | 'clip' | 'path' | 'ask' | 'audit'`; `value` is JSON. Managed
 by `src/core/llm/cache.ts`.
 
 ### `meta`

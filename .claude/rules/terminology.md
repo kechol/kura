@@ -51,7 +51,8 @@ Japanese by design:
 
 - Browser UI strings under `src/client/`.
 - LLM prompt templates (clip formatting, tag suggestion, query
-  expansion, answer generation) — tuned for Japanese content.
+  expansion, answer generation, contradiction audit) — tuned for
+  Japanese content.
 
 Everything else user-facing (CLI output, MCP descriptions, errors) is
 English (`workflow.md` R7). Keep the comments around the Japanese

@@ -38,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   accepts relative times (`30m` / `24h` / `7d` / `2w`) or a date. Also
   exposed as the `kura_changes` MCP tool, meant to be called at session
   start. Deletions are not tracked. Works fully without an LLM provider.
+- `kura audit` — contradiction detection. Semantically close passages from
+  the most recently updated documents are paired via embedding KNN, and
+  the local generation model judges each pair (yes/no) for contradictory
+  statements; verdicts are cached until either side's text changes.
+  Requires a reachable LLM provider (exit 4 otherwise).
 - `kura skills` — manage an agent skill that teaches AI coding agents to
   drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`

@@ -106,12 +106,15 @@ Purpose ledger — every purpose, its key composition, and its single writer:
 | `tag` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 existing-tag list (≤ 200 tags)` | `suggestTagsForText()` — `src/core/clip/format.ts` | up to 5 tag paths (`string[]`) |
 | `clip` | `llm.models.generation` | `page URL \x00 sha256(turndown markdown)` | `formatClip()` — `src/core/clip/format.ts` | `{ title, markdown }` |
 | `ask` | `llm.models.generation` | `question \x00 key1:contentHash1,key2:contentHash2,…` (the cited sources) | `askQuestion()` — `src/core/search/ask.ts` | answer text (`string`, `<think>` blocks stripped) |
+| `audit` | `llm.models.generation` | sorted pair of excerpt SHA256 hashes, `:`-joined (1,200 chars per side) | `findContradictions()` — `src/core/audit.ts` | contradiction verdict (`1 \| 0 \| 0.5` via `parseYesNo`) |
 
 Note the `tag` key includes the existing-tag list: growing the taxonomy
 intentionally invalidates old suggestions so the "reuse existing tags"
 instruction sees fresh context. Likewise the `ask` key includes each cited
 source's `content_hash`, so editing a source document invalidates the
-cached answer.
+cached answer, and the `audit` key hashes both excerpts — a verdict stays
+cached until either side's text changes (the sort makes it
+order-independent).
 
 ## Degradation matrix
 
@@ -130,6 +133,7 @@ never silently misbehaves.
 | `kura clip` | `resolveProvider` | Warning, then mechanical turndown conversion (`llmFormatted: false`) and **no tag suggestions**. `--no-llm` forces the same path. A formatting failure or an LLM answer that dropped the body (< 40 chars) also falls back to turndown. |
 | `kura tag suggest` | `requireProvider` | `LLMUnavailableError`, **exit 4** — suggestions are the whole feature. |
 | `kura tag audit` | `resolveProvider` | Warning "auditing with edit distance only"; embedding-similarity merge candidates are skipped (`usedEmbeddings: false`), edit-distance and singular/plural detection still run (`src/core/gardening.ts`). |
+| `kura audit` | `requireProvider` | `LLMUnavailableError`, **exit 4** — both the candidate embeddings and the judge need a provider. |
 
 `kura embed` also uses `requireProvider` (exit 4), but only after checking
 that pending chunks exist — with nothing to do it exits 0 without touching
@@ -137,7 +141,7 @@ the network.
 
 ## Intentionally-Japanese prompts
 
-kura is a Japanese-first knowledge tool; exactly **four prompt templates
+kura is a Japanese-first knowledge tool; exactly **five prompt templates
 are deliberately written in Japanese** and tuned for Japanese content
 (policy in `CLAUDE.md`). Each is marked with an
 `// Intentionally Japanese` comment; the surrounding code comments stay
@@ -147,6 +151,7 @@ English:
 2. Clip formatting — `FORMAT_PROMPT` in `src/core/clip/format.ts`
 3. Tag suggestion — `TAG_PROMPT` in `src/core/clip/format.ts`
 4. Answer generation — `PROMPT` in `src/core/search/ask.ts`
+5. Contradiction audit — `PROMPT` in `src/core/audit.ts`
 
 Do not translate these to English "for consistency" — that would degrade
 output quality on Japanese content. The **rerank prompt is intentionally

@@ -72,6 +72,7 @@ degraded behavior without an LLM provider.
 | `kura link ls <ref>` | Outlinks, backlinks, and 2-hop links for a document |
 | `kura link broken` | List unresolved wiki links |
 | `kura alias ls\|add\|rm <doc> <alias>…` | Manage aliases (alternate titles): `[[alias]]` links resolve to the document and search matches it |
+| `kura audit` | Flag contradictions between similar passages in recent documents (needs an LLM; verdicts are cached) |
 
 ## Servers & agent integration
 
