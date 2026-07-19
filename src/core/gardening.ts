@@ -187,28 +187,3 @@ export async function auditTags(
     usedEmbeddings,
   };
 }
-
-export interface UntaggedDoc {
-  id: number;
-  key: string;
-  title: string;
-  bucket: string;
-  content: string;
-}
-
-/** List untagged documents, with their bodies (for tag suggest --untagged) */
-export function untaggedDocuments(db: Database, bucket?: string): UntaggedDoc[] {
-  const params: string[] = [];
-  let where = "NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)";
-  if (bucket) {
-    where += " AND b.name = ?";
-    params.push(bucket);
-  }
-  return db
-    .prepare(
-      `SELECT d.id, d.doc_key AS key, d.title, b.name AS bucket, d.content
-       FROM documents d JOIN buckets b ON b.id = d.bucket_id
-       WHERE ${where} ORDER BY d.updated_at DESC`,
-    )
-    .all(...params) as UntaggedDoc[];
-}

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { defaultConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
 import { createDocument } from "../src/core/documents";
-import { listUnfiledDocuments, suggestedPath, suggestPathForDocument } from "../src/core/filing";
+import { suggestedPath, suggestPathForDocument } from "../src/core/filing";
 import type { LLMProvider } from "../src/core/llm/provider";
 
 let db: Database;
@@ -27,12 +27,6 @@ const mockProvider: LLMProvider = {
 };
 
 describe("kura mv suggest core (docs: cli-reference.md)", () => {
-  test("listUnfiledDocuments returns only bucket-root documents", () => {
-    createDocument(db, { title: "整理済み", content: "x", bucket: "main", path: "db" });
-    const unfiled = createDocument(db, { title: "未整理", content: "x", bucket: "main" });
-    expect(listUnfiledDocuments(db, "main").map((d) => d.key)).toEqual([unfiled.key]);
-  });
-
   test("link and tag signals vote for the neighbor's path (no provider — degraded)", async () => {
     createDocument(db, {
       title: "SQLiteの内部構造",

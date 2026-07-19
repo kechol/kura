@@ -45,7 +45,8 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/cli/args.ts` | `util.parseArgs` wrapper, `EXIT` constants, shared option helpers |
 | `src/cli/render.ts` | Markdown → ANSI renderer for TTY output (raw text when piped) |
 | `src/cli/searchOutput.ts` | Shared search-result printing (`--json` / human table) |
-| `src/cli/commands/*.ts` | One file per subcommand exporting `summary` / `usage` / `run` |
+| `src/cli/prompt.ts` | Shared interactive-prompt helpers (`ask`, `confirm`, `isInteractive`) used by `triage` / `audit` / `rm` / `clip` |
+| `src/cli/commands/*.ts` | One file per subcommand exporting `summary` / `usage` / `run` (incl. `triage.ts`, the restructured `audit.ts`) |
 | `src/core/paths.ts` | `KURA_HOME` / `KURA_DB` / lib-dir / config-path resolution, version constant |
 | `src/core/config.ts` | `config.toml` defaults, load/merge/save |
 | `src/core/db.ts` | `setCustomSQLite`, extension loading, migration runner, `meta` accessors, connection singleton |
@@ -64,9 +65,14 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/core/llm/` | `provider.ts` (interface + auto-detection), `ollama.ts`, `lmstudio.ts`, `cache.ts` (`llm_cache`) |
 | `src/core/clip/` | `extract.ts` (readability + linkedom), `format.ts` (LLM formatting / turndown fallback) |
 | `src/core/doctor.ts` | Self-healing fixes: FTS rebuild/retokenize, orphan GC, hash repair, link resolution, vec recreation |
-| `src/core/stale.ts` / `gardening.ts` / `stats.ts` | Staleness scoring, tag audit, `kura status` statistics |
+| `src/core/stale.ts` / `gardening.ts` / `stats.ts` | Staleness scoring, tag-audit gardening (`kura audit tags`), `kura status` statistics (incl. the `unfiled` / `untagged` / `triageBacklog` counts) |
 | `src/core/insights.ts` | Read-only tidying insights per bucket (unfiled/untagged/orphaned docs, broken links, duplicate-looking tags); backs `GET /api/insights` and the browser Stats screen |
-| `src/core/filing.ts` | Filing-assistant scoring for `kura mv suggest` (link/tag/keyword signals + optional LLM pick) |
+| `src/core/filing.ts` | Filing-assistant scoring for the `kura triage` path step (link/tag/keyword signals + optional LLM pick) |
+| `src/core/tagging.ts` | LLM tag suggestion (`suggestTagsForText`, moved out of `clip/format.ts`); triage `tags` step and `kura clip` |
+| `src/core/titling.ts` | LLM title suggestion; triage `title` step |
+| `src/core/dedupe.ts` | Duplicate detection + merge (exact content-hash + near-duplicate LLM verdict, `mergeDuplicate`); triage `dedupe` step and `kura audit dupes` |
+| `src/core/linking.ts` | Wiki-link suggestion + `## 関連` append (`appendRelatedLinks`); triage `links` step |
+| `src/core/triage.ts` | Per-document triage pipeline (`listTriageBacklog`, `triageDocument`) orchestrating the dedupe/title/tags/path/links engines |
 | `src/server/http.ts` | `Bun.serve` wiring, port retry, SPA asset serving (127.0.0.1 only) |
 | `src/server/api.ts` | REST handlers |
 | `src/server/mcp.ts` | MCP stdio server tools |

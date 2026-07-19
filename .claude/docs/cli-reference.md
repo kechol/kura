@@ -54,8 +54,8 @@ There is no single global default; each command class behaves differently:
 | --- | --- |
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
 | `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias`, `history` (title resolution) | all buckets, ambiguity is an error |
-| `mv --prefix` (bulk path move) | `general.default_bucket` |
-| `ls`, `search`, `vsearch`, `query`, `ask`, `changes`, `audit`, `export`, `link broken` (filters) | all buckets |
+| `mv --prefix` (bulk path move), `triage` (default backlog scope) | `general.default_bucket` |
+| `ls`, `search`, `vsearch`, `query`, `ask`, `changes`, `audit`, `export` (filters) | all buckets |
 
 ### Exit codes
 
@@ -72,17 +72,17 @@ dispatcher does the translation.
 | 4 | `NO_LLM` | `LLMUnavailableError` | thrown by `requireProvider` (`src/core/llm/provider.ts`); dispatcher appends a "Run 'kura doctor'" hint |
 
 Exception classes live in `src/core/errors.ts` and are re-exported through
-`src/cli/args.ts`. Only `vsearch`, `embed`, `tag suggest`, and `audit` call
-`requireProvider` and can exit 4; `query`, `ask`, `clip`, and `tag audit`
-use `resolveProvider` and degrade with warnings instead (SPEC §5.1 degraded
-mode).
+`src/cli/args.ts`. Only `vsearch`, `embed`, and `audit contradictions` call
+`requireProvider` and can exit 4; `query`, `ask`, `clip`, `triage`, and the
+other `audit` subcommands use `resolveProvider` and degrade with warnings
+instead (SPEC §5.1 degraded mode).
 
 ### `--json`
 
 Accepted by every command (parser-level), but only read commands and the
 bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
-`export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `alias ls`,
-`history`, `changes`, `audit`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
+`export`, `import`, `bucket ls`, `tag ls`, `link ls`, `alias ls`,
+`history`, `changes`, `audit`, `triage`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
 silently ignore it. JSON goes to stdout; warnings and progress always go to stderr, so
 `--json` output stays parseable when piped.
 
@@ -100,9 +100,9 @@ characters as width 2). Rules:
 - Search results, `ls`, `status`, etc. print plain line-oriented text
   regardless of TTY; only `get` and `ask` (the generated answer) use the
   renderer.
-- Interactive confirmations (`rm`, `clip`, `tag suggest/audit --apply`)
-  require both stdin and stdout to be TTYs; see the individual commands for
-  their non-TTY behavior.
+- Interactive confirmations (`rm`, `clip`, `triage` per-step prompts,
+  `audit dupes/tags --apply`) require both stdin and stdout to be TTYs; see
+  the individual commands for their non-TTY behavior.
 
 ---
 
@@ -168,8 +168,14 @@ kura status [--json]
 Statistics from `src/core/stats.ts` plus the top-5 stale documents from
 `src/core/stale.ts`: total documents and per-bucket counts, tag count,
 embedding coverage (`embedded/total chunks` + meta model), stale count with
-per-doc score lines, unresolved link count, DB size and active tokenizer.
-`--json` prints the stats object with a `staleTop` array added.
+per-doc score lines, a **Backlog** line
+(`backlog: N documents (X unfiled, Y untagged)`, followed by a
+`run 'kura triage' to organize` pointer when the backlog is non-empty),
+unresolved link count, DB size and active tokenizer. `--json` prints the
+stats object with a `staleTop` array added; the object additionally carries
+the additive `unfiled`, `untagged`, and `triageBacklog` counts (the same
+`collectStats` fields flow through `GET /api/stats`, see
+[http-api.md](http-api.md)).
 
 ### `kura config`
 
@@ -300,7 +306,6 @@ same title is created later, SPEC §10.1).
 ```
 kura mv <doc> [<new-title>] [--path <new-path>] [--bucket b]
 kura mv --prefix <old-prefix> <new-prefix> [--bucket b]
-kura mv suggest [--bucket b] [--limit n] [--json] [--apply]
 ```
 
 Renames and/or moves via `updateDocument` (`src/core/documents.ts`); at
@@ -328,31 +333,12 @@ prefix under its own descendant are conflicts; no documents under the prefix
 is `NotFoundError` (exit 3). Prints one `moved #key  from -> to` line per
 document plus an `N documents moved (relinked M documents)` trailer.
 
-`suggest` is the filing assistant for **unfiled documents** (bucket root,
-`path = ''`), scoped to `--bucket` or `general.default_bucket`
-(`src/core/filing.ts`). Three signal layers mirror the search pipeline's
-degradation ladder:
-
-1. **structural** (always): resolved links/backlinks (weight 3), shared
-   tags (weight = overlap, capped at 3), BM25 title neighbors (weight 1) —
-   each filed neighbor votes for its own path;
-2. **semantic** (embedding provider): `vectorSearch` neighbors vote with
-   weight 2;
-3. **LLM** (generation provider): the candidates + the bucket's existing
-   paths + a document excerpt go to a Japanese prompt (an intentionally
-   Japanese surface, like tag suggestion) that returns
-   `{"path", "reason"}`, cached in `llm_cache` under purpose `path`. An
-   unusable answer falls back to the top signal candidate.
-
-No provider → a warning and layer 1 only (invariants R4); vector/LLM
-failures degrade into per-document warnings on stderr. Every suggestion
-prints its evidence (`link: [[title]]`, `shared tags (n): title`,
-`keyword: title`, `semantic: title`). Interactively (TTY, no flags) each
-document prompts `[y/e/n/q]`; `--apply` applies every suggestion;
-`--json` prints `{key, title, suggestion: {path, source: llm|signals,
-reason?} | null, candidates}` and never applies (`--json` + `--apply` is a
-usage error; an empty backlog prints `[]`). Applying goes through
-`updateDocument` (path move — links rewrite as above).
+The `mv suggest` filing assistant that once lived here is now the **path
+step** of [`kura triage`](#kura-triage) (`src/core/filing.ts`): it proposes a
+document path for unfiled documents (bucket root, `path = ''`) from the same
+structural / semantic / LLM signal layers, cached in `llm_cache` under
+purpose `path`. `kura mv` itself no longer has a `suggest` subcommand, nor
+the `--apply` / `--limit` flags it carried.
 
 ### `kura ls`
 
@@ -538,8 +524,6 @@ kura tag add <doc> <tag>... [--bucket b]
 kura tag rm <doc> <tag>... [--bucket b]
 kura tag mv <old-path> <new-path>
 kura tag gc
-kura tag suggest [--doc d] [--untagged] [--apply] [--bucket b]
-kura tag audit [--apply]
 ```
 
 `src/cli/commands/tag.ts`, backed by `src/core/tags.ts` and
@@ -558,26 +542,18 @@ slashes trimmed/collapsed — `src/core/wiki.ts::normalizeTagPath`).
   exists the documents are merged onto it (`moved N tags (merged into
   existing)`).
 - `gc`: deletes tags attached to zero documents and lists them.
-- `suggest`: **requires `--doc` or `--untagged`** (usage error otherwise) and
-  a provider (exit 4). Sends title+body plus the full existing tag list to
-  the generation model (prompt strongly prefers reusing the taxonomy,
-  SPEC §10.3; cached under `llm_cache` purpose `tag`). Without `--apply` it
-  only prints suggestions; with `--apply` each document asks `[y/N]` on a
-  TTY and **applies without asking on a non-TTY** (the confirm helper's
-  non-TTY default is "yes"). Applied tags get `source='auto'`.
-- `audit` (tag audit — distinct from the document-level `kura audit`
-  below): works without a provider (edit-distance only, with a warning);
-  with one, tag-name embeddings add similarity-based merge candidates.
-  Reports singular/plural variants and merge candidates
-  (`merge: a -> b (reason)`) plus oversized tags (attached to >30% of all
-  documents). `--apply` merges via `renameTag` with the same TTY confirm
-  semantics as `suggest`.
+
+The tag-gardening subcommands moved into the [`kura audit`](#kura-audit)
+umbrella: LLM tag **suggestion** is now the tags step of
+[`kura triage`](#kura-triage) (`suggestTagsForText`, `src/core/tagging.ts`),
+and the tag **audit** (merge candidates + oversized tags) is now
+`kura audit tags` (below). `kura tag` no longer has `suggest` / `audit`
+subcommands, nor the `--doc` / `--untagged` / `--apply` flags they carried.
 
 ### `kura link`
 
 ```
 kura link ls <doc> [--bucket b] [--json]
-kura link broken [--bucket b] [--json]
 ```
 
 `ls` prints three sections — `outlinks:` (each `[[target]] -> #key (bucket)`
@@ -585,11 +561,10 @@ or `(unresolved)`), `backlinks:`, and `2-hop (via <title>):` groups
 (documents sharing an outlink target, `src/core/links.ts`) — with `(none)`
 placeholders. `--json` →
 `{outlinks: [{target_title, key|null, title|null, bucket|null}], backlinks,
-twoHop: [{via, docs}]}`. `broken` lists unresolved links grouped by target
-title (`[[target]] <- #key title (bucket)` per source); `--bucket` filters by
-the **source** document's bucket and a nonexistent bucket exits 3. Creating
+twoHop: [{via, docs}]}`. The former `kura link broken` (unresolved links
+grouped by target title) is now [`kura audit links`](#kura-audit); creating
 the missing target later auto-resolves the links (SPEC §10.1), which
-`link broken` then reflects.
+`kura audit links` then reflects.
 
 ### `kura alias`
 
@@ -683,49 +658,148 @@ updated_at, content_changed, renamed, moved, previous_title,
 previous_path}]}` (`since` is the normalized SQLite datetime actually
 used).
 
+### `kura triage`
+
+```
+kura triage [<doc>...] [--bucket b] [--limit n] [--steps dedupe,title,tags,path,links] [--apply] [--json] [--redo]
+```
+
+The backlog-organizing umbrella for the "dump documents first, organize
+later" workflow (`src/cli/commands/triage.ts`, core `src/core/triage.ts`).
+Walks the **triage backlog** — documents at the bucket root **or** without
+tags, excluding ones already triaged and unchanged since
+(`(path = '' OR untagged) AND (triaged_at IS NULL OR updated_at >
+triaged_at)`; `listTriageBacklog`) — newest-updated first, scoped to
+`--bucket` or `general.default_bucket`. With `<doc>` positionals it triages
+exactly those documents (any bucket, resolved by `resolveDoc`) instead of
+the backlog. `--redo` re-includes already-triaged documents; `--limit` caps
+the backlog slice.
+
+Each document is piped through five organizing engines in `TRIAGE_STEPS`
+order (`--steps` selects a subset; an unknown step name is a usage error),
+each of which degrades independently (invariants R4):
+
+1. **dedupe** — exact duplicates (same `content_hash`, no LLM) plus
+   near-duplicates (per-chunk embedding KNN + an LLM verdict on the closest
+   few); `src/core/dedupe.ts`.
+2. **title** — a concise, specific title from the generation model, or none
+   when the current title already fits; `src/core/titling.ts`
+   (LLM-required, cached under purpose `title`).
+3. **tags** — tag suggestions that reuse the existing taxonomy, minus tags
+   already on the document; `suggestTagsForText` in `src/core/tagging.ts`
+   (LLM-required, purpose `tag`).
+4. **path** — a document path for **unfiled** documents only (skipped once a
+   document is filed) from structural / semantic / LLM signals;
+   `src/core/filing.ts` (the former `mv suggest`, purpose `path`).
+5. **links** — related documents to link, appended under an intentionally
+   Japanese `## 関連` heading; `src/core/linking.ts` (semantic neighbours
+   judged for relatedness, purpose `link`; FTS keyword neighbours unjudged
+   without a provider).
+
+**Modes.** On a TTY with no `--apply`, each step prompts `[y/e/n/s/q]`
+(`y` apply, `e` edit the value, `n` skip the step, `s` keep the document
+as-is and mark it triaged, `q` quit the whole run without marking the
+current document); the dedupe and links steps use `[y/n/s/q]` (no edit).
+`--apply` (also the non-TTY path) applies every suggestion **except
+duplicate merges** — merges are never automatic; a possible duplicate is
+only reported, pointing at interactive `kura triage` or `kura audit dupes`.
+`--json` is a **dry run** (never applies) and prints a stable array
+(invariants R7):
+
+```json
+[{ "key": "…", "title": "…", "steps": {
+    "dedupe": { "candidates": [{ "key", "title", "similarity", "exact", "verdict"? }] },
+    "title": { "proposed": "…", "reason"? },
+    "tags": ["…"],
+    "path": { "path": "…", "source": "llm|signals", "reason"? },
+    "links": [{ "title", "similarity", "judged" }]
+  }, "warnings": ["…"] }]
+```
+
+A step key is **omitted** when that step did not run; `title` / `path` are
+`null` when the step ran but proposed nothing. A document's `triaged_at`
+(schema v6, [data-model.md](data-model.md)) is stamped when its flow
+completes (and when `s` keeps it as-is; `q` quits without stamping the
+current document); `markTriaged` leaves `updated_at` alone, so editing the
+document afterwards bumps `updated_at` past `triaged_at` and re-enters it
+into the backlog. Applying goes through `updateDocument` / `addTagsToDoc` /
+`appendRelatedLinks` (links rewrite and derived tables re-sync as usual);
+a merge goes through `mergeDuplicate` (alias + tag transfer, then delete).
+
+**Degraded operation** — `kura triage` **never exits 4**: with no provider a
+warning prints and only the provider-free work runs (path suggestions from
+structural / keyword signals, link candidates from FTS keyword search,
+exact-hash dedupe), while the title, tags, and near-duplicate-verdict steps
+are skipped with a per-run warning. Exit codes: 0 (including an empty
+backlog — `no documents in the triage backlog of bucket '…'`, or `[]` for
+`--json`), 2 for bad flags (`--json` + `--apply` is mutually exclusive; an
+unknown `--steps` value).
+
 ### `kura audit`
 
 ```
-kura audit [--bucket b] [--limit 10] [--json]
+kura audit [contradictions|dupes|tags|links] [--bucket b] [--limit n] [--apply] [--json]
 ```
 
-Contradiction audit (`src/cli/commands/audit.ts`, core `src/core/audit.ts`):
-finds semantically close passages from different documents and asks the
-generation model whether their statements contradict each other.
-**LLM-required** — it calls `requireProvider` and exits 4 without a
-reachable provider (the documented degraded path, like `tag suggest`).
-`ensureEmbeddings` runs first (small backlogs backfill, large ones warn).
+Stock-side knowledge-base health checks (`src/cli/commands/audit.ts`).
+Without a subcommand it runs **every** check that can run and prints a
+combined, report-only summary; a subcommand runs just that check. `--bucket`
+scopes where applicable; `--limit` caps the documents/pairs the duplicate
+and contradiction passes examine. `--apply` (dupes/tags only) offers
+per-item confirmation.
 
-Candidate-pair pipeline (`candidatePairs`):
+- **`contradictions`** — the original contradiction audit (core
+  `src/core/audit.ts`): semantically close passages from the most recently
+  updated documents are paired via embedding KNN (`k = 6`, capped at
+  `--limit`, default 10) and the generation model judges each pair for
+  contradictory statements (intentionally Japanese prompt; verdicts cached
+  under `llm_cache` purpose `audit`, keyed on the sorted pair of excerpt
+  hashes). **LLM-required when invoked explicitly** —
+  `kura audit contradictions` calls `requireProvider` and exits 4 without
+  one. Plain output lists only contradictory pairs; `--json` →
+  `{examined_pairs, contradictions: [{a, b, similarity}]}` with
+  `a` / `b` = `{key, title, path, bucket, excerpt}` (unchanged from the
+  former top-level `kura audit`):
 
-1. Chunks of the `MAX_AUDIT_DOCS = 50` most recently updated documents
-   (bucket-scoped with `--bucket`) that have embeddings.
-2. Each chunk's stored vector is KNN-matched against `chunks_vec`
-   (`k = 6`); cross-document pairs are deduplicated (unordered, keeping the
-   smallest distance).
-3. Pairs sort by distance and are capped at `--limit` (default 10).
+  ```
+  ⚠ #a1b2c3d4 猫と牛乳（推奨） <-> #b2c3d4e5 猫と牛乳（注意）  (similarity 0.873)
+      A: 猫に牛乳を与えてよい。毎日あげよう。
+      B: 猫に牛乳は禁物。お腹を壊すことがある。
+  1 contradiction(s) among 3 pair(s)
+  ```
 
-Each pair is judged with an **intentionally Japanese prompt** (`PROMPT` in
-`src/core/audit.ts` — topic overlap or differing detail is explicitly not a
-contradiction) via the shared `parseYesNo`; only a hard "yes" flags the
-pair. Verdicts are cached in `llm_cache` (purpose `audit`) keyed on the
-sorted pair of excerpt SHA256 hashes (1200 chars per side), so re-runs are
-free until either side's text changes. `similarity = 1 / (1 + L2 distance)`,
-the same scale as vector-search scores.
+- **`dupes`** — store-wide duplicate detection (core `src/core/dedupe.ts` +
+  `similarChunkPairs` from `src/core/audit.ts`): exact duplicates by
+  `content_hash` (no LLM, survivor = most recently updated) plus
+  near-duplicate pairs (shared chunk-pair KNN capped at the 0.6 similarity
+  floor + an LLM verdict; **without a provider it lists the close pairs
+  unjudged**). `--apply` confirms each merge interactively (`mergeDuplicate`:
+  alias + tag transfer, then delete the duplicate); merges are never
+  non-interactive. `--json` →
+  `{exact: [[{key, title}], …], near: [{a, b, similarity, verdict?}]}`
+  (`a` / `b` = `{key, title}`).
+- **`tags`** — the former `kura tag audit`, verbatim behavior (`auditTags` in
+  `src/core/gardening.ts`): tag merge candidates (edit distance, plus
+  embedding similarity when a provider is up) and oversized tags (attached to
+  > 30 % of documents); degrades to edit-distance only without a provider.
+  `--apply` merges via `renameTag` with per-item confirmation. **New
+  `--json`** →
+  `{merges: [{from, to, reason, similarity}], oversized: [{path, count,
+  share}]}`.
+- **`links`** — the former `kura link broken` (`brokenLinks`): unresolved
+  wiki links grouped by target title; `--bucket` filters by the **source**
+  document's bucket and a nonexistent bucket exits 3. `--json` is
+  **byte-identical** to the old command's: `[{target_title, sources}]`.
 
-Plain output lists only contradictory pairs:
-
-```
-⚠ #a1b2c3d4 猫と牛乳（推奨） <-> #b2c3d4e5 猫と牛乳（注意）  (similarity 0.873)
-    A: 猫に牛乳を与えてよい。毎日あげよう。
-    B: 猫に牛乳は禁物。お腹を壊すことがある。
-1 contradiction(s) among 3 pair(s)
-```
-
-or `no contradictions found (N pair(s) examined)`. `--json` →
-`{examined_pairs, contradictions: [{a: {key, title, path, bucket, excerpt},
-b: {…}, similarity}]}` (excerpts display-trimmed to 200 chars). Bad flags
-are a usage error (exit 2). There is no MCP counterpart yet.
+**Bare `kura audit`** runs `links` → `tags` → `dupes` → `contradictions` in
+that order, report-only (it ignores `--apply`), with `== links ==` /
+`== tags ==` / `== dupes ==` / `== contradictions ==` section headers; it
+**skips contradictions with a stderr note when no provider is reachable**
+and never exits 4 (exit 0). `--json` → `{links, tags, dupes,
+contradictions?}` — the `contradictions` key is present only when a provider
+judged the pairs. Bad flags / an unknown subcommand are usage errors
+(exit 2). Neither `kura audit`'s subcommands nor `kura triage` have MCP
+counterparts yet (see [roadmap.md](roadmap.md)).
 
 ### `kura bucket`
 
@@ -855,7 +929,7 @@ shared location; `--dir` overrides it, e.g. a project's `.claude/skills`).
   [configuration.md](configuration.md)).
 - **`mv`/`edit` (rename/move) ↔ `link`**: renames and path moves rewrite
   referrer bodies; creating a document auto-resolves matching unresolved
-  links; `link broken` and `doctor --fix` expose/repair the remainder.
+  links; `kura audit links` and `doctor --fix` expose/repair the remainder.
 - **`export` ↔ `import`**: a lossless round-trip keyed on `kura_key`
   (re-import updates in place, even into a different `KURA_HOME`).
 

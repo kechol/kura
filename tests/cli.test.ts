@@ -32,6 +32,9 @@ describe("cli dispatch", () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("Usage: kura <command>");
     expect(r.stdout).toContain("config");
+    // The restructured organizing surface: the triage pipeline and the audit umbrella
+    expect(r.stdout).toContain("triage");
+    expect(r.stdout).toContain("audit");
   });
 
   test("no arguments prints help and exits 0", async () => {

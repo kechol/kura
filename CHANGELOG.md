@@ -70,6 +70,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `kura ls --sort views`.
 - `/docs?favorite=1` — a favorites-only filter (and an お気に入りのみ
   checkbox) on the browser document list.
+- `kura triage` — the "dump documents first, organize later" workflow. Walks
+  the triage backlog (documents at the bucket root or without tags, not yet
+  triaged or unchanged since the last pass) and pipes each document through
+  five organizing steps — dedupe, title, tags, path, links — proposing
+  duplicate merges, a better title, tags that reuse your taxonomy, a document
+  path, and related `[[links]]`. Interactive per-step confirmation
+  (`[y/e/n/s/q]`), a non-interactive `--apply` (which never auto-merges
+  duplicates), and a `--json` dry run. Works fully without an LLM provider
+  (path from structural/keyword signals, link candidates from keyword search;
+  title, tags, and near-duplicate verdicts skipped with a warning) and never
+  exits 4. Backed by schema v6 (a `documents.triaged_at` column, migration
+  `006_triage.sql`, migrated automatically; runtime bookkeeping, deliberately
+  not exported/imported via frontmatter).
+- `kura audit dupes` — store-wide duplicate detection: exact duplicates by
+  content hash (no LLM) plus near-duplicate document pairs (embedding
+  neighbours + an LLM verdict; without a provider it lists the close pairs
+  unjudged). `--apply` merges interactively (alias + tag transfer, then
+  delete the duplicate); `--json` → `{exact, near}`.
+- `kura audit links` — the unresolved-link report (formerly `kura link
+  broken`), now an `audit` subcommand with byte-identical `--json`.
+- `kura audit tags --json` — the tag-gardening audit (formerly
+  `kura tag audit`) gains machine-readable output: `{merges, oversized}`.
+- `kura ls --unfiled` / `--untagged` — filter the list to documents at the
+  bucket root, or with no tags.
+- `kura status` gains a Backlog section (`backlog: N documents (X unfiled,
+  Y untagged)`, with a pointer to `kura triage`); the stats object and
+  `GET /api/stats` gain additive `unfiled`, `untagged`, and `triageBacklog`
+  counts.
+- Three new intentionally-Japanese LLM prompt templates and `llm_cache`
+  purposes — `title` (title suggestion), `dupe` (duplicate judgment), and
+  `link` (link relatedness judgment) — powering the triage title / dedupe /
+  links steps.
 
 ### Fixed
 
@@ -100,6 +132,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are gone (elevation is reserved for the search modal and floating toolbar),
   corner radii and hover washes are unified into design tokens, and the light
   theme ground is a touch warmer.
+- **BREAKING**: `kura audit` is now an umbrella —
+  `kura audit [contradictions|dupes|tags|links]`. Bare `kura audit` runs
+  every check (links → tags → dupes → contradictions) as a report; the old
+  top-level `kura audit` behavior is now `kura audit contradictions` (its
+  text/JSON output unchanged, still exit 4 without a provider when invoked
+  explicitly).
+- **BREAKING**: `kura tag audit` moved to `kura audit tags`, and
+  `kura link broken` moved to `kura audit links` (its `--json` is
+  byte-identical to the old command's).
+
+### Removed
+
+- **BREAKING**: `kura mv suggest` — the filing assistant is now the path step
+  of `kura triage`; `kura mv` also drops the `--apply` / `--limit` flags it
+  carried.
+- **BREAKING**: `kura tag suggest` — LLM tag suggestion is now the tags step
+  of `kura triage`; `kura tag` drops the `--doc` / `--untagged` / `--apply`
+  flags.
 
 ## [0.2.0] - 2026-07-19
 

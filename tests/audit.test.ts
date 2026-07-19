@@ -107,7 +107,7 @@ describe("findContradictions", () => {
 });
 
 describe("kura audit CLI (degraded)", () => {
-  test("exits 4 when no provider is configured", async () => {
+  test("explicit 'audit contradictions' requires a provider and exits 4", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-audit-cli-"));
     const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
     try {
@@ -116,9 +116,30 @@ describe("kura audit CLI (degraded)", () => {
       // Pin the provider off so the test never talks to a local Ollama (testing.md R2)
       writeFileSync(join(home, "config.toml"), '[llm]\nprovider = "none"\n');
 
+      const contradictions = await runCli(["audit", "contradictions"], env);
+      expect(contradictions.code).toBe(4);
+      expect(contradictions.stderr).toContain("LLM");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("bare 'audit' with no provider exits 0, prints the sections, and skips contradictions", async () => {
+    const home = mkdtempSync(join(tmpdir(), "kura-audit-cli-all-"));
+    const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
+    try {
+      const init = await runCli(["init", "--no-download"], env);
+      expect(init.code).toBe(0);
+      writeFileSync(join(home, "config.toml"), '[llm]\nprovider = "none"\n');
+
       const audit = await runCli(["audit"], env);
-      expect(audit.code).toBe(4);
-      expect(audit.stderr).toContain("LLM");
+      expect(audit.code).toBe(0);
+      expect(audit.stdout).toContain("== links ==");
+      expect(audit.stdout).toContain("== tags ==");
+      expect(audit.stdout).toContain("== dupes ==");
+      // Contradiction detection is LLM-only; the combined report skips it, never errors
+      expect(audit.stdout).not.toContain("== contradictions ==");
+      expect(audit.stderr).toContain("skipping contradictions");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

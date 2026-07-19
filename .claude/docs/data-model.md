@@ -1,14 +1,15 @@
 # Data Model
 
-> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/migrations/004_aliases.sql`, `src/core/migrations/005_revisions.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/aliases.ts`, `src/core/revisions.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
+> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/migrations/004_aliases.sql`, `src/core/migrations/005_revisions.sql`, `src/core/migrations/006_triage.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/aliases.ts`, `src/core/revisions.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
 
 Schema v1 lives in `src/core/migrations/001_init.sql`; schema v2
 (`002_document_paths.sql`) adds hierarchical document paths, schema v3
 (`003_favorites.sql`) the `favorite` flag, schema v4
-(`004_aliases.sql`) document aliases, and schema v5
-(`005_revisions.sql`) document revisions (see the `documents` /
-`document_aliases` / `document_revisions` tables and the migration-runner
-section below). Two placeholders are substituted into `001_init.sql` (and
+(`004_aliases.sql`) document aliases, schema v5
+(`005_revisions.sql`) document revisions, and schema v6
+(`006_triage.sql`) the `documents.triaged_at` triage-backlog marker (see the
+`documents` / `document_aliases` / `document_revisions` tables and the
+migration-runner section below). Two placeholders are substituted into `001_init.sql` (and
 `{{FTS_TOKENIZE}}` again into `004_aliases.sql`) by the migration runner at
 apply time: `{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and
 `{{VEC_DIMENSIONS}}` (embedding dimensions). All derived tables are kept in
@@ -50,6 +51,7 @@ The single source of truth for document bodies.
 | `last_accessed_at` | Nullable; set by `touchAccess` (CLI `get`, MCP `kura_get`, API doc fetch) |
 | `access_count` | Incremented by `touchAccess` |
 | `favorite` | `0` / `1`, `NOT NULL DEFAULT 0` (schema v3). Pins the document to the browser sidebar (docs: [browser-ui.md](browser-ui.md)). Written **only** by `setFavorite` — never by `updateDocument`, so starring leaves `updated_at` alone |
+| `triaged_at` | Nullable `TEXT` (schema v6). When `kura triage` last completed a pass over this document (`NULL` = never triaged). Written **only** by `markTriaged`, which — like `setFavorite` — **does not bump `updated_at`**, so a subsequent edit makes `updated_at > triaged_at` and the document re-enters the triage backlog (docs: [self-healing.md](self-healing.md)). Runtime bookkeeping: **not** round-tripped through frontmatter (like `access_count`) |
 
 Indexes: `idx_documents_bucket`, `idx_documents_updated`,
 `idx_documents_favorite` (partial, `WHERE favorite = 1`).
@@ -63,8 +65,8 @@ tag filters match descendants via `path = ? OR path LIKE ? || '/%'`.
 
 `document_tags(document_id, tag_id)` is the composite PK, both FKs `ON
 DELETE CASCADE`. `source` is `'manual'` (default; body hashtags, frontmatter,
-`kura tag add`) or `'auto'` (LLM suggestions applied by `kura tag suggest
---apply` / `kura clip`).
+`kura tag add`) or `'auto'` (LLM suggestions applied by the `kura triage`
+tags step / `kura clip`).
 
 ### `document_aliases`
 
@@ -191,8 +193,9 @@ The unit of embedding, rebuilt from the body by `rebuildChunks`
 ### `llm_cache`
 
 Keyed by `cache_key = sha256(purpose + model + input)`; `purpose` is one of
-`'expand' | 'rerank' | 'tag' | 'clip' | 'path' | 'ask' | 'audit'`; `value` is JSON. Managed
-by `src/core/llm/cache.ts`.
+`'expand' | 'rerank' | 'tag' | 'title' | 'clip' | 'path' | 'dupe' | 'link' |
+'ask' | 'audit'`; `value` is JSON. Managed by `src/core/llm/cache.ts` (the
+full purpose ledger is in [llm-providers.md](llm-providers.md)).
 
 ### `meta`
 
@@ -249,6 +252,10 @@ The schema version is **not** in `meta`; it lives in `PRAGMA user_version`.
   index — a plain additive migration with no placeholders and no rebuild.
   Existing documents start with empty history; snapshots begin with the
   first post-upgrade edit.
+- **Schema v6** (`006_triage.sql`) adds `documents.triaged_at TEXT` with a
+  plain `ALTER TABLE … ADD COLUMN` (no placeholders, no rebuild). Existing
+  documents default to `NULL` (never triaged), so the whole store starts as
+  triage backlog after the upgrade.
 
 **Adding a migration**: create `src/core/migrations/00N_name.sql`, import it
 in `db.ts` with `with { type: "text" }`, append `{ version: N, render }` to
@@ -370,6 +377,10 @@ existing DBs will not re-run it.
 - **Revisions (schema v5)**: SPEC §3.1 has no `document_revisions` table;
   edit history, `kura history`, and `kura get --as-of` are an
   implementation addition. Updates were destructive before v5.
+- **Triage marker (schema v6)**: SPEC §3.1 has no `triaged_at` column;
+  `kura triage` and its backlog bookkeeping are an implementation addition.
+  Like `access_count` it is deliberately not round-tripped through
+  frontmatter.
 - **Case-insensitive uniqueness**: the DDL UNIQUE constraint is
   case-sensitive; the repository additionally rejects case-insensitive
   duplicates of the computed full path, which SPEC doesn't state explicitly.

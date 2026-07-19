@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import type { FtsTokenizer } from "./db";
-import { type DocumentRecord, listDocuments, sha256Hex } from "./documents";
+import { type DocumentRecord, sha256Hex } from "./documents";
 import { cached } from "./llm/cache";
+import { parseJsonObject } from "./llm/parse";
 import type { LLMProvider } from "./llm/provider";
 import { keywordSearch } from "./search/keyword";
 import { vectorSearch } from "./search/vector";
@@ -42,11 +43,6 @@ export interface PathSuggestion {
   llm: LlmPick | null;
   /** Non-fatal signal-layer failures (e.g. vector search unavailable) */
   warnings: string[];
-}
-
-/** Documents at the bucket root — the filing backlog kura mv suggest works through */
-export function listUnfiledDocuments(db: Database, bucket: string): DocumentRecord[] {
-  return listDocuments(db, { bucket }).filter((d) => d.path === "");
 }
 
 interface Vote {
@@ -166,20 +162,15 @@ async function llmPick(
       { temperature: 0 },
     ),
   );
-  const m = answer.match(/\{[\s\S]*?\}/);
-  if (!m) return null;
-  try {
-    const parsed = JSON.parse(m[0]) as { path?: unknown; reason?: unknown };
-    const path = typeof parsed.path === "string" ? normalizeDocPath(parsed.path) : "";
-    if (path === "") return null;
-    return {
-      path,
-      reason: typeof parsed.reason === "string" ? parsed.reason : "",
-      isNew: !candidates.some((c) => c.path.toLowerCase() === path.toLowerCase()),
-    };
-  } catch {
-    return null;
-  }
+  const parsed = parseJsonObject<{ path?: unknown; reason?: unknown }>(answer);
+  if (!parsed) return null;
+  const path = typeof parsed.path === "string" ? normalizeDocPath(parsed.path) : "";
+  if (path === "") return null;
+  return {
+    path,
+    reason: typeof parsed.reason === "string" ? parsed.reason : "",
+    isNew: !candidates.some((c) => c.path.toLowerCase() === path.toLowerCase()),
+  };
 }
 
 /** All non-root paths of a bucket, most-populated first (LLM context) */

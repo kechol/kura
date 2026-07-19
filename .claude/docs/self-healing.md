@@ -2,7 +2,9 @@
 
 > Covers SPEC §10. Key sources: `src/core/doctor.ts`, `src/core/gardening.ts`,
 > `src/core/stale.ts`, `src/core/links.ts`, `src/core/aliases.ts`,
-> `src/core/documents.ts`, `src/cli/commands/{doctor,tag,ls,status}.ts`,
+> `src/core/documents.ts`,
+> `src/core/{triage,dedupe,titling,linking,tagging,filing}.ts`,
+> `src/cli/commands/{doctor,tag,ls,status,triage,audit}.ts`,
 > `tests/m6.test.ts`, `tests/aliases.test.ts`.
 
 kura assumes its environment drifts — extensions go missing, configs change,
@@ -73,7 +75,7 @@ repaired state. Order (from `runFixes`):
    bucket**, case-insensitive, self-links excluded: full-path spellings
    resolve exactly; a short-form title or alias resolves only when exactly
    one candidate exists — **ambiguous short forms are skipped, not
-   force-resolved** (they stay visible in `kura link broken`).
+   force-resolved** (they stay visible in `kura audit links`).
 7. **`fts-retokenize`** (`retokenizeFts`) — only when the DB tokenizer is
    `trigram` but vaporetto loaded in this process: drop `documents_fts`,
    recreate it with `tokenize='vaporetto'`, re-insert all rows, and update
@@ -123,13 +125,67 @@ Wiki-link health is maintained continuously, not just by doctor
   schema's `ON DELETE SET NULL` — the link text survives and re-resolves if
   the page is recreated. Moving a document to another bucket explicitly
   nulls its incoming links, because resolution is bucket-scoped.
-- **Visibility.** `kura link broken` lists unresolved links grouped by
-  target title; `kura status` reports the unresolved-link count; doctor's
-  `resolve-links` fix handles bulk repair after imports or bucket surgery.
+- **Visibility.** `kura audit links` (the former `kura link broken`) lists
+  unresolved links grouped by target title; `kura status` reports the
+  unresolved-link count; doctor's `resolve-links` fix handles bulk repair
+  after imports or bucket surgery.
+
+## Triage — organizing the backlog
+
+`kura triage` (`src/cli/commands/triage.ts`, core `src/core/triage.ts`) is
+the "dump documents first, organize later" workflow: a per-document pipeline
+that proposes structure for the **triage backlog** and applies it only on
+confirmation. Full CLI surface (flags, `[y/e/n/s/q]` prompts, the `--json`
+contract, exit codes) in
+[cli-reference.md](cli-reference.md); this section covers the mechanics.
+
+- **Backlog definition** (`listTriageBacklog`). A document is in the backlog
+  when it is **unfiled or untagged** and has not been triaged since it last
+  changed:
+  `(d.path = '' OR NOT EXISTS document_tags) AND (triaged_at IS NULL OR
+  updated_at > triaged_at)`, newest-updated first, bucket-scoped. `--redo`
+  drops the `triaged_at` clause; explicit `<doc>` positionals bypass the
+  backlog entirely. The same predicate (minus the `triaged_at` clause)
+  backs the `unfiled` / `untagged` / `triageBacklog` counts in
+  `collectStats` and the `kura status` **Backlog** line.
+- **`triaged_at` semantics** (schema v6, `markTriaged` in
+  `src/core/documents.ts`, [data-model.md](data-model.md)). Stamped when a
+  document's flow completes; `markTriaged` deliberately **does not touch
+  `updated_at`** (like `touchAccess` / `setFavorite`), so a later edit bumps
+  `updated_at` past `triaged_at` and the document re-enters the backlog. It
+  is runtime bookkeeping, not exported/imported via frontmatter.
+- **Step engines** (`triageDocument`, run in `TRIAGE_STEPS` order, each
+  degrading independently per invariants R4):
+  - **dedupe** — `exactDuplicates` (content-hash, no LLM) + `nearDuplicates`
+    (per-chunk embedding KNN, LLM verdict on the closest few, cached under
+    purpose `dupe`); `src/core/dedupe.ts`.
+  - **title** — `suggestTitleForDocument` (LLM, purpose `title`), null when
+    the current title already fits; `src/core/titling.ts`.
+  - **tags** — `suggestTagsForText` (LLM, purpose `tag`), minus tags already
+    on the document; `src/core/tagging.ts`.
+  - **path** — `suggestPathForDocument` for unfiled documents only, the
+    filing-assistant signal layers (structural + semantic + LLM pick, purpose
+    `path`); `src/core/filing.ts`.
+  - **links** — `suggestLinksForDocument` (semantic neighbours judged for
+    relatedness, purpose `link`; FTS keyword neighbours without a provider),
+    applied by appending `- [[Title]]` bullets under a trailing `## 関連`
+    heading (`appendRelatedLinks`); `src/core/linking.ts`.
+- **Merge is the one destructive action, and it is never automatic.**
+  `mergeDuplicate` (`src/core/dedupe.ts`) makes the duplicate's title and
+  aliases into aliases of the survivor, transfers its tags, then deletes it —
+  all in one transaction through the repository (invariants R1/R2). Alias
+  self-healing re-resolves any `[[old title]]` links onto the survivor, and
+  carrying the tags means a merge never loses organization. `kura triage`
+  offers merges only interactively; `--apply` reports possible duplicates but
+  never merges them.
+
+Like the rest of self-healing, triage **surfaces and proposes; it never
+deletes or rewrites without confirmation** (SPEC §10.4) — the sole exception
+being a merge the user explicitly accepts.
 
 ## Tag gardening
 
-### `kura tag audit [--apply]` (`auditTags` in `src/core/gardening.ts`)
+### `kura audit tags [--apply]` (`auditTags` in `src/core/gardening.ts`)
 
 Pairwise scan of all tags, producing **merge candidates** and **oversized
 tags**. The edit-distance half lives on its own as `tagMergeCandidates(tags)`
@@ -157,19 +213,20 @@ statistics screen asks for it on every page view (`GET /api/insights`):
 `--apply` confirms each merge interactively (y/N on a TTY) and executes it
 via `renameTag`, which moves descendant tags along and merges into an
 existing target. Oversized tags are report-only — splitting is a human
-decision.
+decision. The `--json` shape (`{merges, oversized}`) lives in
+[cli-reference.md](cli-reference.md).
 
-### `kura tag suggest [--doc d | --untagged] [--apply]`
+### Tag suggestion (the triage `tags` step)
 
-LLM tag suggestions (`suggestTagsForText` in `src/core/clip/format.ts`,
-shared with `kura clip`). Requires a provider (exit code 4 otherwise).
-Targets one document (`--doc`) or all untagged documents (`--untagged`,
-via `untaggedDocuments`). The prompt includes the **existing tag list** and
+LLM tag suggestions (`suggestTagsForText` in `src/core/tagging.ts` — moved
+out of the clip pipeline so tag suggestion has an owner of its own).
+Requires a provider. The prompt includes the **existing tag list** and
 strongly prefers reusing the current taxonomy over inventing new tags;
-responses are cached in `llm_cache` (purpose `tag`). Without `--apply` it
-only prints suggestions; with `--apply` each document's suggestions are
-confirmed (TTY y/N; non-TTY applies without prompting) and written with
-`source='auto'`, keeping LLM-assigned tags distinguishable from manual ones.
+responses are cached in `llm_cache` (purpose `tag`). Two consumers today:
+the **tags step of `kura triage`** (which drops tags already on the
+document, then confirms/applies the rest with `source='auto'`, keeping
+LLM-assigned tags distinguishable from manual ones) and `kura clip`. The
+standalone `kura tag suggest` command is gone — `kura triage` subsumes it.
 
 ## Staleness detection
 

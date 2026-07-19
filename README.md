@@ -12,10 +12,11 @@ and makes them queryable by both humans and AI agents.
   (morphological analysis), semantic search with
   [sqlite-vec](https://github.com/asg017/sqlite-vec) + local embeddings, and
   local-LLM reranking
-- **Self-organizing**: no forced filing. Documents organize themselves
-  through buckets, hierarchical tags (`tech/db/sqlite`), and wiki links
-  (`[[Title]]`); an optional document path (`db/sqlite`) adds a folder-like
-  name when you want one, and the bucket root works as an inbox
+- **Self-organizing**: no forced filing. Dump notes into the bucket-root
+  inbox first and organize the backlog later with `kura triage`. Documents
+  organize themselves through buckets, hierarchical tags (`tech/db/sqlite`),
+  and wiki links (`[[Title]]`); an optional document path (`db/sqlite`) adds
+  a folder-like name when you want one
 - **AI agent integration**: an MCP server (`kura mcp`) and `--json` output on
   every read command
 - **Browser UI**: document viewer/editor and a knowledge graph
@@ -106,16 +107,17 @@ kura changes --since 7d        # what was created or updated since then
 
 # Links & tags
 kura link ls "Today's note"    # outlinks / backlinks / 2-hop links
-kura link broken               # unresolved links
 kura alias add "Today's note" 今日のメモ   # alternate titles: [[今日のメモ]] resolves, search matches
 kura tag ls --tree
-kura tag suggest --untagged --apply   # LLM tag suggestions (reuses your existing taxonomy)
-kura tag audit                 # merge candidates for similar tags, oversized-tag warnings
+
+# Organize the backlog (dump first, organize later)
+kura triage                    # per unfiled/untagged doc: propose merge, title, tags, path, links
+kura audit                     # health report: broken links, duplicate tags, duplicate docs, contradictions
+kura audit links               # just the unresolved-link report (was: kura link broken)
 
 # Maintenance
-kura status                    # stats (embedding coverage, stale candidates, ...)
+kura status                    # stats (embedding coverage, stale candidates, triage backlog)
 kura ls --stale                # long-untouched, rarely-read documents
-kura audit                     # LLM contradiction check between similar passages
 kura doctor --fix              # index repair, link re-resolution, and more
 kura export --dir backup/      # write Markdown with frontmatter (paths become subdirectories)
 kura import backup/            # round-trips via kura_key (subdirectories become paths)

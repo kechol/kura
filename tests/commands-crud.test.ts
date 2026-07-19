@@ -308,44 +308,31 @@ describe("kura CRUD commands (e2e)", () => {
     expect((JSON.parse(after.stdout) as unknown[]).length).toBe(1);
   }, 30_000);
 
-  test("mv suggest: signal-based suggestions in --json, applied with --apply", async () => {
+  test("mv suggest was removed (folded into kura triage) and now exits 2", async () => {
     const { env } = await makeHome();
-    // Deterministic degraded mode: never probe a live provider (testing.md R2)
-    const cfg = await runCli(["config", "set", "llm.provider", "none"], env);
-    expect(cfg.code).toBe(0);
+    const r = await runCli(["mv", "suggest", "--json"], env);
+    expect(r.code).toBe(2);
+  }, 30_000);
 
-    await runCli(
-      ["add", "-", "--title", "SQLiteの内部構造", "--path", "db/sqlite"],
-      env,
-      "Btree の話。 #tech/db\n",
-    );
-    const unfiled = await runCli(
-      ["add", "-", "--title", "WALメモ"],
-      env,
-      "[[SQLiteの内部構造]] を参照。 #tech/db\n",
-    );
+  test("ls --unfiled / --untagged filter the two backlog dimensions independently", async () => {
+    const { env } = await makeHome();
+    // filed (path db) but untagged
+    const a = await runCli(["add", "-", "--title", "整理済み下書き", "--path", "db"], env, "本文のみ。\n");
+    expect(a.code).toBe(0);
+    // unfiled (bucket root) but tagged
+    const b = await runCli(["add", "-", "--title", "分類だけメモ"], env, "本文。 #タグ\n");
+    expect(b.code).toBe(0);
+
+    const unfiled = await runCli(["ls", "--unfiled", "--json"], env);
     expect(unfiled.code).toBe(0);
+    expect((JSON.parse(unfiled.stdout) as Array<{ title: string }>).map((d) => d.title)).toEqual([
+      "分類だけメモ",
+    ]);
 
-    const json = await runCli(["mv", "suggest", "--json"], env);
-    expect(json.code).toBe(0);
-    expect(json.stderr).toContain("no LLM provider");
-    const results = JSON.parse(json.stdout) as Array<{
-      title: string;
-      suggestion: { path: string; source: string } | null;
-    }>;
-    expect(results.length).toBe(1);
-    expect(results[0]?.title).toBe("WALメモ");
-    expect(results[0]?.suggestion?.path).toBe("db/sqlite");
-    expect(results[0]?.suggestion?.source).toBe("signals");
-
-    const applied = await runCli(["mv", "suggest", "--apply"], env);
-    expect(applied.code).toBe(0);
-    expect(applied.stdout).toContain("moved -> db/sqlite/WALメモ");
-
-    const get = await runCli(["get", "db/sqlite/WALメモ", "--json"], env);
-    expect(JSON.parse(get.stdout).path).toBe("db/sqlite");
-
-    const empty = await runCli(["mv", "suggest", "--json"], env);
-    expect(empty.stdout.trim()).toBe("[]");
+    const untagged = await runCli(["ls", "--untagged", "--json"], env);
+    expect(untagged.code).toBe(0);
+    expect((JSON.parse(untagged.stdout) as Array<{ title: string }>).map((d) => d.title)).toEqual([
+      "整理済み下書き",
+    ]);
   }, 30_000);
 });

@@ -89,8 +89,12 @@ const commands: Record<string, CommandDef> = {
     summary: "List documents created or updated since a point in time",
     load: () => import("./commands/changes"),
   },
+  triage: {
+    summary: "Organize backlog documents (dedupe, title, tags, path, links)",
+    load: () => import("./commands/triage"),
+  },
   audit: {
-    summary: "Audit the knowledge base for contradictions (requires an LLM)",
+    summary: "Audit the knowledge base (contradictions, duplicates, tags, links)",
     load: () => import("./commands/audit"),
   },
   search: {

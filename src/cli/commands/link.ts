@@ -1,18 +1,15 @@
-import { requireBucket } from "../../core/buckets";
 import { getDb } from "../../core/db";
 import { resolveDoc } from "../../core/documents";
-import { backlinks, brokenLinks, outlinks, type RelatedDoc, twoHopLinks } from "../../core/links";
+import { backlinks, outlinks, type RelatedDoc, twoHopLinks } from "../../core/links";
 import { boolOpt, EXIT, parseCommandArgs, strOpt, UsageError } from "../args";
 
 export const summary = "Show links and backlinks";
 
 export const usage = `Usage:
   kura link ls <doc> [--bucket b] [--json]
-  kura link broken [--bucket b] [--json]
 
 Examples:
-  kura link ls "データベース設計"
-  kura link broken --bucket main`;
+  kura link ls "データベース設計"`;
 
 function docLine(doc: RelatedDoc): string {
   return `#${doc.key} ${doc.title} (${doc.bucket})`;
@@ -68,27 +65,6 @@ export async function run(argv: string[]): Promise<number> {
         for (const group of hops) {
           console.log(`2-hop (via ${group.via.title}):`);
           for (const d of group.docs) console.log(`  ${docLine(d)}`);
-        }
-      }
-      return EXIT.OK;
-    }
-    case "broken": {
-      const { db } = getDb();
-      const bucketId = bucketName ? requireBucket(db, bucketName).id : undefined;
-      const groups = brokenLinks(db, bucketId);
-      if (json) {
-        console.log(
-          JSON.stringify(groups.map((g) => ({ target_title: g.targetTitle, sources: g.sources }))),
-        );
-        return EXIT.OK;
-      }
-      if (groups.length === 0) {
-        console.log("no broken links");
-        return EXIT.OK;
-      }
-      for (const group of groups) {
-        for (const source of group.sources) {
-          console.log(`[[${group.targetTitle}]] <- ${docLine(source)}`);
         }
       }
       return EXIT.OK;

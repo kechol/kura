@@ -76,7 +76,7 @@ three fit simultaneously on a 32 GB Mac (< 4 GB total, SPEC §6):
 | --- | --- | --- |
 | embedding | `qwen3-embedding:0.6b` | 1024 dimensions (matches `embedding_dimensions` and the `chunks_vec` schema), multilingual with good Japanese recall, small footprint. SPEC names `kun432/cl-nagoya-ruri-large` as a Japanese-accuracy alternative — change dimensions in config alongside it. |
 | reranker | `dengcao/Qwen3-Reranker-0.6B` | Purpose-built yes/no relevance judge; the prompt in `src/core/search/rerank.ts` follows the Qwen3-Reranker instruct format. |
-| generation | `qwen3:4b` | Clip formatting, tag suggestion, query expansion, and answer generation (`kura ask`) need a general instruct model; 4B runs comfortably alongside the other two. |
+| generation | `qwen3:4b` | Clip formatting, query expansion, answer generation (`kura ask`), the triage engines (tag / title suggestion, duplicate & link judgment, path pick) and the contradiction audit all need a general instruct model; 4B runs comfortably alongside the other two. |
 
 **Changing models**: edit config (`kura config set llm.models.…`), then run
 `kura embed --all` for embedding changes. `kura doctor` detects a
@@ -103,9 +103,12 @@ Purpose ledger — every purpose, its key composition, and its single writer:
 | --- | --- | --- | --- | --- |
 | `expand` | `llm.models.generation` | raw query string | `expandQuery()` — `src/core/search/expand.ts` | up to 2 query variants (`string[]`) |
 | `rerank` | `llm.models.reranker` | `query \x00 candidateText` (text pre-truncated to 2,000 chars) | `rerankCandidates()` — `src/core/search/rerank.ts` | relevance score (`1 \| 0 \| 0.5`) |
-| `tag` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 existing-tag list (≤ 200 tags)` | `suggestTagsForText()` — `src/core/clip/format.ts` | up to 5 tag paths (`string[]`) |
+| `tag` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 existing-tag list (≤ 200 tags)` | `suggestTagsForText()` — `src/core/tagging.ts` | up to 5 tag paths (`string[]`) |
+| `title` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 current title` | `suggestTitleForDocument()` — `src/core/titling.ts` (`kura triage` title step) | raw model answer (`string`; JSON `{title, reason}` parsed by the caller) |
 | `clip` | `llm.models.generation` | `page URL \x00 sha256(turndown markdown)` | `formatClip()` — `src/core/clip/format.ts` | `{ title, markdown }` |
-| `path` | `llm.models.generation` | `sha256(title + first 2,000 chars) \x00 candidate-path list \x00 existing-path list` | `llmPick()` — `src/core/filing.ts` (`kura mv suggest`) | raw model answer (`string`; JSON `{path, reason}` parsed by the caller) |
+| `path` | `llm.models.generation` | `sha256(title + first 2,000 chars) \x00 candidate-path list \x00 existing-path list` | `llmPick()` — `src/core/filing.ts` (`kura triage` path step) | raw model answer (`string`; JSON `{path, reason}` parsed by the caller) |
+| `dupe` | `llm.models.generation` | sorted pair of document content hashes, `:`-joined (1,200 chars per side sent) | `judgeDuplicatePair()` — `src/core/dedupe.ts` (`kura triage` dedupe, `kura audit dupes`) | `{ duplicate, keepHash, reason }` (survivor stored as a content hash) |
+| `link` | `llm.models.generation` | sorted pair of document content hashes, `:`-joined (600 chars per side sent) | `judgeLink()` — `src/core/linking.ts` (`kura triage` links step) | relatedness verdict (`1 \| 0 \| 0.5` via `parseYesNo`) |
 | `ask` | `llm.models.generation` | `question \x00 key1:contentHash1,key2:contentHash2,…` (the cited sources) | `askQuestion()` — `src/core/search/ask.ts` | answer text (`string`, `<think>` blocks stripped) |
 | `audit` | `llm.models.generation` | sorted pair of excerpt SHA256 hashes, `:`-joined (1,200 chars per side) | `findContradictions()` — `src/core/audit.ts` | contradiction verdict (`1 \| 0 \| 0.5` via `parseYesNo`) |
 
@@ -115,7 +118,12 @@ instruction sees fresh context. Likewise the `ask` key includes each cited
 source's `content_hash`, so editing a source document invalidates the
 cached answer, and the `audit` key hashes both excerpts — a verdict stays
 cached until either side's text changes (the sort makes it
-order-independent).
+order-independent). The triage `dupe` and `link` keys use the same trick on
+the two documents' content hashes: a symmetric pair key so a hit resolves
+from either document's viewpoint, and one that expires as soon as either
+side is edited (`dupe` additionally stores the survivor as a content hash,
+not `"a"`/`"b"`, so a hit still names the right survivor). The `title` key
+hashes the document's own excerpt plus its current title.
 
 ## Degradation matrix
 
@@ -132,10 +140,12 @@ never silently misbehaves.
 | `kura ask` | `resolveProvider` | Answer generation skipped with a warning; the plain hybrid hit list is shown instead (`answer: null`); exit 0. A generation failure degrades the same way. |
 | rerank stage (inside `query`) | via `hybridQuery` | RRF order returned as-is (`usedRerank: false`); also the fallback when the rerank call throws. |
 | `kura clip` | `resolveProvider` | Warning, then mechanical turndown conversion (`llmFormatted: false`) and **no tag suggestions**. `--no-llm` forces the same path. A formatting failure or an LLM answer that dropped the body (< 40 chars) also falls back to turndown. |
-| `kura tag suggest` | `requireProvider` | `LLMUnavailableError`, **exit 4** — suggestions are the whole feature. |
-| `kura tag audit` | `resolveProvider` | Warning "auditing with edit distance only"; embedding-similarity merge candidates are skipped (`usedEmbeddings: false`), edit-distance and singular/plural detection still run (`src/core/gardening.ts`). |
-| `kura mv suggest` | `resolveProvider` | Warning, then suggestions from link/tag/keyword signals only — no semantic neighbours and no LLM pick (`src/core/filing.ts`). |
-| `kura audit` | `requireProvider` | `LLMUnavailableError`, **exit 4** — both the candidate embeddings and the judge need a provider. |
+| `kura triage` | `resolveProvider` | **Never exits 4.** Warning, then only provider-free work runs: path suggestions from link/tag/keyword signals, link candidates from FTS keyword search (unjudged), exact-hash dedupe. The title, tags, and near-duplicate-verdict steps are skipped with a per-run warning (`src/core/triage.ts`). |
+| `kura audit contradictions` | `requireProvider` | `LLMUnavailableError`, **exit 4** — both the candidate embeddings and the judge need a provider. |
+| `kura audit dupes` | `resolveProvider` | Warning; exact (content-hash) duplicates still found, near-duplicate pairs listed **without** verdicts (`src/core/dedupe.ts`, `src/cli/commands/audit.ts`). |
+| `kura audit tags` | `resolveProvider` | Warning "auditing with edit distance only"; embedding-similarity merge candidates are skipped (`usedEmbeddings: false`), edit-distance and singular/plural detection still run (`src/core/gardening.ts`). |
+| `kura audit links` | none needed | Pure SQL over unresolved links — unaffected. |
+| bare `kura audit` | `resolveProvider` | Runs links/tags/dupes degraded as above and **skips contradictions with a stderr note**; exit 0. |
 
 `kura embed` also uses `requireProvider` (exit 4), but only after checking
 that pending chunks exist — with nothing to do it exits 0 without touching
@@ -143,7 +153,7 @@ the network.
 
 ## Intentionally-Japanese prompts
 
-kura is a Japanese-first knowledge tool; exactly **six prompt templates
+kura is a Japanese-first knowledge tool; exactly **nine prompt templates
 are deliberately written in Japanese** and tuned for Japanese content
 (policy in `CLAUDE.md`). Each is marked with an
 `// Intentionally Japanese` comment; the surrounding code comments stay
@@ -151,10 +161,18 @@ English:
 
 1. Query expansion — `PROMPT` in `src/core/search/expand.ts`
 2. Clip formatting — `FORMAT_PROMPT` in `src/core/clip/format.ts`
-3. Tag suggestion — `TAG_PROMPT` in `src/core/clip/format.ts`
+3. Tag suggestion — `TAG_PROMPT` in `src/core/tagging.ts`
 4. Path suggestion — `PATH_PROMPT` in `src/core/filing.ts`
-5. Answer generation — `PROMPT` in `src/core/search/ask.ts`
-6. Contradiction audit — `PROMPT` in `src/core/audit.ts`
+5. Title suggestion — `TITLE_PROMPT` in `src/core/titling.ts`
+6. Duplicate judgment — `DUPE_PROMPT` in `src/core/dedupe.ts`
+7. Link relatedness judgment — `LINK_PROMPT` in `src/core/linking.ts`
+8. Answer generation — `PROMPT` in `src/core/search/ask.ts`
+9. Contradiction audit — `PROMPT` in `src/core/audit.ts`
+
+The triage links step also writes an intentionally-Japanese **content**
+heading — `## 関連` (`RELATED_HEADING` in `src/core/linking.ts`) — into the
+user's document body; that is user-facing content, not a prompt, but it is
+Japanese by the same design.
 
 Do not translate these to English "for consistency" — that would degrade
 output quality on Japanese content. The **rerank prompt is intentionally

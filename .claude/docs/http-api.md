@@ -109,8 +109,10 @@ two in sync when changing a response.
 Dashboard statistics via `collectStats()` (`src/core/stats.ts`). Response
 keys: `documents`, `buckets` (`[{name, documents}]`), `tags`, `chunks`,
 `embeddedChunks`, `embeddingCoverage` (0–1; 1 when there are no chunks),
-`staleDocuments`, `unresolvedLinks`, `dbSizeBytes`, `tokenizer`,
-`embeddingModel` (nullable).
+`staleDocuments`, `unfiled`, `untagged`, `triageBacklog` (the triage-backlog
+counts, additive — the same fields `kura status` prints and `kura_status`
+computes), `unresolvedLinks`, `dbSizeBytes`, `tokenizer`, `embeddingModel`
+(nullable).
 
 ### `GET /api/insights`
 

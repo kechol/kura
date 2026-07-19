@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/core/db";
@@ -249,10 +249,15 @@ describe("kura tag add/rm/mv/gc (e2e)", () => {
     expect(again.stdout).toBe("no orphan tags\n");
   }, 30_000);
 
-  test("suggest exits 2 without --doc / --untagged", async () => {
+  test("removed subcommands (suggest, audit) exit 2", async () => {
+    // `tag suggest` / `tag audit` were folded into `kura triage` / `kura audit tags`
     const suggest = await runCli(["tag", "suggest"], env);
     expect(suggest.code).toBe(2);
-    expect(suggest.stderr).toContain("--doc <doc> or --untagged");
+    expect(suggest.stderr).toContain("unknown subcommand: suggest");
+
+    const audit = await runCli(["tag", "audit"], env);
+    expect(audit.code).toBe(2);
+    expect(audit.stderr).toContain("unknown subcommand: audit");
   }, 30_000);
 });
 
@@ -330,12 +335,13 @@ describe("kura link (e2e)", () => {
     expect(future.stdout).toContain("2-hop:\n  (none)\n");
   }, 30_000);
 
-  test("broken: shows unresolved links; adding the target auto-resolves them (docs: self-healing.md)", async () => {
-    const before = await runCli(["link", "broken"], env);
+  test("audit links: shows unresolved links; adding the target auto-resolves them (docs: self-healing.md)", async () => {
+    // `link broken` moved under the audit umbrella as `kura audit links` (JSON byte-identical)
+    const before = await runCli(["audit", "links"], env);
     expect(before.code).toBe(0);
     expect(before.stdout).toMatch(/^\[\[まだ無い記事\]\] <- #[0-9a-f]{8} 未来ノート \(main\)\n$/);
 
-    const jsonBefore = await runCli(["link", "broken", "--bucket", "main", "--json"], env);
+    const jsonBefore = await runCli(["audit", "links", "--bucket", "main", "--json"], env);
     expect(jsonBefore.code).toBe(0);
     expect(JSON.parse(jsonBefore.stdout)).toEqual([
       {
@@ -344,16 +350,61 @@ describe("kura link (e2e)", () => {
       },
     ]);
 
-    const badBucket = await runCli(["link", "broken", "--bucket", "nonexistent"], env);
+    const badBucket = await runCli(["audit", "links", "--bucket", "nonexistent"], env);
     expect(badBucket.code).toBe(3);
 
     // Creating the link target auto-resolves the unresolved link
     await addDoc(env, { title: "まだ無い記事", content: "追記予定。" });
-    const after = await runCli(["link", "broken"], env);
+    const after = await runCli(["audit", "links"], env);
     expect(after.code).toBe(0);
     expect(after.stdout).toBe("no broken links\n");
 
     const resolved = await runCli(["link", "ls", "未来ノート"], env);
     expect(resolved.stdout).toMatch(/ {2}\[\[まだ無い記事\]\] -> #[0-9a-f]{8} \(main\)\n/);
+  }, 30_000);
+});
+
+describe("kura audit (e2e)", () => {
+  let env: TestEnv;
+
+  beforeAll(async () => {
+    env = await setupHome("kura-audit-tags-e2e-");
+    // Pin the provider off so the audit never probes a local Ollama (testing.md R2);
+    // the edit-distance tag pass and the link/dupe passes all run provider-free.
+    writeFileSync(join(env.KURA_HOME, "config.toml"), '[llm]\nprovider = "none"\n');
+    await addDoc(env, { title: "DB記事1", content: "#database の解説。" });
+    await addDoc(env, { title: "DB記事2", content: "#databases の解説。" });
+    await addDoc(env, { title: "壊れリンク記事", content: "[[存在しない記事]] を参照。" });
+  });
+
+  test("audit tags: edit-distance merge candidates as text and --json (formerly tag audit)", async () => {
+    const text = await runCli(["audit", "tags"], env);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain("merge:");
+
+    const json = await runCli(["audit", "tags", "--json"], env);
+    expect(json.code).toBe(0);
+    const result = JSON.parse(json.stdout) as { merges: Array<{ from: string; to: string }> };
+    expect(
+      result.merges.some(
+        (m) => [m.from, m.to].includes("database") && [m.from, m.to].includes("databases"),
+      ),
+    ).toBe(true);
+  }, 30_000);
+
+  test("audit links: surfaces the unresolved target (formerly link broken)", async () => {
+    const json = await runCli(["audit", "links", "--json"], env);
+    expect(json.code).toBe(0);
+    const groups = JSON.parse(json.stdout) as Array<{ target_title: string }>;
+    expect(groups.some((g) => g.target_title === "存在しない記事")).toBe(true);
+  }, 30_000);
+
+  test("bare audit runs every provider-free check, skips contradictions, exits 0", async () => {
+    const r = await runCli(["audit"], env);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("== links ==");
+    expect(r.stdout).toContain("== tags ==");
+    expect(r.stdout).toContain("== dupes ==");
+    expect(r.stderr).toContain("skipping contradictions");
   }, 30_000);
 });

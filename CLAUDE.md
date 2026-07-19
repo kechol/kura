@@ -88,10 +88,10 @@ Two more agent-facing surfaces sit next to the docs:
   tests. English-only search tests are not acceptable (docs: testing.md).
 - Two intentional Japanese surfaces in the product: the browser UI strings
   (`src/client/`) and the LLM prompt templates (clip formatting, tag
-  suggestion, path suggestion, query expansion, answer generation,
-  contradiction audit) — kura is a Japanese-first knowledge tool and the
-  prompts are tuned for Japanese content. Keep the surrounding comments in
-  English.
+  suggestion, title suggestion, path suggestion, duplicate judgment, link
+  suggestion, query expansion, answer generation, contradiction audit) —
+  kura is a Japanese-first knowledge tool and the prompts are tuned for
+  Japanese content. Keep the surrounding comments in English.
 - README is bilingual: `README.md` (English) and `README.ja.md` (Japanese).
   Update both when user-facing behavior changes.
 

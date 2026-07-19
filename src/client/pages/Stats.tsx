@@ -26,13 +26,13 @@ const DOC_GROUPS: Array<{
   {
     group: "unfiled",
     title: "未整理（Bucket 直下）",
-    hint: "path が未設定のドキュメントです。kura mv suggest で整理できます。",
+    hint: "path が未設定のドキュメントです。kura triage で整理できます。",
     empty: "すべて path が設定されています。",
   },
   {
     group: "untagged",
     title: "タグなし",
-    hint: "タグが 1 つも付いていません。kura tag suggest --untagged で候補を出せます。",
+    hint: "タグが 1 つも付いていません。kura triage で整理できます。",
     empty: "すべてのドキュメントにタグが付いています。",
   },
   {
@@ -164,7 +164,7 @@ export function StatsPage() {
             <InsightCard
               title="タグの重複候補"
               count={i.tagDuplicates.length}
-              hint="同じ意味のタグが表記ゆれしている可能性があります。kura tag rename <from> <to> で統合できます。"
+              hint="同じ意味のタグが表記ゆれしている可能性があります。kura audit tags で統合候補を確認できます。"
               empty="表記ゆれしたタグは見つかりませんでした。"
             >
               <ul class="tag-dupes">

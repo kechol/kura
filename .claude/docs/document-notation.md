@@ -32,7 +32,7 @@ Syntax: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (`LINK_RE` i
   2. `[[Title]]` — title match, resolved only when **exactly one** candidate
      exists (an explicit `LIMIT 2` count guard — the old scalar subquery
      silently picked an arbitrary row). An ambiguous short form stays
-     unresolved (`target_id = NULL`) and surfaces via `kura link broken` and
+     unresolved (`target_id = NULL`) and surfaces via `kura audit links` and
      doctor.
   3. `[[Alias]]` — match against `document_aliases`, resolved only when
      **exactly one** document carries the alias (same `LIMIT 2` guard).

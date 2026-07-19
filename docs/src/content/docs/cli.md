@@ -25,7 +25,7 @@ description: Every kura command grouped by task, with global conventions, --json
 | `kura init` | Create `~/.kura`, download the tokenizer, create the DB |
 | `kura doctor` | Diagnose SQLite, extensions, LLM providers, DB integrity |
 | `kura doctor --fix` | Repair the index, GC orphans, re-resolve links, detect embedding-model changes |
-| `kura status` | Store statistics: counts, embedding coverage, stale candidates |
+| `kura status` | Store statistics: counts, embedding coverage, stale candidates, triage backlog |
 | `kura config list\|get\|set` | Read and write `~/.kura/config.toml` |
 
 ## Documents
@@ -37,8 +37,7 @@ description: Every kura command grouped by task, with global conventions, --json
 | `kura edit <ref>` | Open in your editor (`general.editor` → `$EDITOR` → `vi`); frontmatter edits title, path, and tags too |
 | `kura rm <ref>` | Delete a document |
 | `kura mv <ref> [<title>]` | Rename and/or move (`--path`); rewrites wiki links. `--prefix <old> <new>` moves a whole subtree |
-| `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json`, `--limit` |
-| `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
+| `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale`, `--unfiled`, `--untagged` |
 | `kura history <ref>` | List a document's revisions — every edit keeps the replaced version. `show <ref> <rN>` prints one; `restore <ref> <rN>` brings its content back (and is itself undoable) |
 | `kura changes --since <t>` | List documents created or updated since a time (`7d`, `2026-07-01`); renames and moves are detected from revision history |
 | `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
@@ -67,12 +66,10 @@ degraded behavior without an LLM provider.
 | `kura tag add\|rm <doc> <tag>…` | Add or remove tags on a document |
 | `kura tag mv <old> <new>` | Rename or merge a tag subtree |
 | `kura tag gc` | Remove tags no document uses |
-| `kura tag suggest` | LLM tag suggestions; `--untagged`, `--apply` (reuses your taxonomy) |
-| `kura tag audit` | Merge candidates for similar tags; oversized-tag warnings |
 | `kura link ls <ref>` | Outlinks, backlinks, and 2-hop links for a document |
-| `kura link broken` | List unresolved wiki links |
 | `kura alias ls\|add\|rm <doc> <alias>…` | Manage aliases (alternate titles): `[[alias]]` links resolve to the document and search matches it |
-| `kura audit` | Flag contradictions between similar passages in recent documents (needs an LLM; verdicts are cached) |
+| `kura triage` | Organize the backlog (unfiled or untagged documents): per document, propose duplicate merges, a title, tags, a path, and related `[[links]]`. `--apply`, `--json`, `--steps`. The "dump first, organize later" workflow |
+| `kura audit [contradictions\|dupes\|tags\|links]` | Knowledge-base health checks. Bare runs all four report-only; `dupes` / `tags` take `--apply`; `contradictions` needs an LLM (exit 4). Each takes `--json` |
 
 ## Servers & agent integration
 

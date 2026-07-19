@@ -1,12 +1,14 @@
 import { fetchAndExtract } from "../../core/clip/extract";
-import { formatClip, suggestTagsForText } from "../../core/clip/format";
+import { formatClip } from "../../core/clip/format";
 import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
 import { createDocumentWithRetry, updateDocument } from "../../core/documents";
 import { resolveProvider } from "../../core/llm/provider";
+import { suggestTagsForText } from "../../core/tagging";
 import { addTagsToDoc, listTags } from "../../core/tags";
 import { joinDocPath, normalizeDocPath } from "../../core/wiki";
 import { boolOpt, EXIT, listOpt, parseCommandArgs, strOpt, UsageError } from "../args";
+import { confirm, isInteractive } from "../prompt";
 
 export const summary = "Clip a web page into the knowledge base";
 
@@ -84,20 +86,17 @@ export async function run(argv: string[]): Promise<number> {
 
   if (existing) {
     if (!boolOpt(parsed, "force")) {
-      const isTty = process.stdout.isTTY === true && process.stdin.isTTY === true;
-      if (!isTty) {
+      if (!isInteractive()) {
         console.error(
           `a document with the same URL already exists: #${existing.doc_key} ${existing.title} (use --force to overwrite)`,
         );
         return EXIT.ERROR;
       }
-      process.stdout.write(
-        `update document #${existing.doc_key} "${existing.title}" with the same URL? [y/N] `,
+      const ok = await confirm(
+        `update document #${existing.doc_key} "${existing.title}" with the same URL?`,
+        false,
       );
-      const answer = await new Promise<string>((resolve) => {
-        process.stdin.once("data", (d) => resolve(String(d)));
-      });
-      if (!/^y(es)?$/i.test(answer.trim())) {
+      if (!ok) {
         console.log("aborted");
         return EXIT.OK;
       }

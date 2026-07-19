@@ -23,6 +23,20 @@ later does not require breaking changes. None of them are commitments.
   scope.md R1 makes it a design discussion, not a chore commit. A local
   synonym table consulted at query-build time (`src/core/search/keyword.ts`)
   would need no schema change.
+- **MOC / hub-document generation from embedding clusters.** `kura triage`
+  organizes one document at a time; a complementary store-wide pass could
+  cluster `chunks_vec` embeddings and generate Map-of-Content hub documents
+  (a titled index linking each cluster's members) to give large stores a
+  navigable top layer. Deferred: clustering quality and how much to
+  regenerate on every edit are open design questions, and it reuses the
+  existing KNN + `[[link]]` machinery, so nothing about the schema blocks it.
+- **MCP exposure of triage suggestions.** `kura triage` and the
+  `kura audit` subcommands are CLI-only today; a read-only `kura_triage`
+  tool returning the same `--json` report (suggestions, never writes) would
+  let agents propose structure the way they already call `kura_changes` at
+  session start. Deferred until the triage `--json` contract settles; it
+  would slot into `src/server/mcp.ts` with no core changes
+  (see [mcp-server.md](mcp-server.md)).
 - **Scale beyond ~10k documents** (quantization, partitioning) is a declared
   non-goal for v1; sqlite-vec brute-force KNN is sufficient at the target
   scale (see [performance.md](performance.md)).

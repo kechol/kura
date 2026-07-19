@@ -20,8 +20,8 @@ features degrade gracefully (see "Degraded operation").
 
 - Pass `--json` to read commands for machine-readable output
   (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `ask`, `add`,
-  `config list`, `bucket ls`, `tag ls`, `link ls`, `link broken`,
-  `alias ls`, `history`, `changes`, `audit`, `mv suggest`).
+  `config list`, `bucket ls`, `tag ls`, `link ls`, `alias ls`,
+  `history`, `changes`, `audit`, `triage`).
 - Starting a session? `kura changes --since 7d --json` lists what was
   created or updated since you last looked (renames and moves included;
   deletions are not tracked).
@@ -90,12 +90,11 @@ Read:
 
 ```sh
 kura get <doc> [--raw|--pretty|--json] [--lines A:B] [--bucket b] [--as-of T]
-kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
+kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views] [--stale] [--unfiled] [--untagged] [--limit n] [--json]
 kura link ls <doc> [--json]     # outgoing links + backlinks
-kura link broken [--json]       # unresolved [[links]]
 kura history <doc> [--json]     # revision list; also: show <doc> <rN>, restore <doc> <rN>
 kura changes --since 7d [--bucket b] [--limit n] [--json]   # created/updated since a point in time
-kura status [--json]            # counts, tokenizer, embedding coverage
+kura status [--json]            # counts, tokenizer, embedding coverage, triage backlog
 ```
 
 Organize:
@@ -103,12 +102,36 @@ Organize:
 ```sh
 kura mv <doc> [<new-title>] [--path <new-path>] [--bucket b]   # relinks [[references]]
 kura mv --prefix <old-prefix> <new-prefix>                     # move a whole subtree
-kura mv suggest [--limit n] [--apply] [--json]                 # file unfiled documents
-kura tag ls [--tree] | add <doc> <tag>... | rm <doc> <tag>... | mv <old> <new> | gc | suggest [--untagged] [--apply] | audit [--apply]
+kura tag ls [--tree] | add <doc> <tag>... | rm <doc> <tag>... | mv <old> <new> | gc
 kura alias ls <doc> | add <doc> <alias>... | rm <doc> <alias>...
 kura bucket ls | add <name> [--desc t] | rm <name> [--force] | mv <old> <new>
 kura rm <doc> --force [--bucket b]
 ```
+
+Triage the backlog (the "dump first, organize later" workflow):
+
+```sh
+kura triage [<doc>...] [--bucket b] [--limit n] [--steps dedupe,title,tags,path,links] [--apply] [--json] [--redo]
+kura audit [contradictions|dupes|tags|links] [--bucket b] [--limit n] [--apply] [--json]
+```
+
+`kura triage` walks the backlog — documents at the bucket root or without
+tags, not yet triaged (or edited since the last pass) — and proposes, per
+document, duplicate merges, a better title, tags, a document path, and
+related `[[links]]`. On a TTY it confirms each step (`[y/e/n/s/q]`: `s`
+skips the rest and marks the doc triaged, `q` quits); `--apply` applies
+everything except duplicate merges (never automatic); `--json` is a dry
+run. It **never exits 4** — without a provider it falls back to structural /
+keyword signals and skips the LLM-only steps (title, tags, dupe verdicts)
+with a warning.
+
+`kura audit` runs knowledge-base health checks: `links` (unresolved wiki
+links), `tags` (tag merge candidates + oversized tags), `dupes` (exact +
+near-duplicate documents), `contradictions` (LLM-judged conflicting
+passages). Bare `kura audit` runs all four report-only. Only
+`kura audit contradictions` requires a provider (**exit 4**); the others
+degrade with a warning. `--apply` on `dupes` / `tags` confirms each fix
+interactively.
 
 Bulk / backup (the portability story — Markdown with frontmatter):
 
@@ -122,13 +145,26 @@ Maintenance:
 ```sh
 kura doctor [--fix]        # diagnose / repair extensions, FTS, links, embeddings
 kura embed [--all]         # generate (or regenerate) chunk embeddings
-kura audit [--bucket b] [--limit n] [--json]  # LLM contradiction check between close passages (exit 4 without a provider; verdicts cached)
 kura config list | get <key> | set <key> <value>
 kura init [--no-download]  # first-time setup
 ```
 
-`kura audit --json` → `{examined_pairs, contradictions: [{a, b, similarity}]}`
-where `a` / `b` are `{key, title, path, bucket, excerpt}`.
+`--json` shapes for the triage/audit commands (stable contracts):
+
+- `kura triage --json` → `[{key, title, steps, warnings}]`; `steps` carries
+  only the steps that ran — `dedupe.candidates[]`, `title` (`{proposed,
+  reason}` or null), `tags[]`, `path` (`{path, source, reason?}` or null),
+  `links[]`.
+- `kura audit contradictions --json` →
+  `{examined_pairs, contradictions: [{a, b, similarity}]}` where `a` / `b`
+  are `{key, title, path, bucket, excerpt}`.
+- `kura audit dupes --json` → `{exact: [[{key, title}], …], near: [{a, b,
+  similarity, verdict?}]}`.
+- `kura audit tags --json` → `{merges: [{from, to, reason, similarity}],
+  oversized: [{path, count, share}]}`.
+- `kura audit links --json` → `[{target_title, sources}]`.
+- Bare `kura audit --json` → `{links, tags, dupes, contradictions?}`
+  (the `contradictions` key is omitted when no provider is reachable).
 
 ## Recipes
 
@@ -157,10 +193,12 @@ kura import /tmp/kura-out
 ## Degraded operation
 
 kura guarantees keyword search, CRUD, links and tags with **no LLM provider
-and no vaporetto tokenizer**. Without a provider: `vsearch` and `audit`
-exit 4, `query` falls back to keyword-only, `ask` shows search results
-instead of an answer, `clip` still works (`--no-llm` skips LLM formatting
-entirely), and `tag suggest` / `mv suggest` lose their LLM signals. Without the vaporetto extension, FTS falls back to a trigram
+and no vaporetto tokenizer**. Without a provider: `vsearch` and
+`audit contradictions` exit 4, `query` falls back to keyword-only, `ask`
+shows search results instead of an answer, `clip` still works (`--no-llm`
+skips LLM formatting entirely), and `kura triage` / `kura audit` (`tags`,
+`dupes`) drop their LLM steps and suggest from structural / keyword signals
+only. Without the vaporetto extension, FTS falls back to a trigram
 tokenizer (`kura doctor --fix` re-fetches it).
 
 ## MCP alternative
