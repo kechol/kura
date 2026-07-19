@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `kura skills` — manage an agent skill that teaches AI coding agents to
+  drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
+  into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`
+  removes it, and `show` prints it to stdout. The skill ships inside the
+  binary and is stamped with the kura version on install.
+
 ### Changed
 
 - Browser UI: the document reading surface was redesigned around Japanese

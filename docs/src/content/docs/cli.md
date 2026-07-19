@@ -69,13 +69,15 @@ degraded behavior without an LLM provider.
 | `kura link ls <ref>` | Outlinks, backlinks, and 2-hop links for a document |
 | `kura link broken` | List unresolved wiki links |
 
-## Servers
+## Servers & agent integration
 
 | Command | What it does |
 |---|---|
 | `kura browser` | Serve the browser UI at `http://127.0.0.1:7578` |
 | `kura mcp` | Run the MCP server on stdio for AI agents |
 | `kura mcp --print-config` | Print an `.mcp.json` snippet |
+| `kura skills install` | Install the `kura-cli` agent skill (a CLI guide for AI agents) into `~/.agents/skills` (`--dir` overrides) |
+| `kura skills show` | Print the skill to stdout; `kura skills uninstall` removes it |
 
 ## Exit codes
 

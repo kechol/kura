@@ -97,6 +97,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Run the MCP server (stdio)",
     load: () => import("./commands/mcp"),
   },
+  skills: {
+    summary: "Install the agent skill (a kura CLI guide for AI agents)",
+    load: () => import("./commands/skills"),
+  },
   browser: {
     summary: "Start the browser UI server",
     load: () => import("./commands/browser"),

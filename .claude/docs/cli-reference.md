@@ -619,6 +619,37 @@ disconnects. `--print-config` prints ready-to-paste `claude mcp add` and
 
 ---
 
+## Agent integration
+
+### `kura skills`
+
+```
+kura skills install [--dir <path>] [--json]
+kura skills uninstall [--dir <path>]
+kura skills show
+```
+
+`src/cli/commands/skills.ts`. Installs `kura-cli/SKILL.md` — an agent skill
+that teaches AI coding agents to drive kura from the CLI (the three search
+modes, `--json` shapes, exit codes, non-interactive recipes) — into the
+agent skills directory, default `~/.agents/skills` (the tool-agnostic
+shared location; `--dir` overrides it, e.g. a project's `.claude/skills`).
+
+- The skill body lives at `src/cli/skills/kura-cli/SKILL.md` and is embedded
+  into the binary as a string (`with { type: "text" }`, the same mechanism
+  as the SQL migrations); the `{{KURA_VERSION}}` placeholder is stamped at
+  install time.
+- `install` is idempotent — `Installed` / `Updated` / `Already up to date`
+  (`--json`: `{action: "installed" | "updated" | "unchanged", path}`). A
+  reinstall overwrites local edits; the file footer warns about this.
+- `uninstall` removes `SKILL.md` (and the `kura-cli/` directory when it is
+  empty), exits 3 when not installed. `show` prints the skill to stdout.
+- The skill documents commands verbatim: when the CLI surface changes, the
+  skill body changes in the same PR (it is source under `src/`, so the
+  rename-sweep rule covers it).
+
+---
+
 ## How commands relate
 
 - **`init` → everything else**: `getDb()` (`src/core/db.ts`) refuses to run

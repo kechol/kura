@@ -123,19 +123,24 @@ Notation inside documents:
   one of them
 - `#tech/db/sqlite` — hierarchical tags (extracted on save)
 
-## AI agent integration (MCP)
+## AI agent integration
 
 ```sh
 claude mcp add kura -- kura mcp     # Claude Code
 kura mcp --print-config             # snippet for .mcp.json
+kura skills install                 # agent skill (CLI guide) → ~/.agents/skills
 ```
 
-Exposed tools: `kura_query` (hybrid search), `kura_search`, `kura_get`,
+MCP tools: `kura_query` (hybrid search), `kura_search`, `kura_get`,
 `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`.
 `kura_add` / `kura_update` accept an optional document `path`, and `kura_get`
 also resolves a full path (`clips/Title`).
 
-Every read command also supports machine-readable output via `--json`.
+For CLI-driven agents, `kura skills install` writes the `kura-cli` skill — a
+guide to driving kura from the shell — into `~/.agents/skills` (use `--dir`
+to target a project's skills directory instead; `show` prints it,
+`uninstall` removes it). Every read command also supports machine-readable
+output via `--json`.
 
 ## Browser UI
 

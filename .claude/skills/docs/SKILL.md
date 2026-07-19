@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Sync kura's documentation with the current code. Reads every tracked Markdown / MDX page under `docs/src/content/docs/` (Astro Starlight site, English root + Japanese `ja/` mirror), the internal docs and rules under `.claude/docs/` and `.claude/rules/`, `.claude/skills/**/SKILL.md`, `CLAUDE.md`, and `README.md` / `README.ja.md`, compares each claim against the live source tree (`src/`, `--help` output, `src/server/mcp.ts` schemas, `src/core/migrations/`), and rewrites stale or missing sections in place — preserving voice and structure, sweeping English + Japanese in lockstep. Read-only on code; writes only to doc files. Does NOT commit and never touches `CHANGELOG.md` (owned by `/release`). Trigger on "/docs", "update the docs", "sync docs with code", "docs are stale, fix them", "rewrite outdated docs", "freshen the documentation".
+description: Sync kura's documentation with the current code. Reads every tracked Markdown / MDX page under `docs/src/content/docs/` (Astro Starlight site, English root + Japanese `ja/` mirror), the internal docs and rules under `.claude/docs/` and `.claude/rules/`, `.claude/skills/**/SKILL.md`, the shipped agent-skill template `src/cli/skills/**/SKILL.md`, `CLAUDE.md`, and `README.md` / `README.ja.md`, compares each claim against the live source tree (`src/`, `--help` output, `src/server/mcp.ts` schemas, `src/core/migrations/`), and rewrites stale or missing sections in place — preserving voice and structure, sweeping English + Japanese in lockstep. Read-only on code; writes only to doc files. Does NOT commit and never touches `CHANGELOG.md` (owned by `/release`). Trigger on "/docs", "update the docs", "sync docs with code", "docs are stale, fix them", "rewrite outdated docs", "freshen the documentation".
 ---
 
 # docs
@@ -16,6 +16,11 @@ Two audiences, two languages, one pass:
 - **Internal docs** — `.claude/docs/**`, `.claude/rules/**`,
   `.claude/skills/**/SKILL.md`, `CLAUDE.md`. Contributor / AI-agent
   audience. Always English (workflow.md R7). Capture decision rationale.
+- **Shipped agent skill** — `src/cli/skills/**/SKILL.md` (the `kura-cli`
+  guide embedded into the binary and installed by `kura skills install`).
+  External-agent audience. English body, Japanese example content. Its
+  command usages, `--json` shapes, and exit codes must match the CLI
+  exactly — treat every claim like a reference page.
 
 ## Drift to look for
 
@@ -62,6 +67,7 @@ Per-file language (workflow.md R7):
 | `docs/src/content/docs/*.md(x)` (root) | English |
 | `docs/src/content/docs/ja/**` | Japanese (native) |
 | `.claude/docs/**`, `.claude/rules/**`, `.claude/skills/**/SKILL.md` | English |
+| `src/cli/skills/**/SKILL.md` | English body; keep the Japanese example commands/content Japanese |
 
 Japanese mirror prose must read native (terminology.md R4): translate
 **meaning** not structure; keep canonical names verbatim; no ASCII
@@ -85,7 +91,7 @@ git ls-files \
   'README.md' 'README.ja.md' 'CLAUDE.md' \
   'docs/src/content/docs/**/*.md' 'docs/src/content/docs/**/*.mdx' \
   '.claude/docs/**/*.md' '.claude/rules/**/*.md' \
-  '.claude/skills/**/SKILL.md'
+  '.claude/skills/**/SKILL.md' 'src/cli/skills/**/SKILL.md'
 ```
 
 Skip `CHANGELOG.md` (owned by `/release`). For each page, the frontmatter
@@ -240,7 +246,10 @@ commits when ready.
 
 ## Constraints
 
-- Read-only on code; never modify outside the Phase-1 doc set.
+- Read-only on code; never modify outside the Phase-1 doc set. The one
+  file under `src/` in that set is `src/cli/skills/**/SKILL.md` — it is
+  a doc surface (an embedded Markdown template), not code; keep its
+  `{{KURA_VERSION}}` placeholder intact.
 - Never touch `CHANGELOG.md` (owned by `/release`).
 - No `git add`, `git commit`, push, or PR (workflow.md R4).
 - No new top-level docs without asking — propose first, then create both
