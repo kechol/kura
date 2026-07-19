@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Browser UI: the document reading surface was redesigned around Japanese
+  editorial typography — a reading column of about 49 full-width characters
+  that the document panel hugs (no stretching across wide windows),
+  larger body type with taller leading and slight tracking,
+  proportionally-set (`palt`) headings, always-underlined links, hairline
+  tables, and a print stylesheet. The in-place editor shares the same metrics,
+  so a document renders identically while reading and editing. Fixes a
+  horizontal overflow of the document panel on narrow screens caused by long
+  unbreakable strings.
+- Browser UI: flat surface pass — the header and sidebar now sit on the page
+  ground so documents are the only paper-white panels, decorative card shadows
+  are gone (elevation is reserved for the search modal and floating toolbar),
+  corner radii and hover washes are unified into design tokens, and the light
+  theme ground is a touch warmer.
+
 ## [0.2.0] - 2026-07-19
 
 ### Added

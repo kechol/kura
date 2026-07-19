@@ -350,6 +350,34 @@ markdown-it (html: true, linkify)
    highlight.js token colors are custom properties too, so both themes share
    one stylesheet.
 
+### Surfaces
+
+Flat surface system: the app chrome (header, sidebar) sits directly on the
+plaster ground (`--bg`); only content panels are paper-white (`--bg-panel`)
+cards with hairline borders and **no shadows** — elevation (`--shadow`) is
+reserved for overlays (search modal, the editor's floating toolbar). Radii
+are tokens (`--radius-sm` 6px controls / `--radius-md` 8px panels /
+`--radius-lg` 12px overlays), and `--hover` is a text-tinted wash that stays
+visible on any surface in both themes.
+
+### Typography
+
+The reading surface — `.doc-content` and the in-place editor, which share the
+same metrics so a document renders identically read or edited — is tuned for
+Japanese body text: `1.0625rem` (17px) at `line-height: 1.9` with `0.03em`
+tracking, capped at `--prose-measure` (52rem ≈ 49 full-width characters). The
+document panel hugs the column (`--prose-measure` + `--panel-pad`) rather
+than stretching across the window, and the panel + meta sidebar center as a
+group on wide screens. Body text keeps standard (full-width)
+glyph metrics; headings set `font-feature-settings: "palt"` with `0.02em`
+tracking, `text-wrap: balance`, and `scroll-margin-top` to clear the sticky
+header. Font stacks are `:root` tokens (`--font-sans` / `--font-mono`);
+`Hiragino Sans` is listed before `Hiragino Kaku Gothic ProN` for its full
+W0–W9 weight range. Links inside documents are always underlined
+(distinguishable without color, WCAG 1.4.1); wiki links use a dashed accent
+underline. Tables draw horizontal hairlines only. A minimal `@media print`
+block strips the app chrome so a document prints as plain paper.
+
 ### Brand color
 
 kura's accent is **Hanada (縹 / Japan Blue)** — an indigo drawn from the
