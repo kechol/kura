@@ -8,7 +8,7 @@ Markdown/HTML ドキュメントを SQLite に格納し、人間と AI エージ
 
 - **日本語対応ハイブリッド検索**: FTS5 + [sqlite-vaporetto](https://github.com/hotchpotch/sqlite-vaporetto)（形態素解析）によるキーワード検索、[sqlite-vec](https://github.com/asg017/sqlite-vec) + ローカル embedding によるセマンティック検索、ローカル LLM によるリランク
 - **自己組織化**: ファイリングの強制なし。Bucket + 階層タグ（`tech/db/sqlite`）+ 相互リンク（`[[タイトル]]`）で整理。フォルダ風の名前が欲しいときだけ任意のドキュメント path（`db/sqlite`）を付けられ、Bucket のルートは inbox として使える
-- **AI エージェント連携**: `kura mcp`（MCP サーバー）と全コマンドの `--json` 出力
+- **AI エージェント連携**: `kura mcp`（MCP サーバー）と読み取りコマンドの `--json` 出力
 - **ブラウザ UI**: ドキュメント閲覧・編集・ナレッジグラフ可視化（`kura browser`）
 - **ローカル完結**: データは `~/.kura/kura.db` の単一 SQLite。LLM は Ollama / LM Studio を自動検出（無くてもキーワード検索は動作）
 
@@ -47,7 +47,7 @@ kura init      # ~/.kura の作成、拡張のダウンロード、DB 作成
 kura doctor    # 環境診断（SQLite / 拡張 / LLM プロバイダ / DB 整合性）
 ```
 
-`kura init` は日本語形態素解析トークナイザー（sqlite-vaporetto、モデル同梱 約 6.5MB）を GitHub Releases から SHA256 検証付きでダウンロードします。未対応環境（darwin-x64 等）では自動的に trigram トークナイザーへフォールバックします。
+`kura init` は日本語形態素解析トークナイザー（sqlite-vaporetto、モデル同梱で約 6.5MB）を GitHub Releases から SHA256 検証付きでダウンロードします。未対応環境（darwin-x64 等）では自動的に trigram トークナイザーへフォールバックします。
 
 ### LLM モデルの準備（セマンティック検索・リランク・clip 整形に使用）
 

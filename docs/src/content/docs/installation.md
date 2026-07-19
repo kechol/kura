@@ -86,12 +86,16 @@ darwin-x64), it falls back to the trigram tokenizer automatically.
 kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
-A document viewer (rendered Markdown, backlinks, two-hop links), an
-editor, three-mode search, a sidebar document tree that follows your
-document paths, a tag browser, and a d3-force knowledge graph — all
-served locally. Star a document and it stays pinned at the top of the
-sidebar, with whatever is filed under it expanding beneath it. The UI
-text is Japanese.
+A document viewer (rendered Markdown, backlinks, two-hop links),
+in-place editing, three-mode search, a sidebar document tree that
+follows your document paths, a tag browser, and a d3-force knowledge
+graph — all served locally. The UI is scoped to one bucket at a time,
+picked in the sidebar. A fresh visit resumes the document you last
+read, and the home screen is your reading history. Ctrl+P opens instant
+search, Ctrl+N starts a new document, and a Statistics screen surfaces
+counts, embedding coverage, and tidying suggestions. Star a document
+and it stays pinned at the top of the sidebar, with whatever is filed
+under it expanding beneath it. The UI text is Japanese.
 
 ## Where your data lives
 

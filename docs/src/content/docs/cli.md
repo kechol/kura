@@ -34,10 +34,10 @@ description: Every kura command grouped by task, with global conventions, --json
 |---|---|
 | `kura add <file>` | Add a document; `-` reads stdin; `--path`, `--tags`, `--title`, `--bucket` |
 | `kura get <ref>` | Print a document (Markdown or `--json`) |
-| `kura edit <ref>` | Open in `$EDITOR`; frontmatter edits title, path, and tags too |
+| `kura edit <ref>` | Open in your editor (`general.editor` → `$EDITOR` → `vi`); frontmatter edits title, path, and tags too |
 | `kura rm <ref>` | Delete a document |
 | `kura mv <ref> [<title>]` | Rename and/or move (`--path`); rewrites wiki links. `--prefix <old> <new>` moves a whole subtree |
-| `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json` |
+| `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json`, `--limit` |
 | `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
 | `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
 | `kura export --dir <d>` | Write documents as Markdown with frontmatter; paths become subdirectories |
@@ -59,8 +59,11 @@ degraded behavior without an LLM provider.
 
 | Command | What it does |
 |---|---|
-| `kura bucket ls\|add\|rm` | Manage buckets |
+| `kura bucket ls\|add\|rm\|mv` | Manage buckets (`mv` renames) |
 | `kura tag ls` | List tags; `--tree` for the hierarchy |
+| `kura tag add\|rm <doc> <tag>…` | Add or remove tags on a document |
+| `kura tag mv <old> <new>` | Rename or merge a tag subtree |
+| `kura tag gc` | Remove tags no document uses |
 | `kura tag suggest` | LLM tag suggestions; `--untagged`, `--apply` (reuses your taxonomy) |
 | `kura tag audit` | Merge candidates for similar tags; oversized-tag warnings |
 | `kura link ls <ref>` | Outlinks, backlinks, and 2-hop links for a document |

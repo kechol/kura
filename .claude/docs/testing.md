@@ -33,6 +33,7 @@ opens `:memory:` directly or fabricates a `KURA_HOME` under a temp dir.
 | `tests/commands-taglink.test.ts` | e2e | `tag ls/--tree/--json`, `tag add/rm/mv/gc` exact outputs, `tag suggest` usage error, `link ls` three sections + JSON shape, `link broken` + auto-resolution on target creation. |
 | `tests/api.test.ts` | integration | REST endpoints (SPEC §8.2) against `startServer` on port 0: stats, buckets, docs CRUD + pagination, `PUT` path moves (incl. the 409 on a collision) and `PUT /api/docs/:key/favorite` (pins without bumping `updated_at`, `?favorite=1` filter, 400 on a non-boolean body), related, three search modes + error cases, tags, graph, SPA fallback, 404 JSON. |
 | `tests/mcp.test.ts` | integration | MCP server over `InMemoryTransport`: 8 tools with guidance text, search→get flow (access_count), degraded `kura_query`, add/update/list_tags, related, status, `isError` for unknown keys. |
+| `tests/editor.test.ts` | unit | Inline block editor: Markdown ⇄ block-model round-trip is a fixed point on Japanese fixtures (parse → serialize). |
 | `tests/client-build.test.ts` | build | `bun run build:client` produces `dist/`, and `startServer` serves it with SPA fallback. |
 
 ## Isolation patterns

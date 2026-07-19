@@ -23,7 +23,7 @@ search is the core feature. Distribution is a single Bun binary.
 - Multi-user, sync, or cloud features (local, single-user only)
 - Filesystem watching (ingestion is explicit: `add` / `import` / `clip` / MCP)
 - Scaling beyond 100k documents (no quantization/partitioning)
-- WYSIWYG editing (`$EDITOR` or the browser's plain textarea)
+- Rich/collaborative editing; documents are plain Markdown/HTML, edited via `$EDITOR` (`kura edit`) or the browser's in-place block editor (`src/client/editor/`)
 
 ## Layers and dependency direction
 
@@ -65,6 +65,8 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/core/clip/` | `extract.ts` (readability + linkedom), `format.ts` (LLM formatting / turndown fallback) |
 | `src/core/doctor.ts` | Self-healing fixes: FTS rebuild/retokenize, orphan GC, hash repair, link resolution, vec recreation |
 | `src/core/stale.ts` / `gardening.ts` / `stats.ts` | Staleness scoring, tag audit, `kura status` statistics |
+| `src/core/insights.ts` | Read-only tidying insights per bucket (unfiled/untagged/orphaned docs, broken links, duplicate-looking tags); backs `GET /api/insights` and the browser Stats screen |
+| `src/core/filing.ts` | Filing-assistant scoring for `kura mv suggest` (link/tag/keyword signals + optional LLM pick) |
 | `src/server/http.ts` | `Bun.serve` wiring, port retry, SPA asset serving (127.0.0.1 only) |
 | `src/server/api.ts` | REST handlers |
 | `src/server/mcp.ts` | MCP stdio server tools |

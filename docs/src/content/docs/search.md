@@ -69,15 +69,17 @@ model's dimensions.
 
 ## Degradation without a provider
 
-kura never hard-fails a search:
+Keyword and hybrid search work offline; only pure semantic search needs
+a model:
 
 - **`kura search`** works with or without a provider — always.
-- **`kura vsearch`** needs embeddings. With no provider and no existing
-  vectors, it warns and returns nothing useful rather than erroring; a
-  command that specifically required a model exits with code `4`.
 - **`kura query`** falls back toward keyword results when semantic
   search or reranking is unavailable, so you still get an answer — just
   without the model-driven quality boost.
+- **`kura vsearch`** is the exception: it requires an embedding provider
+  and does not fall back. With none reachable it exits with code `4`
+  (LLM provider unavailable). Use `kura query` when you want a result
+  that degrades to keyword search instead.
 
 This is a core guarantee: the knowledge base stays searchable offline.
 See [Configuration](/kura/configuration/) to choose or disable the

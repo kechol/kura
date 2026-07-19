@@ -56,10 +56,12 @@ reranking — all inside one SQLite database.
 
 ## Graceful degradation
 
-kura never hard-requires a model. With no LLM provider reachable,
-semantic search, reranking, clip formatting, tag suggestion, and
-query expansion each warn and fall back — while keyword search,
-document CRUD, links, and tags keep working. Run it on an airplane;
-you lose only the features that genuinely need a model.
+kura keeps working without a model. Keyword search, document CRUD,
+links, and tags never need one, and `kura query` still returns keyword
+results when semantic search or reranking is unavailable — while clip
+formatting and query expansion quietly fall back. The commands that are
+inherently model-driven, `kura vsearch` and `kura tag suggest`, tell you
+when no provider is reachable. Run it on an airplane; you lose only the
+features that genuinely need a model.
 
 Ready? Head to the [Quick Start](/kura/quick-start/).

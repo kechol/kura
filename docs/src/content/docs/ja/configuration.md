@@ -17,10 +17,13 @@ kura config set general.stale_days 90
 ```toml
 [general]
 default_bucket = "main"
+editor = ""           # kura edit が開くコマンド。空なら $EDITOR → vi
 stale_days = 180
 
 [llm]
 provider = "auto"     # auto | ollama | lmstudio | none
+ollama_url = "http://localhost:11434"
+lmstudio_url = "http://localhost:1234"
 
 [llm.models]
 embedding = "qwen3-embedding:0.6b"
@@ -28,8 +31,18 @@ embedding_dimensions = 1024
 reranker = "dengcao/Qwen3-Reranker-0.6B"
 generation = "qwen3:4b"
 
+[search]
+rrf_k = 60
+keyword_weight = 1.0
+vector_weight = 1.0
+rerank_top_k = 20
+default_limit = 10
+
 [clip]
 path = "clips"
+
+[browser]
+port = 7578
 ```
 
 ### `[general]`
@@ -37,6 +50,7 @@ path = "clips"
 | キー | 意味 |
 |---|---|
 | `default_bucket` | Bucket を指定しないときに新規ドキュメントが入る先 |
+| `editor` | `kura edit` が開くコマンド。空なら `$EDITOR`、次に `vi` |
 | `stale_days` | この日数だけ触れられていないドキュメントは陳腐化候補（`kura ls --stale`） |
 
 ### `[llm]`
@@ -46,6 +60,10 @@ path = "clips"
 - `auto` — まず Ollama、次に LM Studio を試す（既定）。
 - `ollama` / `lmstudio` — バックエンドを固定する。
 - `none` — LLM 機能を完全に無効化。kura はキーワードのみで動く。
+
+`ollama_url`（既定 `http://localhost:11434`）と `lmstudio_url`（既定
+`http://localhost:1234`）は各バックエンドの接続先です。既定以外の
+ホストやポートに向けるときに変更します。
 
 ### `[llm.models]`
 
@@ -66,11 +84,28 @@ embedding モデルまたはその次元を変更したら、`kura doctor --fix`
 ありません。
 :::
 
+### `[search]`
+
+ハイブリッド検索のチューニング。既定でたいていのストアに合います。
+
+| キー | 意味 |
+|---|---|
+| `rrf_k` | キーワードとベクトルの結果を融合する際の RRF 定数 |
+| `keyword_weight` / `vector_weight` | 融合時の各リストの重み |
+| `rerank_top_k` | ローカル LLM がリランクする融合後候補の数 |
+| `default_limit` | `--limit` 省略時の結果件数 |
+
 ### `[clip]`
 
 | キー | 意味 |
 |---|---|
 | `path` | 新しいクリップを保存するドキュメント path（既定 `clips`）。`""` にすると Bucket のルートに保存 |
+
+### `[browser]`
+
+| キー | 意味 |
+|---|---|
+| `port` | `kura browser` が待ち受けるポート（既定 `7578`）。`--port` で上書き |
 
 ## 環境変数
 
