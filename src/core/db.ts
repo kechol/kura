@@ -7,6 +7,7 @@ import migration001 from "./migrations/001_init.sql" with { type: "text" };
 import migration002 from "./migrations/002_document_paths.sql" with { type: "text" };
 import migration003 from "./migrations/003_favorites.sql" with { type: "text" };
 import migration004 from "./migrations/004_aliases.sql" with { type: "text" };
+import migration005 from "./migrations/005_revisions.sql" with { type: "text" };
 import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
@@ -56,6 +57,10 @@ const MIGRATIONS: Array<{ version: number; render(ctx: MigrateContext): string }
   {
     version: 4,
     render: (ctx) => migration004.replaceAll("{{FTS_TOKENIZE}}", ctx.tokenizer),
+  },
+  {
+    version: 5,
+    render: () => migration005,
   },
 ];
 

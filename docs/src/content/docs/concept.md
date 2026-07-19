@@ -93,6 +93,10 @@ a model at all.
 with frontmatter, so your data is portable and diff-friendly, not
 locked inside the database.
 
+Edits are recoverable, too: every change keeps the previous version, so
+`kura history` can show or restore what a document used to say, and
+`kura get --as-of` reads it as of any past date.
+
 ## For humans and agents alike
 
 The same core powers three front ends: the CLI, a local

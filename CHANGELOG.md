@@ -24,6 +24,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cached in `llm_cache` and invalidated when a cited document changes. Also
   exposed as the `kura_ask` MCP tool. Without an LLM provider (or on a
   generation failure) it degrades to plain search results with a warning.
+- Document revision history — backed by schema v5 (a `document_revisions`
+  table, migrated automatically). Every content, title, or path change
+  snapshots the replaced state in the same save transaction; autosave
+  bursts coalesce into one revision per burst and the newest 100 per
+  document are kept. `kura history <doc>` lists revisions,
+  `kura history show <doc> <rN>` prints one, `kura history restore` brings
+  a body back (content only, itself undoable), and `kura get --as-of`
+  reads a document as it was at any past time.
 - `kura skills` — manage an agent skill that teaches AI coding agents to
   drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`

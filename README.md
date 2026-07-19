@@ -96,7 +96,9 @@ kura ask "does WAL block readers?"    # answer with cited sources ([1], [2], ...
 
 # View & edit
 kura get "Today's note"        # by doc key, #key, full path, unique title, or alias
+kura get "Today's note" --as-of 2026-03-01   # the document as it was back then
 kura edit "Today's note"       # edit in $EDITOR (frontmatter edits title/path/tags too)
+kura history "Today's note"    # every edit keeps the replaced version; show / restore
 kura mv "Today's note" --path db/sqlite   # optional document path; [[links]] follow
 kura ls --tag tech/db --sort updated
 kura ls --prefix db            # documents under a path prefix (descendants included)

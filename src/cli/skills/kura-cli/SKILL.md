@@ -21,7 +21,7 @@ features degrade gracefully (see "Degraded operation").
 - Pass `--json` to read commands for machine-readable output
   (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `ask`, `add`,
   `config list`, `bucket ls`, `tag ls`, `link ls`, `link broken`,
-  `alias ls`, `mv suggest`).
+  `alias ls`, `history`, `mv suggest`).
 - Exit codes: `0` ok, `1` error, `2` usage, `3` not found,
   `4` LLM provider unavailable.
 - `<doc>` arguments accept a doc key (`a1b2c3d4` or `#a1b2c3d4`), a full
@@ -47,6 +47,10 @@ features degrade gracefully (see "Degraded operation").
   orthographic variants (サーバー/サーバ) and abbreviations.
 - **doc key** (`kura_key`) — stable 8-hex identity used by
   `get` / `export` / `import`.
+- **revision** — every content / title / path change keeps the replaced
+  state. `kura history <doc>` lists (`rN` ids), `kura history restore
+  <doc> <rN>` brings a body back (content only, itself undoable), and
+  `kura get <doc> --as-of 2026-03-01` reads a past state.
 
 ## Searching — pick deliberately
 
@@ -82,10 +86,11 @@ kura clip <url> [--bucket b] [--tags t1,t2] [--no-llm] [--dry-run] [--force]
 Read:
 
 ```sh
-kura get <doc> [--raw|--pretty|--json] [--lines A:B] [--bucket b]
+kura get <doc> [--raw|--pretty|--json] [--lines A:B] [--bucket b] [--as-of T]
 kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
 kura link ls <doc> [--json]     # outgoing links + backlinks
 kura link broken [--json]       # unresolved [[links]]
+kura history <doc> [--json]     # revision list; also: show <doc> <rN>, restore <doc> <rN>
 kura status [--json]            # counts, tokenizer, embedding coverage
 ```
 

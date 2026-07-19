@@ -33,12 +33,13 @@ description: Every kura command grouped by task, with global conventions, --json
 | Command | What it does |
 |---|---|
 | `kura add <file>` | Add a document; `-` reads stdin; `--path`, `--tags`, `--title`, `--bucket` |
-| `kura get <ref>` | Print a document (Markdown or `--json`) |
+| `kura get <ref>` | Print a document (Markdown or `--json`); `--as-of 2026-03-01` shows it as it was then |
 | `kura edit <ref>` | Open in your editor (`general.editor` → `$EDITOR` → `vi`); frontmatter edits title, path, and tags too |
 | `kura rm <ref>` | Delete a document |
 | `kura mv <ref> [<title>]` | Rename and/or move (`--path`); rewrites wiki links. `--prefix <old> <new>` moves a whole subtree |
 | `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json`, `--limit` |
 | `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
+| `kura history <ref>` | List a document's revisions — every edit keeps the replaced version. `show <ref> <rN>` prints one; `restore <ref> <rN>` brings its content back (and is itself undoable) |
 | `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
 | `kura export --dir <d>` | Write documents as Markdown with frontmatter; paths become subdirectories |
 | `kura import <dir>` | Round-trip via `kura_key` (update or create); subdirectories become document paths |

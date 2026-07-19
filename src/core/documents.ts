@@ -6,6 +6,7 @@ import { ConflictError, NotFoundError, UsageError } from "./errors";
 import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
 import { fullPathSql, resolveUnresolvedLinks, syncLinks } from "./links";
+import { snapshotRevision } from "./revisions";
 import { addTagsToDoc, docTags } from "./tags";
 import {
   extractWiki,
@@ -312,6 +313,25 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
     }
     const newHash = sha256Hex(content);
     const contentChanged = newHash !== row.content_hash;
+
+    // Snapshot the state being replaced (docs: data-model.md). A pure bucket
+    // move is not snapshotted — revisions track content and naming, not home.
+    // Renames and moves bypass the coalesce window; only autosave-style
+    // content bursts collapse.
+    if (contentChanged || titleChanged || pathChanged) {
+      snapshotRevision(
+        db,
+        {
+          docId: id,
+          title: oldTitle,
+          path: row.path,
+          content: row.content,
+          contentHash: row.content_hash,
+          savedAt: row.updated_at,
+        },
+        { force: titleChanged || pathChanged },
+      );
+    }
 
     db.prepare(
       `UPDATE documents SET path = ?, title = ?, content = ?, content_type = ?, source_url = ?,

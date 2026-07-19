@@ -75,7 +75,9 @@ kura ask "WAL は reader をブロックする？"    # 出典付きで回答（
 
 # 閲覧・編集
 kura get "今日のメモ"          # doc_key / #key / フルパス / 一意なタイトル / 別名で指定
+kura get "今日のメモ" --as-of 2026-03-01   # その時点の内容を表示
 kura edit "今日のメモ"         # $EDITOR で編集（frontmatter でタイトル・パス・タグも変更可）
+kura history "今日のメモ"      # 編集のたびに直前の版を保存。show / restore で表示・復元
 kura mv "今日のメモ" --path db/sqlite   # 任意のドキュメント path を付ける（[[リンク]] も追従）
 kura ls --tag tech/db --sort updated
 kura ls --prefix db            # パスプレフィックス配下を一覧（子孫を含む）

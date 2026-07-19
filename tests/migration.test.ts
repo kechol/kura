@@ -124,7 +124,7 @@ describe("migration 004: document aliases (docs: data-model.md)", () => {
       "INSERT INTO documents_fts (rowid, title, content, tags) VALUES (1, '検索設計', '全文検索の設計方針。', 'tech/db')",
     );
 
-    migrate(db, CTX);
+    migrate(db, CTX, 4);
     expect(schemaVersion(db)).toBe(4);
 
     // documents_fts was rebuilt with the aliases column; existing rows searchable again
@@ -142,6 +142,25 @@ describe("migration 004: document aliases (docs: data-model.md)", () => {
     expect(() =>
       db.exec("INSERT INTO document_aliases (document_id, alias) VALUES (1, 'fts設計')"),
     ).toThrow(/UNIQUE/);
+    db.close();
+  });
+});
+
+describe("migration 005: document revisions (docs: data-model.md)", () => {
+  test("v4 → v5 creates document_revisions with CASCADE delete", () => {
+    const db = openRaw();
+    migrate(db, CTX, 4);
+    db.exec(`INSERT INTO documents (id, doc_key, bucket_id, path, title, content, content_hash)
+      VALUES (1, 'aaaa1111', 1, '', '検索設計', '全文検索の設計方針。', 'h1')`);
+
+    migrate(db, CTX);
+    expect(schemaVersion(db)).toBe(5);
+
+    db.exec(`INSERT INTO document_revisions (document_id, title, path, content, content_hash, saved_at)
+      VALUES (1, '検索設計', '', '旧本文。', 'h0', '2026-07-01 00:00:00')`);
+    db.exec("DELETE FROM documents WHERE id = 1");
+    const rows = db.prepare("SELECT COUNT(*) AS n FROM document_revisions").get() as { n: number };
+    expect(rows.n).toBe(0);
     db.close();
   });
 });

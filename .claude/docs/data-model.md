@@ -1,17 +1,19 @@
 # Data Model
 
-> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/migrations/004_aliases.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/aliases.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
+> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/migrations/004_aliases.sql`, `src/core/migrations/005_revisions.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/aliases.ts`, `src/core/revisions.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
 
 Schema v1 lives in `src/core/migrations/001_init.sql`; schema v2
 (`002_document_paths.sql`) adds hierarchical document paths, schema v3
-(`003_favorites.sql`) the `favorite` flag, and schema v4
-(`004_aliases.sql`) document aliases (see the `documents` /
-`document_aliases` tables and the migration-runner section below). Two
-placeholders are substituted into `001_init.sql` (and `{{FTS_TOKENIZE}}`
-again into `004_aliases.sql`) by the migration runner at apply time:
-`{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}`
-(embedding dimensions). All derived tables are kept in sync by the
-repository layer — see the invariants in [architecture.md](architecture.md).
+(`003_favorites.sql`) the `favorite` flag, schema v4
+(`004_aliases.sql`) document aliases, and schema v5
+(`005_revisions.sql`) document revisions (see the `documents` /
+`document_aliases` / `document_revisions` tables and the migration-runner
+section below). Two placeholders are substituted into `001_init.sql` (and
+`{{FTS_TOKENIZE}}` again into `004_aliases.sql`) by the migration runner at
+apply time: `{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and
+`{{VEC_DIMENSIONS}}` (embedding dimensions). All derived tables are kept in
+sync by the repository layer — see the invariants in
+[architecture.md](architecture.md).
 
 ## Tables
 
@@ -84,6 +86,42 @@ Indexes: `idx_document_aliases_doc_alias` — UNIQUE on
 `setAliasesForDoc`), which refresh the FTS `aliases` column and re-run link
 resolution in the same transaction; an alias equal to the document's own
 title is silently skipped on add.
+
+### `document_revisions`
+
+Edit history (schema v5). `updateDocument` snapshots the state being
+**replaced** — inside the same save transaction — whenever content, title,
+or path changed (`snapshotRevision` in `src/core/revisions.ts`; no SQL
+triggers, per `invariants.md` R1/R2). Surfaced by `kura history` and
+`kura get --as-of` (docs: [cli-reference.md](cli-reference.md)).
+
+| Column | Meaning / constraints |
+| --- | --- |
+| `id` | PK; also the public revision id (`r12`) |
+| `document_id` | FK → documents, `ON DELETE CASCADE` — history does not survive deletion |
+| `title` / `path` / `content` / `content_hash` | The replaced state, verbatim |
+| `saved_at` | The `updated_at` the state carried while it was current |
+| `created_at` | When the snapshot row was written (drives coalescing) |
+
+Index: `idx_document_revisions_doc` on `(document_id, id)`.
+
+Write semantics (`snapshotRevision`):
+
+- **Dedup** — skipped when the state equals the newest revision
+  (`content_hash` + `title` + `path`).
+- **Coalescing** — skipped when the newest revision was written within
+  `COALESCE_MINUTES` (5) — browser-autosave bursts collapse into one
+  revision per burst, keeping the state from before the burst. A title or
+  path change passes `force` and always snapshots.
+- **Pruning** — after insert, only the newest `MAX_REVISIONS_PER_DOC`
+  (100) rows per document are kept.
+- A **pure bucket move** is not snapshotted — revisions track content and
+  naming, not which bucket a document lives in. Metadata-only updates
+  (tags, aliases, favorite, access) never snapshot.
+
+Point-in-time reads (`stateAsOf`): the newest state — current row or
+revision — whose `saved_at` is `<= asOf`; `null` when the document has no
+recorded state that old (created later, or the snapshot was pruned).
 
 ### `links`
 
@@ -202,6 +240,10 @@ The schema version is **not** in `meta`; it lives in `PRAGMA user_version`.
   substitutes the tokenizer again for v4), and repopulates
   title/content/tags from `documents` + `document_tags`; the `aliases`
   column starts empty because `document_aliases` was just created.
+- **Schema v5** (`005_revisions.sql`) creates `document_revisions` plus its
+  index — a plain additive migration with no placeholders and no rebuild.
+  Existing documents start with empty history; snapshots begin with the
+  first post-upgrade edit.
 
 **Adding a migration**: create `src/core/migrations/00N_name.sql`, import it
 in `db.ts` with `with { type: "text" }`, append `{ version: N, render }` to
@@ -254,9 +296,11 @@ existing DBs will not re-run it.
 ## Consistency rules (SPEC §3.2)
 
 - Every documents write syncs `documents_fts` / `links` / `document_tags` /
-  `chunks` in the same transaction (`syncDerived`); alias writes
-  (`src/core/aliases.ts`) run in their own transaction and sync the FTS
-  `aliases` column plus link resolution. The two exceptions are
+  `chunks` in the same transaction (`syncDerived`); `updateDocument` also
+  snapshots the replaced state into `document_revisions` in that same
+  transaction when content, title, or path changed (see the table section
+  above). Alias writes (`src/core/aliases.ts`) run in their own transaction
+  and sync the FTS `aliases` column plus link resolution. The two exceptions are
   `touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`
   (`favorite`): both write a column that no derived table reads, so they skip
   `syncDerived` — and `setFavorite` deliberately also skips the `updated_at`
@@ -318,6 +362,9 @@ existing DBs will not re-run it.
   resolves links by title only; aliases (with the FTS `aliases` column and
   the third resolution stage) are an implementation addition
   (docs: [document-notation.md](document-notation.md)).
+- **Revisions (schema v5)**: SPEC §3.1 has no `document_revisions` table;
+  edit history, `kura history`, and `kura get --as-of` are an
+  implementation addition. Updates were destructive before v5.
 - **Case-insensitive uniqueness**: the DDL UNIQUE constraint is
   case-sensitive; the repository additionally rejects case-insensitive
   duplicates of the computed full path, which SPEC doesn't state explicitly.

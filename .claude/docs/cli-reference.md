@@ -53,7 +53,7 @@ There is no single global default; each command class behaves differently:
 | Commands | `--bucket` omitted means |
 | --- | --- |
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
-| `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias` (title resolution) | all buckets, ambiguity is an error |
+| `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias`, `history` (title resolution) | all buckets, ambiguity is an error |
 | `mv --prefix` (bulk path move) | `general.default_bucket` |
 | `ls`, `search`, `vsearch`, `query`, `ask`, `export`, `link broken` (filters) | all buckets |
 
@@ -82,7 +82,7 @@ mode).
 Accepted by every command (parser-level), but only read commands and the
 bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
 `export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `alias ls`,
-`search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
+`history`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
 silently ignore it. JSON goes to stdout; warnings and progress always go to stderr, so
 `--json` output stays parseable when piped.
 
@@ -223,7 +223,7 @@ generated (lazy backfill, see [`embed`](#kura-embed)).
 ### `kura get`
 
 ```
-kura get <doc> [--pretty|--raw] [--json] [--lines A:B] [--bucket b]
+kura get <doc> [--pretty|--raw] [--json] [--lines A:B] [--bucket b] [--as-of T]
 ```
 
 Resolves the document, calls `touchAccess` (increments `access_count`, sets
@@ -238,6 +238,19 @@ source_url, created_at, updated_at, last_accessed_at, access_count`;
 `#key · bucket · path · tags · aliases: …` meta line (empty parts omitted),
 or the raw body (piped default, or `--raw`). `--pretty --raw` together is a
 usage error.
+
+`--as-of <time>` (ISO 8601 or `YYYY-MM-DD`, anything `Date`-parsable —
+`toSqliteDatetime`; unparsable is a usage error) shows the document **as it
+was at that time**: the newest state — current row or revision — whose
+`saved_at` is `<= time` (`stateAsOf` in `src/core/revisions.ts`; see
+[data-model.md](data-model.md) `document_revisions` and `kura history`).
+The historical title, path, and body are swapped into the output;
+**tags and aliases shown remain the current ones** (they are not
+versioned). No recorded state that old (document created later, or the
+snapshot pruned) → `NotFoundError` (exit 3). `--json` additionally carries
+`as_of` (normalized SQLite datetime) and `revision_id` (`null` when the
+current state answered). The pretty meta line gains
+`as of <time> (rN)`.
 
 ### `kura edit`
 
@@ -595,6 +608,39 @@ line, or `no aliases for #key title`), `added N alias(es) to #key title`,
 `removed N alias(es) from #key title`. `--json` → `ls`
 `{key, title, aliases}`; `add` `{key, added, aliases}`; `rm`
 `{key, removed, aliases}` (`aliases` is the post-change list).
+
+### `kura history`
+
+```
+kura history <doc> [--bucket b] [--json]
+kura history show <doc> <rN> [--bucket b] [--json]
+kura history restore <doc> <rN> [--bucket b] [--json]
+```
+
+Document revision history (`src/cli/commands/history.ts`, backed by
+`document_revisions` — [data-model.md](data-model.md)). Every content,
+title, or path change snapshots the replaced state; autosave bursts
+coalesce into one revision per burst and only the newest 100 per document
+are kept.
+
+- **List** (no subcommand): revisions newest first, one per line —
+  `r<id>  <saved_at>  <full path/title>  <bytes>B  <hash8>` — or
+  `no revisions for #key title`. `--json` →
+  `{key, title, revisions: [{id, title, path, content_hash, saved_at,
+  created_at, bytes}]}`.
+- **`show`**: prints the revision's content verbatim (`--json` adds
+  `content` to the revision record). `<rN>` accepts `r12` or `12`; a
+  malformed id is a usage error (exit 2), an unknown one `NotFoundError`
+  (exit 3).
+- **`restore`**: replaces the current body with the revision's **content
+  only** — title and path stay as they are, so a restore can never collide
+  with another document's full path. It goes through `updateDocument`, so
+  the replaced state is snapshotted first: a restore is itself undoable.
+  Output `restored #key title to rN (content only)`; `--json` →
+  `{key, restored: N}`.
+
+Point-in-time reads live on `kura get --as-of` (above). A **deleted
+document's history is deleted with it** (`ON DELETE CASCADE`).
 
 ### `kura bucket`
 

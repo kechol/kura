@@ -81,6 +81,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Manage document aliases (alternate titles)",
     load: () => import("./commands/alias"),
   },
+  history: {
+    summary: "Show and restore document revisions",
+    load: () => import("./commands/history"),
+  },
   search: {
     summary: "Fast keyword search (FTS5 BM25)",
     load: () => import("./commands/search"),

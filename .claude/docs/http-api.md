@@ -215,7 +215,9 @@ incremented count. 404 when the key is unknown.
 Body: `{title?, path?, content?, tags?, aliases?}` (all optional). This is
 the browser editor's save path and re-parses the body exactly like a CLI
 edit (`updateDocument()` re-extracts `[[links]]` and `#hashtags`, re-syncs
-FTS, rebuilds chunks when content or title changed, and rewrites
+FTS, rebuilds chunks when content or title changed, snapshots the replaced
+state into `document_revisions` — autosave bursts coalesce, see
+[data-model.md](data-model.md) — and rewrites
 `[[old title]]` / `[[old/full/path]]` in referring documents on rename or
 move — see [document-notation.md](document-notation.md)). `path` moves the
 document (`""` = bucket root).

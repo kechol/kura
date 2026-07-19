@@ -81,11 +81,14 @@ database goes through core; the CLI and both servers are thin adapters.
 Every create/update/delete of a `documents` row must keep `documents_fts`,
 `links`, `document_tags`, and `chunks` consistent **inside a single
 transaction in the repository layer** (`syncDerived` in
-`src/core/documents.ts`). There are **no SQL triggers**, because the FTS
-`tags` column is synthesized at write time and `chunks_vec` (vec0) is not
-covered by foreign keys. Consequently: **never UPDATE/DELETE `documents`
-directly** — always go through the repository functions. Tag-only operations
-refresh FTS via `ftsRefreshTags` (`src/core/fts.ts`).
+`src/core/documents.ts`). The same transaction also snapshots the replaced
+state into `document_revisions` on content / title / path changes
+(`snapshotRevision` in `src/core/revisions.ts`, docs:
+[data-model.md](data-model.md)). There are **no SQL triggers**, because the
+FTS `tags` column is synthesized at write time and `chunks_vec` (vec0) is
+not covered by foreign keys. Consequently: **never UPDATE/DELETE
+`documents` directly** — always go through the repository functions.
+Tag-only operations refresh FTS via `ftsRefreshTags` (`src/core/fts.ts`).
 
 Two repository functions write `documents` without `syncDerived`:
 `touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`
