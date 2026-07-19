@@ -62,6 +62,8 @@ export interface DocMeta {
   last_accessed_at: string | null;
   access_count: number;
   favorite: boolean;
+  /** Plain-text body preview (≤200 chars); present only when the list query opts in with excerpt=1 */
+  excerpt?: string;
 }
 
 export interface DocDetail extends DocMeta {
@@ -194,6 +196,29 @@ export function fetchInsights(bucket: string): Promise<Insights> {
   return request<Insights>(`/api/insights${qs({ bucket })}`);
 }
 
+/** One staleness candidate — camelCase like insights/stats. Carries `path` so DocTitle can prefix it. */
+export interface StaleDoc {
+  key: string;
+  path: string;
+  title: string;
+  bucket: string;
+  daysSinceUpdate: number;
+  accessCount: number;
+  backlinkCount: number;
+  staleScore: number;
+}
+
+export interface StaleResult {
+  count: number;
+  staleDays: number;
+  docs: StaleDoc[];
+}
+
+/** Scored staleness candidates for one bucket, most stale first (GET /api/stale) */
+export function fetchStale(bucket: string, limit?: number): Promise<StaleResult> {
+  return request<StaleResult>(`/api/stale${qs({ bucket, limit })}`);
+}
+
 export interface DocsQuery {
   bucket?: string;
   tag?: string;
@@ -201,6 +226,8 @@ export interface DocsQuery {
   favorite?: boolean;
   sort?: string;
   stale?: boolean;
+  /** Ask the server to attach a plain-text `excerpt` to every doc (excerpt=1) */
+  excerpt?: boolean;
   page?: number;
   per?: number;
 }
@@ -214,6 +241,7 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
       favorite: q.favorite ? "1" : undefined,
       sort: q.sort,
       stale: q.stale ? "1" : undefined,
+      excerpt: q.excerpt ? "1" : undefined,
       page: q.page,
       per: q.per,
     })}`,

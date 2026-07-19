@@ -60,6 +60,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`
   removes it, and `show` prints it to stdout. The skill ships inside the
   binary and is stamped with the kura version on install.
+- `GET /api/stale` — scored staleness candidates for one bucket, ranked most
+  neglected first, backing the browser home dashboard. The first time the
+  full staleness score is available outside the CLI.
+- `GET /api/docs?excerpt=1` — opt-in plain-text body preview (≤ 200
+  characters) attached to each document, for the home dashboard's cards.
+  Without the flag the response is unchanged.
+- A most-viewed sort by access count, `sort=views` on `GET /api/docs` and
+  `kura ls --sort views`.
+- `/docs?favorite=1` — a favorites-only filter (and an お気に入りのみ
+  checkbox) on the browser document list.
 
 ### Fixed
 
@@ -69,6 +79,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Browser UI: the home screen was redesigned from a plain reading-history list
+  into a multi-section dashboard — recently viewed, updated, created, favorite,
+  most-viewed, and by-tag sections rendered as cards with body excerpts, plus a
+  data-hygiene nudge bar (untidy, untagged, orphaned, broken-link, duplicate-tag
+  and staleness counts) that links to the fixes. Each section loads
+  independently and is scoped to the selected bucket; opening kura still resumes
+  the last-read document unchanged.
 - Browser UI: the document reading surface was redesigned around Japanese
   editorial typography — a reading column of about 49 full-width characters
   that the document panel hugs (no stretching across wide windows),

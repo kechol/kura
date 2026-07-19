@@ -33,7 +33,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | --- | --- |
 | `index.html` | Static shell: `<div id="app">`, loads `/index.js` + `/index.css`, `lang="ja"` |
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
-| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`, `DocMeta` also `favorite`); `resolveDocSpec()` wraps `GET /api/resolve`, `fetchFavorites()` / `setFavorite()` the favorites endpoints; `ApiError` carries the HTTP status |
+| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`, `DocMeta` also `favorite` and an optional `excerpt`); `resolveDocSpec()` wraps `GET /api/resolve`, `fetchFavorites()` / `setFavorite()` the favorites endpoints, `fetchStale()` wraps `GET /api/stale`; `ApiError` carries the HTTP status |
 | `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
 | `lastdoc.ts` | Remembers the last-read document (`localStorage["kura-last-doc"]`) and rewrites `/` to it before the first render |
 | `modal.tsx` | `ModalProvider` / `useModal()` — owns the three modals (exposing `isOpen`) and the global shortcut handler |
@@ -56,11 +56,12 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `currentdoc.tsx` | `CurrentDocProvider` — the detail screen publishes the document it fetched so the sidebar can show it without fetching again |
 | `editor/` | The inline editor: `model.ts` (block model), `parse.ts` / `serialize.ts` (markdown ⇄ model), `dom.ts` (model ⇄ contenteditable, caret math), `Editor.tsx`, `blocks.tsx`, `Toolbar.tsx` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
-| `pages/Home.tsx` | Reading history (most recently viewed documents) |
+| `pages/Home.tsx` | Home dashboard: a data-hygiene nudge bar plus independently-loading sections of excerpt cards (recently viewed / updated / created / favorites / most-viewed / by-tag) and a 放置気味 list. `HomeSection` / `NudgeBar` / `TagPickup` are local to this file |
 | `pages/Stats.tsx` | Statistics + tidying insights (`GET /api/stats`, `GET /api/insights`) |
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
 | `components/DocLink.tsx` | `DocTitle` (path prefix + title) and `DocLinkList` — the one place a list of document links is rendered |
+| `components/DocCard.tsx` | `DocCard` / `DocCardGrid` — a document as a card (title, optional `excerpt`, up to three tag chips + caller-supplied meta); the whole card is one `<Link>`, so the tags are plain `<span>`s, not nested `<a>`s. Used by the home dashboard sections |
 | `pages/DocByTitle.tsx` | `[[link]]` resolution route (`GET /api/resolve` + search fallback) |
 | `pages/Search.tsx` | 3-mode search |
 | `pages/Tags.tsx` | Tag browser |
@@ -73,8 +74,8 @@ searches or browses across buckets.** Two consequences worth knowing:
 
 | Path | Screen |
 | --- | --- |
-| `/` | Home — reading history (redirects to the last-read document on a fresh visit) |
-| `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `page`) |
+| `/` | Home — multi-section dashboard (redirects to the last-read document on a fresh visit) |
+| `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `favorite`, `page`) |
 | `/docs/title/:title` | Wiki-link → key resolution (full path, title, or alias; wikilink fallback) |
 | `/docs/:key/edit` | Gone — redirects to the document (reading and editing are the same screen) |
 | `/docs/:key` | Document detail — read and edit in place |
@@ -98,17 +99,45 @@ name on the detail page, the screen name elsewhere, both suffixed with
 
 ## Screens
 
-- **Home** — the reading history: the 50 most recently *viewed* documents in
-  the selected bucket (`sort=accessed`, filtered to those with a
-  `last_accessed_at`). It needs no new schema — `documents.last_accessed_at`
-  is already bumped by `touchAccess()` on every read, including reads from the
-  CLI and MCP, so the list reflects all of kura, not just the browser.
-  - **Resume on open.** `bootRedirect()` (`lastdoc.ts`) rewrites `/` to
-    `/docs/<last key>` *before the router reads the URL*, so a fresh visit
-    lands back where the user left off. Only the bare `/` entry point
-    redirects: the logo and the nav still reach the home screen, and a
-    document that 404s (deleted) clears the memory so the next boot stops
-    redirecting to it.
+- **Home** — a multi-section dashboard for the selected bucket, meant to aid
+  both re-finding and tidying. It reads no new schema: every section is a
+  scoped call to the existing list/insights/stale/tags endpoints.
+  - **Nudge bar** (top, no heading) — data-hygiene chips from `/api/insights`
+    (未整理 / タグなし / 孤立 / 未解決リンク / タグ重複) plus 放置気味 from
+    `/api/stale`. Zero-count chips are hidden and, if every count is zero, the
+    bar does not render. Chips link to `/stats`, except 放置気味 → `/docs?stale=1`.
+  - **Card sections** — 最近表示した, 最近更新された, 新しく作成された,
+    お気に入り, よく参照する, and タグ別ピックアップ (the bucket's top-3 tags
+    by count, each showing its most-recently-updated documents). Each renders
+    `DocCard`s (title, body `excerpt`, up to three tag chips, and a per-section
+    meta line) and a **すべて見る →** link into `/docs` with the matching filter
+    (`sort=accessed` / `sort=updated` / `sort=created` / `favorite=1` /
+    `sort=views` / `tag=<tag>`), so the section is a preview of that filtered
+    list. All six load documents with `excerpt=1`, capped at six cards.
+  - **Independent loading.** Each section is its own `useAsync` keyed on
+    `[bucket]`, so a slow query never blocks the others; each shows its own
+    読み込み中… / error / empty text. Switching buckets re-scopes them all.
+  - **Dedupe rules.** 最近表示した keeps only documents with a
+    `last_accessed_at`; よく参照する keeps only `access_count > 0`; 最近更新された
+    drops documents whose `created_at === updated_at` (never edited since
+    creation) so it does not simply mirror 新しく作成された.
+  - **放置気味** — the bottom section: the top few staleness candidates from
+    `/api/stale` as a `DocLinkList` (no excerpt), each with
+    `更新から N 日 · 参照 M 回 · スコア S` and a hint pointing at
+    `kura ls --stale`. Hidden entirely when the count is zero.
+  - **Empty-bucket gate.** When the bucket holds no documents at all (the
+    最近更新された query reports `total === 0`), the sections are replaced by a
+    single message linking to the document list — not seven empty shells.
+  - **Keyboard.** The `j` / `k` cursor spans the six card sections as one
+    flattened list in render order (`usePageListNavigation`), distributed back
+    to each grid by offsets; the 放置気味 list and nudge bar are outside it.
+  - **Resume on open — unchanged.** `bootRedirect()` (`lastdoc.ts`) still
+    rewrites `/` to `/docs/<last key>` *before the router reads the URL*, so a
+    fresh visit lands back where the user left off; the dashboard is reached
+    only by the logo, the nav, or `Ctrl + H` / `g h`. Only the bare `/` entry
+    point redirects, and a document that 404s (deleted) clears the memory so
+    the next boot stops redirecting to it. (The `.recent-list` styling that
+    Home used to use is retained — the Ctrl+R recent-docs modal still uses it.)
 - **Statistics (`/stats`)** — stat cards from `/api/stats` (documents,
   buckets, tags, chunks, embedding coverage, stale candidates, unresolved
   links, DB size, tokenizer, embedding model), per-bucket document counts,
@@ -121,10 +150,12 @@ name on the detail page, the screen name elsewhere, both suffixed with
   [self-healing.md](self-healing.md)).
 - **Document list** — table with a hierarchical tag filter (descendants
   included, matching the API), document-path filter (`prefix`, also
-  descendant-inclusive), sort selector, stale-only checkbox, 20 per page
+  descendant-inclusive), sort selector (including 参照回数順 = `sort=views`),
+  stale-only and favorites-only (`favorite=1`) checkboxes, 20 per page
   with prev/next pagination against `total`. Titles render with a muted
   `path/` prefix when the document has one. There is no bucket column or
-  dropdown — the sidebar picker scopes the whole table.
+  dropdown — the sidebar picker scopes the whole table. The home dashboard's
+  すべて見る links land here with these filters preset.
 - **Document detail** — reading and editing are the same screen (below). A path
   breadcrumb above the title (each segment links to `/docs?prefix=`); the title
   itself is editable in place; a save-status line and a **favorite star**
@@ -205,9 +236,10 @@ through and is read as a fresh keystroke, so `g` `/` still opens search.
 | `Escape` | Close the modal |
 | `↑` `↓` `Enter` | Move / choose inside a modal (the recent-docs modal also accepts `j` / `k`) |
 
-The list screens (document list, search results, home history) run a
-keyboard cursor via `usePageListNavigation()` (`hooks.ts`), suspended while
-a modal is open (`useModal().isOpen`):
+The list screens (document list, search results, and the home dashboard's
+card sections flattened into one cursor) run a keyboard cursor via
+`usePageListNavigation()` (`hooks.ts`), suspended while a modal is open
+(`useModal().isOpen`):
 
 | Key | Action |
 | --- | --- |

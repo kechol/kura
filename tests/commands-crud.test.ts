@@ -249,6 +249,9 @@ describe("kura CRUD commands (e2e)", () => {
     expect(iA).toBeLessThan(iK);
     expect(iK).toBeLessThan(iS);
 
+    const byViews = await runCli(["ls", "--sort", "views"], env);
+    expect(byViews.code).toBe(0);
+
     const badSort = await runCli(["ls", "--sort", "size"], env);
     expect(badSort.code).toBe(2);
 

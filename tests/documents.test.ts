@@ -227,6 +227,18 @@ describe("listDocuments", () => {
     expect(listDocuments(db, { tag: "tech" }).length).toBe(2);
     expect(listDocuments(db, { limit: 2 }).length).toBe(2);
   });
+
+  test("sort: views orders by access_count, tie-broken by last access", () => {
+    createDocument(db, { title: "あ", content: "本文A", bucket: "main" });
+    const b = createDocument(db, { title: "い", content: "本文B", bucket: "main" });
+    const c = createDocument(db, { title: "う", content: "本文C", bucket: "main" });
+    touchAccess(db, b.id);
+    touchAccess(db, b.id);
+    touchAccess(db, c.id);
+    const order = listDocuments(db, { sort: "views" }).map((d) => d.title);
+    expect(order.slice(0, 2)).toEqual(["い", "う"]); // 2 reads, then 1 read
+    expect(order[2]).toBe("あ"); // 0 reads last
+  });
 });
 
 describe("import / export round-trip", () => {

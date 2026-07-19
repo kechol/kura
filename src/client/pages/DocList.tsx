@@ -13,6 +13,7 @@ const SORT_LABELS: Array<[string, string]> = [
   ["updated", "更新順"],
   ["created", "作成順"],
   ["accessed", "参照順"],
+  ["views", "参照回数順"],
   ["title", "タイトル順"],
 ];
 
@@ -26,6 +27,7 @@ export function DocList() {
   const prefix = params.get("prefix") ?? "";
   const sort = params.get("sort") ?? "updated";
   const stale = params.get("stale") === "1";
+  const favorite = params.get("favorite") === "1";
   const page = Math.max(Number.parseInt(params.get("page") ?? "1", 10) || 1, 1);
   const [tagInput, setTagInput] = useState(tag);
   const [prefixInput, setPrefixInput] = useState(prefix);
@@ -38,6 +40,7 @@ export function DocList() {
         prefix: prefix || undefined,
         sort,
         stale,
+        favorite,
         page,
         per: PER,
       }),
@@ -155,6 +158,16 @@ export function DocList() {
             onChange={(e) => update({ stale: (e.target as HTMLInputElement).checked ? "1" : "" })}
           />
           陳腐化候補のみ
+        </label>
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            checked={favorite}
+            onChange={(e) =>
+              update({ favorite: (e.target as HTMLInputElement).checked ? "1" : "" })
+            }
+          />
+          お気に入りのみ
         </label>
       </div>
 

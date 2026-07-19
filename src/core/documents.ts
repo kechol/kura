@@ -595,7 +595,7 @@ export interface ListFilter {
   prefix?: string;
   /** Only favorites */
   favorite?: boolean;
-  sort?: "updated" | "created" | "accessed" | "title";
+  sort?: "updated" | "created" | "accessed" | "title" | "views";
   stale?: boolean;
   staleDays?: number;
   limit?: number;
@@ -607,6 +607,7 @@ const SORT_SQL: Record<NonNullable<ListFilter["sort"]>, string> = {
   created: "d.created_at DESC",
   accessed: "d.last_accessed_at IS NULL, d.last_accessed_at DESC",
   title: "d.title COLLATE NOCASE ASC",
+  views: "d.access_count DESC, d.last_accessed_at IS NULL, d.last_accessed_at DESC",
 };
 
 export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRecord[] {

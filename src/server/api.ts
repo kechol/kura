@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { setAliasesForDoc } from "../core/aliases";
-import { listBuckets } from "../core/buckets";
+import { listBuckets, requireBucket } from "../core/buckets";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
 import {
@@ -16,6 +16,7 @@ import {
   updateDocument,
 } from "../core/documents";
 import { ConflictError, NotFoundError, UsageError } from "../core/errors";
+import { docExcerpt } from "../core/excerpt";
 import { collectInsights } from "../core/insights";
 import { backlinks, outlinks, twoHopLinks } from "../core/links";
 import { requireProvider, resolveProvider } from "../core/llm/provider";
@@ -23,6 +24,7 @@ import { hybridQuery } from "../core/search/hybrid";
 import { keywordSearch } from "../core/search/keyword";
 import type { SearchHit } from "../core/search/types";
 import { ensureEmbeddings, vectorSearch } from "../core/search/vector";
+import { staleDocuments } from "../core/stale";
 import { collectStats } from "../core/stats";
 import { addTagsToDoc, buildTagTree, listTags, removeTagsFromDoc } from "../core/tags";
 import { normalizeDocPath } from "../core/wiki";
@@ -114,6 +116,22 @@ export function createApiRoutes(
       return json(collectInsights(db, bucket));
     }),
 
+    "/api/stale": wrap((req) => {
+      // Scored staleness candidates for the home dashboard (docs: self-healing.md).
+      // Kept separate from /api/insights: this scans with a backlink subquery and
+      // the browser loads it independently. The handler only shapes; logic is core.
+      const url = new URL(req.url);
+      const bucket = url.searchParams.get("bucket") ?? config.general.default_bucket;
+      requireBucket(db, bucket); // 404 on an unknown bucket, matching /api/insights
+      const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 50);
+      const all = staleDocuments(db, config, { bucket });
+      return json({
+        count: all.length,
+        staleDays: config.general.stale_days,
+        docs: all.slice(0, limit),
+      });
+    }),
+
     "/api/buckets": wrap(() => json(listBuckets(db))),
 
     "/api/docs": {
@@ -125,11 +143,12 @@ export function createApiRoutes(
         const prefix = rawPrefix === null ? undefined : normalizeDocPath(rawPrefix);
         if (prefix === "") throw new UsageError("prefix must not be empty");
         const sortParam = url.searchParams.get("sort") ?? "updated";
-        if (!["updated", "created", "accessed", "title"].includes(sortParam)) {
+        if (!["updated", "created", "accessed", "title", "views"].includes(sortParam)) {
           throw new UsageError(`invalid sort: ${sortParam}`);
         }
         const stale = url.searchParams.get("stale") === "1";
         const favorite = url.searchParams.get("favorite") === "1";
+        const withExcerpt = url.searchParams.get("excerpt") === "1";
         const per = Math.min(Number.parseInt(url.searchParams.get("per") ?? "50", 10) || 50, 200);
         const page = Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1);
 
@@ -138,13 +157,17 @@ export function createApiRoutes(
           tag,
           prefix,
           favorite,
-          sort: sortParam as "updated" | "created" | "accessed" | "title",
+          sort: sortParam as "updated" | "created" | "accessed" | "title" | "views",
           stale,
           staleDays: config.general.stale_days,
         };
         const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
         const total = listDocumentsCount(db, filter);
-        return json({ docs: docs.map((d) => docJson(d)), total, page, per });
+        // excerpt=1 is opt-in: without it the payload is byte-identical to before
+        const shaped = withExcerpt
+          ? docs.map((d) => ({ ...docJson(d), excerpt: docExcerpt(d.content, d.contentType) }))
+          : docs.map((d) => docJson(d));
+        return json({ docs: shaped, total, page, per });
       }),
 
       POST: wrap(async (req) => {

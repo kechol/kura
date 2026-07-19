@@ -116,6 +116,68 @@ describe("REST API (docs: http-api.md)", () => {
     expect(badSort.status).toBe(400);
   });
 
+  test("GET /api/docs?excerpt=1 adds stripped plaintext; absent without the param", async () => {
+    const plain = await api("/api/docs");
+    expect(plain.body.docs[0].excerpt).toBeUndefined();
+
+    const withEx = await api("/api/docs?excerpt=1");
+    const wal = withEx.body.docs.find((d: { title: string }) => d.title === "SQLite の WAL モード");
+    expect(typeof wal.excerpt).toBe("string");
+    expect(wal.excerpt).not.toContain("[[");
+    expect(wal.excerpt).not.toContain("#tech");
+    expect(wal.excerpt).toContain("WAL は書き込みをブロックしない");
+  });
+
+  test("GET /api/docs?sort=views orders by reads; invalid sort still 400", async () => {
+    const list = await api("/api/docs");
+    const target = list.body.docs[0].key;
+    await api(`/api/docs/${target}`); // touchAccess bumps access_count
+    await api(`/api/docs/${target}`);
+    const byViews = await api("/api/docs?sort=views");
+    expect(byViews.status).toBe(200);
+    expect(byViews.body.docs[0].key).toBe(target);
+    expect((await api("/api/docs?sort=bogus")).status).toBe(400);
+  });
+
+  test("GET /api/stale returns scored candidates, scoped to the bucket", async () => {
+    const old = new Date(Date.now() - 300 * 86_400_000)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+    createDocument(db, {
+      title: "放置された設計メモ",
+      content: "長らく更新していない。",
+      bucket: "main",
+      path: "設計",
+      createdAt: old,
+      updatedAt: old,
+    });
+    createDocument(db, {
+      title: "もう一つの放置メモ",
+      content: "これも古い。",
+      bucket: "main",
+      createdAt: old,
+      updatedAt: old,
+    });
+
+    const res = await api("/api/stale");
+    expect(res.status).toBe(200);
+    expect(res.body.staleDays).toBe(180);
+    expect(res.body.count).toBe(2);
+    expect(res.body.docs.length).toBe(2);
+    const filed = res.body.docs.find((d: { title: string }) => d.title === "放置された設計メモ");
+    expect(filed.path).toBe("設計");
+    expect(filed.staleScore).toBeGreaterThan(1);
+
+    const limited = await api("/api/stale?limit=1");
+    expect(limited.body.count).toBe(2); // total, pre-slice
+    expect(limited.body.docs.length).toBe(1);
+
+    createBucket(db, "work");
+    expect((await api("/api/stale?bucket=work")).body.count).toBe(0); // no stale docs there
+    expect((await api("/api/stale?bucket=nope")).status).toBe(404); // unknown bucket
+  });
+
   test("POST /api/docs creates a document, retrying a taken title", async () => {
     const first = await api("/api/docs", {
       method: "POST",

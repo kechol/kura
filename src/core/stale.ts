@@ -4,6 +4,8 @@ import type { KuraConfig } from "./config";
 export interface StaleDoc {
   key: string;
   title: string;
+  /** Document path; '' = bucket root (for path-prefixed display) */
+  path: string;
   bucket: string;
   daysSinceUpdate: number;
   accessCount: number;
@@ -41,7 +43,7 @@ export function staleDocuments(
   }
   const rows = db
     .prepare(
-      `SELECT d.doc_key AS key, d.title, b.name AS bucket, d.access_count,
+      `SELECT d.doc_key AS key, d.title, d.path, b.name AS bucket, d.access_count,
               CAST(julianday('now') - julianday(d.updated_at) AS REAL) AS days,
               (SELECT COUNT(*) FROM links l WHERE l.target_id = d.id) AS backlinks
        FROM documents d JOIN buckets b ON b.id = d.bucket_id
@@ -50,6 +52,7 @@ export function staleDocuments(
     .all(...params) as Array<{
     key: string;
     title: string;
+    path: string;
     bucket: string;
     access_count: number;
     days: number;
@@ -60,6 +63,7 @@ export function staleDocuments(
     .map((r) => ({
       key: r.key,
       title: r.title,
+      path: r.path,
       bucket: r.bucket,
       daysSinceUpdate: Math.floor(r.days),
       accessCount: r.access_count,

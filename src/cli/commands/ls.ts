@@ -7,19 +7,19 @@ import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../
 
 export const summary = "List documents";
 
-export const usage = `Usage: kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title]
+export const usage = `Usage: kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views]
                [--stale] [--limit n] [--json]
 
 Options:
   --bucket <name>   Only documents in this bucket (default: all buckets)
   --tag <path>      Only documents with this tag (descendants included)
   --prefix <path>   Only documents under this document path (descendants included)
-  --sort <key>      updated (default) | created | accessed | title
+  --sort <key>      updated (default) | created | accessed | title | views
   --stale           Only documents older than general.stale_days
   --limit <n>       Maximum number of documents
   --json            Machine-readable output`;
 
-const SORTS = ["updated", "created", "accessed", "title"] as const;
+const SORTS = ["updated", "created", "accessed", "title", "views"] as const;
 
 export function run(argv: string[]): number {
   const parsed = parseCommandArgs(argv, {

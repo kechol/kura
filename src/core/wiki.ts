@@ -53,17 +53,20 @@ export function normalizeAlias(raw: string): string | null {
   return alias;
 }
 
-/** [[title]] / [[title|display]]. The title part cannot contain [ ] | */
-const LINK_RE = /\[\[([^[\]|\n]*)(?:\|([^[\]\n]*))?\]\]/g;
+// The four notation regexes below are the single source of truth: excerpt.ts
+// imports them to strip the same wiki links, tags, and code fences.
 
-/** A tag only when # is preceded by line start, whitespace, or an opening bracket. Tag characters are Unicode letters/digits/-/_, hierarchy separator is / */
-const TAG_RE = /(?<=^|[\s([{（「『【〔〈《])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu;
+/** [[title]] / [[title|display]]. The title part cannot contain [ ] | */
+export const LINK_RE = /\[\[([^[\]|\n]*)(?:\|([^[\]\n]*))?\]\]/g;
+
+/** A tag only when # is preceded by line start, whitespace, or an opening bracket. Tag characters are Unicode letters/digits/-/_, hierarchy separator is /. Group 1 is the tag body (unused by excerpt.ts's whole-match strip) */
+export const TAG_RE = /(?<=^|[\s([{（「『【〔〈《])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu;
 
 /** Fence opening line: up to 3 spaces of indent + 3+ backticks or tildes + info string */
-const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+export const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 /** Fence closing line: only a run of fence characters (trailing whitespace allowed) */
-const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+export const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 
 const LINE_SPLIT_RE = /\r?\n/;
 

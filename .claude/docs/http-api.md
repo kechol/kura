@@ -135,6 +135,34 @@ the **synchronous, edit-distance half** of the gardening audit, split out of
 (`invariants.md` R4). Nothing is repaired here: the UI shows the findings and
 names the CLI command that fixes them.
 
+### `GET /api/stale`
+
+Scored staleness candidates for one bucket via `staleDocuments()`
+(`src/core/stale.ts`), backing the home dashboard's 放置気味 section and its
+nudge chip (see [self-healing.md](self-healing.md)). This is the first REST
+exposure of the full `staleScore` — previously it was CLI-only.
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `bucket` | `general.default_bucket` | an unknown bucket is a 404 (`requireBucket`), matching `/api/insights` |
+| `limit` | 20 | **capped at 50**; non-numeric input falls back to the default |
+
+```
+{ count,                    // total candidates in the bucket (score ≥ 1.0), before limit
+  staleDays,                // general.stale_days
+  docs: StaleDoc[] }        // most-stale first, sliced to `limit`
+```
+
+A `StaleDoc` is camelCase (like insights / stats): `key`, `path`, `title`,
+`bucket`, `daysSinceUpdate`, `accessCount`, `backlinkCount`, `staleScore`.
+`count` stays exact while `docs` is truncated, so the nudge bar can show the
+full backlog while the list shows a handful.
+
+Kept **separate from `/api/insights`** on purpose: insights is a cheap, stable
+projection that `/stats` consumes on every page view, whereas `staleDocuments`
+runs a heavier scan with a per-document backlink subquery — the home page loads
+it independently so a slow staleness pass never blocks the tidying findings.
+
 ### `GET /api/buckets`
 
 Array of `{id, name, description, createdAt, documents}` from
@@ -149,14 +177,20 @@ Paged document listing (metadata only, no `content`).
 | `bucket` | all buckets | exact bucket name |
 | `tag` | — | hierarchical: matches the tag itself **and descendants** (`t.path = ? OR t.path LIKE ? || '/%'`) |
 | `prefix` | — | document-path filter: matches the path itself **and descendants**, case-insensitively. Normalized (`normalizeDocPath`); a value that normalizes to `""` → 400 |
-| `sort` | `updated` | one of `updated` / `created` / `accessed` / `title`; anything else → 400 |
+| `sort` | `updated` | one of `updated` / `created` / `accessed` / `title` / `views`; anything else → 400. `views` orders by `access_count` descending, ties broken by most-recently accessed |
 | `favorite` | off | `favorite=1` keeps only pinned documents — how the sidebar's favorites section is loaded |
 | `stale` | off | `stale=1` keeps only docs with `updated_at` older than `general.stale_days` |
+| `excerpt` | off | `excerpt=1` attaches a plain-text `excerpt` to every doc — how the home dashboard's cards load a body preview |
 | `page` | 1 | clamped to ≥ 1 |
 | `per` | 50 | **capped at 200**; non-numeric input falls back to the default |
 
 Response: `{docs: Document[], total, page, per}`. `total` is computed with
 the same filter by `listDocumentsCount()` so the UI can render pagination.
+Each doc carries an `excerpt` field **only when `excerpt=1` was requested** —
+without it the payload is byte-identical to before. The excerpt is produced by
+`docExcerpt()` (`src/core/excerpt.ts`), which strips Markdown or HTML to plain
+text and caps it at 200 characters with a trailing `…`; the source `content` is
+already loaded by `listDocuments`, so this adds no query.
 
 ### `POST /api/docs`
 
@@ -357,6 +391,10 @@ detection, 60 s TTL). Lets the UI say whether vector/hybrid modes will work.
 - **`PUT /api/docs/:key/favorite` and `favorite` on `/api/docs` are
   additions** — favorites post-date SPEC §8.2, and exist only for the browser
   sidebar (no CLI or MCP surface).
+- **`GET /api/stale`, and `sort=views` / `excerpt` on `/api/docs`, are
+  additions** — SPEC §8.2 does not list them; the multi-section home dashboard
+  ([browser-ui.md](browser-ui.md)) drives all three. All are additive: existing
+  callers are unaffected and the MCP contract is untouched.
 - **`limit` on `/api/search`** is an addition; SPEC lists only
   `q`, `mode`, `bucket`, `tag`.
 - **`per` is capped at 200**; SPEC only specifies the default of 50.

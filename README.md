@@ -171,8 +171,9 @@ you keep coming back to are always one click away. Favorites travel with
 
 Pick a bucket in the sidebar and the whole UI — browsing, search, trees,
 graph — stays inside it; the choice is remembered. Opening kura resumes the
-document you were last reading, and the home screen lists your reading
-history. The statistics screen counts what needs tidying (unfiled, untagged
+document you were last reading, and the home screen is a dashboard —
+recently viewed, updated, created, favorite and most-read documents, plus
+nudges toward anything that needs tidying. The statistics screen counts what needs tidying (unfiled, untagged
 and orphaned documents, broken links, duplicate-looking tags) and names the
 command that fixes each. The whole UI can be driven from the keyboard,
 following the Gmail / GitHub conventions: `Ctrl + P` (or `/`) opens a search

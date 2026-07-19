@@ -195,8 +195,13 @@ Surfaces:
   (`--limit` applies after scoring).
 - **`kura status`** — stale count plus the top five with days / reads /
   score.
-- **Browser UI** — the home page shows a 陳腐化候補 (staleness candidates)
-  list and stat card; the graph view dims stale nodes;
+- **`GET /api/stale`** — the REST wrapper over `staleDocuments()`, added for
+  the browser home dashboard; the **first place the full `staleScore` is
+  exposed outside the CLI** (bucket-scoped, most-neglected first — see
+  [http-api.md](http-api.md)).
+- **Browser UI** — the home dashboard's 放置気味 section and its nudge chip
+  read `GET /api/stale`, so they rank by the full score; the stat card and the
+  graph's dimmed stale nodes use the cheaper cutoff (below);
   `GET /api/docs?stale=1` filters the list page.
 
 Nothing is ever auto-deleted or archived: staleness exists to *prompt
@@ -212,13 +217,16 @@ review*.
 - **`tag suggest` targets untagged documents only.** SPEC §10.3 mentioned
   "untagged or *under-tagged*" documents; there is no under-tagged heuristic
   — the flag is `--untagged` (or an explicit `--doc`).
-- **The browser/API use a cutoff, not the score.** `GET /api/docs?stale=1`,
-  the graph's `stale` node flag, and the `staleDocuments` count in
-  `collectStats` all use the simple `updated_at < now − stale_days` cutoff;
-  only the CLI (`ls --stale`, `status` top-5) computes the full
-  `staleScore`. The cutoff is a superset of score ≥ 1.0 candidates, cheap
-  enough for per-request use — but the two notions of "stale" differ, which
-  matters if you change either side.
+- **Two notions of "stale" coexist.** The full `staleScore` (age dampened by
+  reads and backlinks, ranked) is now computed on both sides: the CLI
+  (`ls --stale`, `status` top-5) **and** `GET /api/stale`, which the browser
+  home dashboard consumes. The cheaper `updated_at < now − stale_days`
+  **cutoff** still backs `GET /api/docs?stale=1`, the graph's `stale` node
+  flag, and the `staleDocuments` count in `collectStats`. The cutoff is a
+  superset of the score ≥ 1.0 candidates and cheap enough for per-request
+  filtering — but the two notions differ, which matters if you change either
+  side: `/api/stale` (scored, thresholded at 1.0) and the stat-card
+  `staleDocuments` count (cutoff) can legitimately disagree.
 
 ## Related docs
 

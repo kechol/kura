@@ -91,7 +91,8 @@ in-place editing, three-mode search, a sidebar document tree that
 follows your document paths, a tag browser, and a d3-force knowledge
 graph — all served locally. The UI is scoped to one bucket at a time,
 picked in the sidebar. A fresh visit resumes the document you last
-read, and the home screen is your reading history. The UI can be driven
+read, and the home screen is a dashboard of your recent, favorite, and
+most-read documents, with nudges toward anything that needs tidying. The UI can be driven
 entirely from the keyboard, Gmail/GitHub-style: Ctrl+P (or `/`) opens
 instant search, Ctrl+N (or `c`) starts a new document, `g`-prefixed keys
 jump between screens, `j` / `k` walk any list, and `?` shows the full

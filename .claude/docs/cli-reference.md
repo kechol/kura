@@ -357,7 +357,7 @@ usage error; an empty backlog prints `[]`). Applying goes through
 ### `kura ls`
 
 ```
-kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title] [--stale] [--limit n] [--json]
+kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views] [--stale] [--limit n] [--json]
 ```
 
 `listDocuments` with filters; `--tag` includes descendant tags
@@ -365,7 +365,9 @@ kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|tit
 descendants included (`p` matches path `p` and `p/…`, case-insensitively) —
 the value is normalized and must not be empty (usage error). Default sort is
 `updated` (desc); `accessed`
-puts never-accessed docs last; invalid sorts are usage errors. `--stale`
+puts never-accessed docs last; `views` orders by `access_count` (most-viewed
+first, ties broken by most-recently accessed); invalid sorts are usage
+errors. `--stale`
 switches to staleness mode: candidates older than `general.stale_days` are
 scored by `src/core/stale.ts` (age normalized by `stale_days`, dampened by
 `access_count` and backlinks; only scores ≥ 1 qualify) and sorted by score
