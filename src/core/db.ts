@@ -8,6 +8,7 @@ import migration002 from "./migrations/002_document_paths.sql" with { type: "tex
 import migration003 from "./migrations/003_favorites.sql" with { type: "text" };
 import migration004 from "./migrations/004_aliases.sql" with { type: "text" };
 import migration005 from "./migrations/005_revisions.sql" with { type: "text" };
+import migration006 from "./migrations/006_triage.sql" with { type: "text" };
 import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
@@ -61,6 +62,10 @@ const MIGRATIONS: Array<{ version: number; render(ctx: MigrateContext): string }
   {
     version: 5,
     render: () => migration005,
+  },
+  {
+    version: 6,
+    render: () => migration006,
   },
 ];
 

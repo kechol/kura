@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import { getMeta } from "./db";
+import { UNFILED_WHERE, UNTAGGED_WHERE, UNTRIAGED_WHERE } from "./documents";
 
 export interface KuraStats {
   documents: number;
@@ -11,6 +12,12 @@ export interface KuraStats {
   /** 0-1; 1 when there are no chunks */
   embeddingCoverage: number;
   staleDocuments: number;
+  /** Documents at the bucket root (path = '') */
+  unfiled: number;
+  /** Documents with no tags */
+  untagged: number;
+  /** Documents in the triage backlog: (unfiled OR untagged) still awaiting a triage pass */
+  triageBacklog: number;
   unresolvedLinks: number;
   dbSizeBytes: number;
   tokenizer: string;
@@ -32,6 +39,19 @@ export function collectStats(db: Database, config: KuraConfig): KuraStats {
     .prepare("SELECT (SELECT * FROM pragma_page_count()) * (SELECT * FROM pragma_page_size()) AS n")
     .get() as { n: number };
 
+  // Backlog counts in one scan: the untagged anti-join is evaluated once, and the
+  // triage backlog reuses the same predicates (docs: self-healing.md).
+  const backlog = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ${UNFILED_WHERE} THEN 1 ELSE 0 END), 0) AS unfiled,
+         COALESCE(SUM(CASE WHEN ${UNTAGGED_WHERE} THEN 1 ELSE 0 END), 0) AS untagged,
+         COALESCE(SUM(CASE WHEN (${UNFILED_WHERE} OR ${UNTAGGED_WHERE}) AND ${UNTRIAGED_WHERE}
+           THEN 1 ELSE 0 END), 0) AS triage_backlog
+       FROM documents d`,
+    )
+    .get() as { unfiled: number; untagged: number; triage_backlog: number };
+
   return {
     documents,
     buckets: db
@@ -50,6 +70,9 @@ export function collectStats(db: Database, config: KuraConfig): KuraStats {
       "SELECT COUNT(*) AS n FROM documents WHERE updated_at < datetime('now', ?)",
       `-${config.general.stale_days} days`,
     ),
+    unfiled: backlog.unfiled,
+    untagged: backlog.untagged,
+    triageBacklog: backlog.triage_backlog,
     unresolvedLinks: count(db, "SELECT COUNT(*) AS n FROM links WHERE target_id IS NULL"),
     dbSizeBytes: size.n,
     tokenizer: getMeta(db, "fts_tokenizer") ?? "unknown",

@@ -8,7 +8,7 @@ import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../
 export const summary = "List documents";
 
 export const usage = `Usage: kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views]
-               [--stale] [--limit n] [--json]
+               [--stale] [--unfiled] [--untagged] [--limit n] [--json]
 
 Options:
   --bucket <name>   Only documents in this bucket (default: all buckets)
@@ -16,6 +16,8 @@ Options:
   --prefix <path>   Only documents under this document path (descendants included)
   --sort <key>      updated (default) | created | accessed | title | views
   --stale           Only documents older than general.stale_days
+  --unfiled         Only documents at the bucket root (path = '')
+  --untagged        Only documents with no tags
   --limit <n>       Maximum number of documents
   --json            Machine-readable output`;
 
@@ -28,6 +30,8 @@ export function run(argv: string[]): number {
     prefix: { type: "string" },
     sort: { type: "string" },
     stale: { type: "boolean", default: false },
+    unfiled: { type: "boolean", default: false },
+    untagged: { type: "boolean", default: false },
     limit: { type: "string" },
   });
 
@@ -48,6 +52,8 @@ export function run(argv: string[]): number {
     prefix,
     sort: sort as ListFilter["sort"],
     stale,
+    unfiled: boolOpt(parsed, "unfiled"),
+    untagged: boolOpt(parsed, "untagged"),
     staleDays: config.general.stale_days,
     limit: stale ? undefined : intOpt(parsed, "limit"),
   });

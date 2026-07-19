@@ -43,6 +43,12 @@ export function run(argv: string[]): number {
       );
     }
   }
+  console.log(
+    `backlog:    ${stats.triageBacklog} documents (${stats.unfiled} unfiled, ${stats.untagged} untagged)`,
+  );
+  if (stats.triageBacklog > 0) {
+    console.log("  run 'kura triage' to organize");
+  }
   console.log(`broken:     ${stats.unresolvedLinks} unresolved links`);
   console.log(`db:         ${formatBytes(stats.dbSizeBytes)} / tokenizer: ${tokenizer}`);
   return EXIT.OK;

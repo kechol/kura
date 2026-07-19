@@ -36,6 +36,8 @@ export interface DocumentRecord {
   accessCount: number;
   /** Pinned to the browser sidebar (docs: browser-ui.md) */
   favorite: boolean;
+  /** ISO-8601 of the last triage pass; null = never triaged (docs: self-healing.md) */
+  triagedAt: string | null;
   tags: string[];
   /** Alternate titles for link resolution and search (docs: document-notation.md) */
   aliases: string[];
@@ -57,12 +59,13 @@ interface DocRow {
   last_accessed_at: string | null;
   access_count: number;
   favorite: number;
+  triaged_at: string | null;
 }
 
 const SELECT_DOC = `
   SELECT d.id, d.doc_key, d.bucket_id, b.name AS bucket, d.path, d.title, d.content,
          d.content_type, d.source_url, d.content_hash, d.created_at, d.updated_at,
-         d.last_accessed_at, d.access_count, d.favorite
+         d.last_accessed_at, d.access_count, d.favorite, d.triaged_at
   FROM documents d JOIN buckets b ON b.id = d.bucket_id`;
 
 /** preloaded lets list paths batch-fetch tags/aliases instead of two queries per row */
@@ -87,6 +90,7 @@ function toRecord(
     lastAccessedAt: row.last_accessed_at,
     accessCount: row.access_count,
     favorite: row.favorite === 1,
+    triagedAt: row.triaged_at,
     tags: preloaded?.tags ?? docTags(db, row.id),
     aliases: preloaded?.aliases ?? docAliases(db, row.id),
   };
@@ -587,6 +591,32 @@ export function setFavorite(db: Database, id: number, favorite: boolean): Docume
   return getDocumentById(db, id);
 }
 
+/**
+ * Stamp a document as triaged. Runtime bookkeeping like access tracking: it
+ * deliberately does not touch updated_at (a triage is not an edit) and leaves
+ * the derived tables alone. The backlog is (unfiled OR untagged) AND
+ * (triaged_at IS NULL OR updated_at > triaged_at), so a later edit re-enters
+ * the document into the backlog (docs: self-healing.md).
+ */
+export function markTriaged(db: Database, id: number, at?: string): DocumentRecord {
+  db.prepare("UPDATE documents SET triaged_at = ? WHERE id = ?").run(
+    at ?? sqliteNow(new Date()),
+    id,
+  );
+  return getDocumentById(db, id);
+}
+
+/**
+ * Canonical backlog predicates (docs: self-healing.md), composed into the
+ * listDocuments filter, the triage backlog query (src/core/triage.ts), and the
+ * status counts (src/core/stats.ts). Every consumer aliases documents as `d`
+ * and document_tags as `dt`.
+ */
+export const UNFILED_WHERE = "d.path = ''";
+export const UNTAGGED_WHERE =
+  "NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)";
+export const UNTRIAGED_WHERE = "(d.triaged_at IS NULL OR d.updated_at > d.triaged_at)";
+
 export interface ListFilter {
   bucket?: string;
   /** Tag (descendant tags included) */
@@ -595,6 +625,10 @@ export interface ListFilter {
   prefix?: string;
   /** Only favorites */
   favorite?: boolean;
+  /** Only documents at the bucket root (path = '') — the filing backlog */
+  unfiled?: boolean;
+  /** Only documents with no tags */
+  untagged?: boolean;
   sort?: "updated" | "created" | "accessed" | "title" | "views";
   stale?: boolean;
   staleDays?: number;
@@ -630,6 +664,12 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
   }
   if (filter.favorite) {
     where.push("d.favorite = 1");
+  }
+  if (filter.unfiled) {
+    where.push(UNFILED_WHERE);
+  }
+  if (filter.untagged) {
+    where.push(UNTAGGED_WHERE);
   }
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");

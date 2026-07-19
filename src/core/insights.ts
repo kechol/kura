@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { requireBucket } from "./buckets";
+import { UNFILED_WHERE, UNTAGGED_WHERE } from "./documents";
 import { type TagMergeCandidate, tagMergeCandidates } from "./gardening";
 import { brokenLinks } from "./links";
 import { listTags } from "./tags";
@@ -10,10 +11,10 @@ import { listTags } from "./tags";
  * them — and nothing here needs an LLM: the duplicate-tag pass is the synchronous
  * edit-distance half of the gardening audit (invariants R4).
  *
- * The queries project down to key/path/title on purpose. The equivalent core helpers
- * (`untaggedDocuments`, `listUnfiledDocuments`) load every document's body because their
- * callers feed it to an LLM; this endpoint only lists titles, and a statistics page must not
- * read the whole bucket to draw a count.
+ * The queries project down to key/path/title on purpose: this endpoint only lists titles,
+ * and a statistics page must not read the whole bucket to draw a count. The unfiled /
+ * untagged groups reuse the canonical UNFILED_WHERE / UNTAGGED_WHERE predicates
+ * (src/core/documents.ts).
  */
 
 export interface InsightDoc {
@@ -51,10 +52,6 @@ const NO_RESOLVED_LINK = `
   NOT EXISTS (SELECT 1 FROM links l WHERE l.source_id = d.id AND l.target_id IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM links l WHERE l.target_id = d.id)`;
 
-const UNTAGGED = "NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)";
-
-const UNFILED = "d.path = ''";
-
 function group(db: Database, bucket: string, where: string): InsightGroup {
   const docs = db
     .prepare(
@@ -73,8 +70,8 @@ export function collectInsights(db: Database, bucketName: string): KuraInsights 
 
   return {
     orphans: group(db, bucketName, NO_RESOLVED_LINK),
-    untagged: group(db, bucketName, UNTAGGED),
-    unfiled: group(db, bucketName, UNFILED),
+    untagged: group(db, bucketName, UNTAGGED_WHERE),
+    unfiled: group(db, bucketName, UNFILED_WHERE),
     brokenLinks: {
       count: broken.length,
       links: broken.slice(0, LIST_LIMIT).map((l) => ({

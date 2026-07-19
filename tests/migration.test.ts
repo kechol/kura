@@ -153,7 +153,7 @@ describe("migration 005: document revisions (docs: data-model.md)", () => {
     db.exec(`INSERT INTO documents (id, doc_key, bucket_id, path, title, content, content_hash)
       VALUES (1, 'aaaa1111', 1, '', '検索設計', '全文検索の設計方針。', 'h1')`);
 
-    migrate(db, CTX);
+    migrate(db, CTX, 5);
     expect(schemaVersion(db)).toBe(5);
 
     db.exec(`INSERT INTO document_revisions (document_id, title, path, content, content_hash, saved_at)
