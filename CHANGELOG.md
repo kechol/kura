@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Keyboard-only operation of the browser UI, following the Gmail / GitHub
+  conventions. Single keys alias the Ctrl combos (`/` search, `c` new
+  document, `?` shortcut list) and collide with nothing the browser owns;
+  `g`-prefixed sequences reach every screen (`g h` home, `g d` documents,
+  `g t` tags, `g g` graph, `g s` statistics, `g r` recent, `g b` bucket
+  picker). The list screens gain a `j` / `k` cursor with `Enter` or `o` to
+  open (`h` / `l` turn pages on the document list; the recent-docs modal
+  accepts `j` / `k` too), and the document screen gains
+  `e` (edit), `s` (favorite), `u` (back to list) and `#` (delete). `Escape`
+  now leaves the editor, cancels a title edit, and closes a raw block's text
+  editor. The shortcut modal (`?`) lists all of them, grouped by screen.
+
 - Document aliases — alternate titles for a document, backed by schema v4
   (a `document_aliases` table, migrated automatically). `[[alias]]` wiki
   links resolve to the document (and self-heal when an alias is added

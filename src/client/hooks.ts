@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
+import { isBareKey, isImeKey, useWindowKeydown } from "./shortcuts";
 
 export interface AsyncState<T> {
   data: T | null;
@@ -65,18 +66,22 @@ export function useListNavigation<T>(
   opts: { global?: boolean } = {},
 ): ListNavigation {
   const [index, setIndex] = useState(0);
+  const { global = false } = opts;
 
   useEffect(() => setIndex(0), [items]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     // Enter during an IME composition confirms the conversion — it must not pick a result
-    if (e.isComposing || e.keyCode === 229) return;
-    if (e.key === "ArrowDown") {
+    if (isImeKey(e)) return;
+    // In global mode no input owns the list, so J/K alias the arrows — the same cursor
+    // keys as the page lists (usePageListNavigation)
+    const vim = global && isBareKey(e);
+    if (e.key === "ArrowDown" || (vim && e.key === "j")) {
       e.preventDefault();
-      setIndex((i) => Math.min(i + 1, items.length - 1));
-    } else if (e.key === "ArrowUp") {
+      setIndex((i) => stepIndex(i, true, items.length));
+    } else if (e.key === "ArrowUp" || (vim && e.key === "k")) {
       e.preventDefault();
-      setIndex((i) => Math.max(i - 1, 0));
+      setIndex((i) => stepIndex(i, false, items.length));
     } else if (e.key === "Enter") {
       const item = items[index];
       if (item !== undefined) {
@@ -86,17 +91,63 @@ export function useListNavigation<T>(
     }
   };
 
-  const latest = useRef(onKeyDown);
-  latest.current = onKeyDown;
-  const { global = false } = opts;
-  useEffect(() => {
-    if (!global) return;
-    const handler = (e: KeyboardEvent) => latest.current(e);
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [global]);
+  useWindowKeydown(onKeyDown, global);
 
   return { index, setIndex, onKeyDown };
+}
+
+/** One cursor step, clamped to the list */
+const stepIndex = (i: number, down: boolean, length: number): number =>
+  down ? Math.min(i + 1, length - 1) : Math.max(i - 1, 0);
+
+/**
+ * Gmail/GitHub-style keyboard cursor over the main list of a screen: J/K move,
+ * Enter or O opens the selected row, and — when the screen pages — H/L turn pages.
+ * Window-level like useShortcuts, with the same IME and focused-field guards;
+ * `disabled` stands the handler down while a modal is open. Takes the fetched
+ * list as-is (null/undefined while loading — identity matters, a fresh `?? []`
+ * per render would reset the cursor). Returns the cursor index, -1 = no row
+ * selected. The cursor row must render class "kbd-cursor" (that is also what
+ * the scroll follow-up targets).
+ */
+export function usePageListNavigation<T>(
+  items: T[] | null | undefined,
+  onOpen: (item: T) => void,
+  opts: { disabled?: boolean; onPage?: (delta: 1 | -1) => void } = {},
+): number {
+  const [index, setIndex] = useState(-1);
+  useEffect(() => setIndex(-1), [items]);
+
+  // Keep the cursor row visible as it moves
+  useEffect(() => {
+    if (index >= 0) document.querySelector(".kbd-cursor")?.scrollIntoView({ block: "nearest" });
+  }, [index]);
+
+  useWindowKeydown((e) => {
+    if (opts.disabled === true || !isBareKey(e)) return;
+    const list = items ?? [];
+    if (e.key === "j" || e.key === "k") {
+      if (list.length === 0) return;
+      e.preventDefault();
+      setIndex((i) => stepIndex(i, e.key === "j", list.length));
+    } else if (e.key === "Enter" || e.key === "o") {
+      const item = list[index];
+      if (index < 0 || item === undefined) return;
+      // Enter on a focused link or button stays native; O has no native action
+      if (
+        e.key === "Enter" &&
+        e.target instanceof HTMLElement &&
+        e.target.closest("a, button") !== null
+      )
+        return;
+      e.preventDefault();
+      onOpen(item);
+    } else if ((e.key === "h" || e.key === "l") && opts.onPage !== undefined) {
+      e.preventDefault();
+      opts.onPage(e.key === "l" ? 1 : -1);
+    }
+  });
+  return index;
 }
 
 /** Debounce a fast-changing value (search input → API call) */

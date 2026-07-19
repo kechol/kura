@@ -656,12 +656,23 @@ kbd {
 }
 
 .shortcut-list dt {
-  width: 7.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  width: 9.5rem;
   flex-shrink: 0;
 }
 
 .shortcut-list dd {
   margin: 0;
+}
+
+/* Section heading between the shortcut groups (global / list screens / document) */
+.shortcut-group {
+  margin: 0.9rem 0.6rem 0.1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 /* Quiet icon-only button (theme toggle, header actions) */
@@ -976,6 +987,13 @@ mark {
 
 .recent-list li:last-child {
   border-bottom: none;
+}
+
+/* ---- keyboard list cursor (J / K on the list screens) ---- */
+
+.kbd-cursor {
+  background: var(--hover);
+  scroll-margin-block: 4rem 1rem; /* clears the sticky header when scrolled to */
 }
 
 .recent-title {

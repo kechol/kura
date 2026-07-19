@@ -143,6 +143,10 @@ export function RawBlock({
         value={value}
         rows={Math.max(value.split("\n").length + 1, 3)}
         onInput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
+        onKeyDown={(e) => {
+          // Escape = the 完了 button: back to the rendered preview
+          if (e.key === "Escape" && !e.isComposing) setEditing(false);
+        }}
       />
       <button type="button" class="btn editor-raw-done" onClick={() => setEditing(false)}>
         完了

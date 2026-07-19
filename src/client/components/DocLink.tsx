@@ -34,6 +34,7 @@ export function DocLinkList<T extends LinkableDoc>({
   exclude,
   meta,
   empty = "なし",
+  cursor,
 }: {
   docs: T[];
   class?: string;
@@ -42,14 +43,16 @@ export function DocLinkList<T extends LinkableDoc>({
   /** Trailing text for each row (dates, counts) */
   meta?: (doc: T) => ComponentChildren;
   empty?: string;
+  /** Rendered-row index highlighted as the keyboard cursor (usePageListNavigation) */
+  cursor?: number;
 }) {
   const shown = exclude === undefined ? docs : docs.filter((d) => d.key !== exclude);
   if (shown.length === 0) return <p class="empty">{empty}</p>;
 
   return (
     <ul class={className}>
-      {shown.map((d) => (
-        <li key={d.key}>
+      {shown.map((d, i) => (
+        <li key={d.key} class={i === cursor ? "kbd-cursor" : undefined}>
           <Link href={docHref(d.key)}>
             <DocTitle doc={d} />
           </Link>

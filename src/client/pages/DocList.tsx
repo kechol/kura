@@ -2,8 +2,10 @@ import { useState } from "preact/hooks";
 import { Link, useLocation, useSearch } from "wouter-preact";
 import { fetchDocs } from "../api";
 import { useBucket } from "../bucket";
+import { docHref } from "../components/DocLink";
 import { formatDate } from "../format";
-import { useAsync, useDocumentTitle } from "../hooks";
+import { useAsync, useDocumentTitle, usePageListNavigation } from "../hooks";
+import { useModal } from "../modal";
 
 const PER = 20;
 
@@ -55,6 +57,15 @@ export function DocList() {
 
   const total = result.data?.total ?? 0;
   const totalPages = Math.max(Math.ceil(total / PER), 1);
+
+  const modal = useModal();
+  const cursor = usePageListNavigation(result.data?.docs, (d) => navigate(docHref(d.key)), {
+    disabled: modal.isOpen,
+    onPage: (delta) => {
+      const next = page + delta;
+      if (next >= 1 && next <= totalPages) update({ page: String(next) });
+    },
+  });
 
   return (
     <div class="page">
@@ -164,8 +175,8 @@ export function DocList() {
               </tr>
             </thead>
             <tbody>
-              {result.data.docs.map((d) => (
-                <tr key={d.key}>
+              {result.data.docs.map((d, i) => (
+                <tr key={d.key} class={i === cursor ? "kbd-cursor" : undefined}>
                   <td>
                     <Link href={`/docs/${encodeURIComponent(d.key)}`}>
                       {d.path !== "" && <span class="doc-path-prefix">{d.path}/</span>}

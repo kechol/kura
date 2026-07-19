@@ -36,9 +36,9 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`, `DocMeta` also `favorite`); `resolveDocSpec()` wraps `GET /api/resolve`, `fetchFavorites()` / `setFavorite()` the favorites endpoints; `ApiError` carries the HTTP status |
 | `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
 | `lastdoc.ts` | Remembers the last-read document (`localStorage["kura-last-doc"]`) and rewrites `/` to it before the first render |
-| `modal.tsx` | `ModalProvider` / `useModal()` — owns the three modals and the global shortcut handler |
-| `shortcuts.ts` | The shortcut table (the list modal is generated from it) and the window `keydown` hook |
-| `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard); `useDocumentTitle()` sets `document.title` per screen |
+| `modal.tsx` | `ModalProvider` / `useModal()` — owns the three modals (exposing `isOpen`) and the global shortcut handler |
+| `shortcuts.ts` | The shortcut tables (Ctrl combos, single keys, G sequences — the list modal is generated from them), the pure `resolveShortcut()` matcher (`tests/shortcuts.test.ts`), and the window `keydown` hook |
+| `hooks.ts` | `useAsync()` — the single data-fetching primitive (loading/error/reload, stale-response guard); `useDocumentTitle()` sets `document.title` per screen; `usePageListNavigation()` — the J/K keyboard cursor on the list screens |
 | `markdown.ts` | Rendering pipeline: markdown-it + wikilink rule + highlight.js + DOMPurify; lazy mermaid loader |
 | `format.ts` | Date/bytes/percent formatting, `escapeHtml`, `snippetHtml` (`**…**` → `<mark>`) |
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
@@ -181,20 +181,50 @@ name on the detail page, the screen name elsewhere, both suffixed with
 ## Modals and keyboard shortcuts
 
 `ModalProvider` (`modal.tsx`) sits inside the router, owns which modal is open
-and hosts the single window `keydown` listener (`useShortcuts`). The header's
+and hosts the global window `keydown` listener (`useShortcuts`). The header's
 magnifier icon opens the same search modal the shortcut does; the keyboard icon
 in the sidebar footer, next to the theme toggle, opens the shortcut list.
 
+Global shortcuts (every screen). Most actions have two spellings: a Ctrl
+combo and a Gmail/GitHub-style single key or `G` sequence — press `G`, then
+the second key within 1 s (`SEQ_TIMEOUT_MS`). An unmatched second key falls
+through and is read as a fresh keystroke, so `g` `/` still opens search.
+
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl + P` | Search modal |
-| `Ctrl + N` | New untitled document (created in the selected bucket, then opened) |
-| `Ctrl + ?` | Shortcut list |
-| `Ctrl + R` | Recently viewed documents |
-| `Ctrl + H` | Home |
-| `Ctrl + T` | Tag browser |
+| `Ctrl + P` or `/` | Search modal |
+| `Ctrl + N` or `c` | New untitled document (created in the selected bucket, then opened) |
+| `Ctrl + ?` or `?` | Shortcut list |
+| `Ctrl + R` or `g r` | Recently viewed documents |
+| `Ctrl + H` or `g h` | Home |
+| `g d` | Document list |
+| `Ctrl + T` or `g t` | Tag browser |
+| `g g` | Knowledge graph |
+| `g s` | Statistics |
+| `g b` | Focus the sidebar bucket picker (then arrow keys switch) |
 | `Escape` | Close the modal |
-| `↑` `↓` `Enter` | Move / choose inside a modal |
+| `↑` `↓` `Enter` | Move / choose inside a modal (the recent-docs modal also accepts `j` / `k`) |
+
+The list screens (document list, search results, home history) run a
+keyboard cursor via `usePageListNavigation()` (`hooks.ts`), suspended while
+a modal is open (`useModal().isOpen`):
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Move the cursor down / up (row highlighted as `.kbd-cursor`, scrolled into view) |
+| `Enter` / `o` | Open the cursor row (a focused link or button keeps its own Enter) |
+| `h` / `l` | Previous / next page (document list only) |
+
+The document screen adds single-key actions (`DOC_SHORTCUTS`, handled in
+`DocDetail`; inactive while a field or the editor has focus):
+
+| Key | Action |
+| --- | --- |
+| `e` | Focus the first editor block (Markdown documents only) |
+| `s` | Toggle favorite |
+| `u` | Back to the document list |
+| `#` | Delete (same confirm dialog as the button) |
+| `Escape` | Leave the editing scope: blur the editor block, cancel a title edit (restores the saved title), or close a raw block's text editor |
 
 **Why Ctrl and not Cmd.** On macOS the browser and the OS own Cmd+T (new
 tab), Cmd+H (hide app), Cmd+R (reload), Cmd+N (new window) and Cmd+P (print);
@@ -202,7 +232,9 @@ a page cannot take them back, and stealing Cmd+R would cost the user reload.
 Ctrl+letter is effectively free there. On Windows / Linux the browser owns
 Ctrl+T, Ctrl+N and Ctrl+P — a known limitation, stated in the shortcut list
 rather than worked around; where the page does receive the key, kura's action
-takes precedence over the browser's.
+takes precedence over the browser's. The single-key layer exists precisely
+because it has no such collisions: outside a focused field, `/` `?` `c` and
+the `G` sequences are free on every platform (the Gmail / GitHub convention).
 
 **New document (`Ctrl + N`).** `POST /api/docs` creates 無題 at the root of the
 selected bucket and the UI opens it with the placeholder title selected, so the
@@ -235,7 +267,8 @@ rather than navigating away. Vector and hybrid search stay on `/search`.
 There is no separate editor screen: a Markdown document is rendered as editable
 blocks, and typing into one is the edit. `PUT /api/docs/:key` is issued 1.5 s
 after the last change (Ctrl+S saves at once); the status is shown next to the
-title, and a dirty document warns on unload.
+title, and a dirty document warns on unload. `Escape` blurs the current block,
+handing the keyboard back to the page-scope shortcuts above.
 
 ```
 markdown ──parse.ts──► Block[] ──dom.ts──► contenteditable DOM

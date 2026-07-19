@@ -21,6 +21,8 @@ import { Editor, type SaveStatus } from "../editor/Editor";
 import { formatDateTime } from "../format";
 import { useAsync, useDocumentTitle } from "../hooks";
 import { forgetDoc, rememberDoc } from "../lastdoc";
+import { useModal } from "../modal";
+import { isBareKey, useWindowKeydown } from "../shortcuts";
 
 /** Titles created by Ctrl+N: "無題", and "無題 (2)" when that one is taken */
 const UNTITLED_RE = /^無題(?: \(\d+\))?$/;
@@ -114,6 +116,20 @@ export function DocDetail({ docKey }: { docKey: string }) {
     selection?.addRange(range);
   }, [untitled]);
 
+  // Single-key document shortcuts (S / # / U / E — see DOC_SHORTCUTS). The actions are
+  // read through a ref assigned during render, so the listener never closes over a stale
+  // document; while a document is (re)loading the ref is null and the keys do nothing.
+  const modalOpen = useModal().isOpen;
+  const docKeys = useRef<Record<string, () => void> | null>(null);
+  useWindowKeydown((e) => {
+    if (modalOpen || !isBareKey(e)) return;
+    const fn = docKeys.current?.[e.key];
+    if (fn === undefined) return;
+    e.preventDefault();
+    fn();
+  });
+
+  docKeys.current = null;
   if (doc.loading || related.loading) return <p class="empty">読み込み中…</p>;
   if (doc.error) return <p class="error">{doc.error}</p>;
   if (!d) return null;
@@ -188,6 +204,17 @@ export function DocDetail({ docKey }: { docKey: string }) {
     }
   };
 
+  const keys: Record<string, () => void> = {
+    s: () => void toggleFavorite(),
+    "#": () => void remove(),
+    u: () => navigate("/docs"),
+  };
+  // E enters the editing scope; Escape (handled by the editor) leaves it again
+  if (markdown) {
+    keys.e = () => document.querySelector<HTMLElement>('.editor [contenteditable="true"]')?.focus();
+  }
+  docKeys.current = keys;
+
   return (
     <div class="doc-detail">
       <article class="doc-main">
@@ -211,9 +238,15 @@ export function DocDetail({ docKey }: { docKey: string }) {
             contentEditable={markdown}
             onBlur={(e) => void renameTo((e.currentTarget as HTMLElement).textContent ?? "")}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.isComposing) {
+              if (e.isComposing) return;
+              if (e.key === "Enter") {
                 e.preventDefault();
                 (e.currentTarget as HTMLElement).blur();
+              } else if (e.key === "Escape") {
+                // Cancel the rename: restore the saved title, then leave the field
+                const el = e.currentTarget as HTMLElement;
+                el.textContent = d.title;
+                el.blur();
               }
             }}
           >

@@ -91,8 +91,11 @@ in-place editing, three-mode search, a sidebar document tree that
 follows your document paths, a tag browser, and a d3-force knowledge
 graph — all served locally. The UI is scoped to one bucket at a time,
 picked in the sidebar. A fresh visit resumes the document you last
-read, and the home screen is your reading history. Ctrl+P opens instant
-search, Ctrl+N starts a new document, and a Statistics screen surfaces
+read, and the home screen is your reading history. The UI can be driven
+entirely from the keyboard, Gmail/GitHub-style: Ctrl+P (or `/`) opens
+instant search, Ctrl+N (or `c`) starts a new document, `g`-prefixed keys
+jump between screens, `j` / `k` walk any list, and `?` shows the full
+shortcut list. A Statistics screen surfaces
 counts, embedding coverage, and tidying suggestions. Star a document
 and it stays pinned at the top of the sidebar, with whatever is filed
 under it expanding beneath it. The UI text is Japanese.

@@ -359,6 +359,11 @@ export function Editor({
   const onKeyDown = (key: EditKey, e: KeyboardEvent, el: HTMLElement) => {
     if (e.isComposing || e.keyCode === 229) return;
 
+    if (e.key === "Escape") {
+      // Leave the editing scope — the page-level single-key shortcuts take over
+      el.blur();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) timeTravel(redoStack, undoStack);

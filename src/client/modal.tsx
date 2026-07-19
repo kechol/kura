@@ -18,6 +18,8 @@ const UNTITLED = "無題";
 interface ModalState {
   open: (kind: ModalKind) => void;
   close: () => void;
+  /** True while any modal is open — the page-level key handlers stand down */
+  isOpen: boolean;
   /** Create an untitled document in the selected bucket and open it (Ctrl+N) */
   createUntitled: () => void;
 }
@@ -25,8 +27,17 @@ interface ModalState {
 const ModalContext = createContext<ModalState>({
   open: () => {},
   close: () => {},
+  isOpen: false,
   createUntitled: () => {},
 });
+
+const NAV_ROUTES = {
+  home: "/",
+  docs: "/docs",
+  tags: "/tags",
+  graph: "/graph",
+  stats: "/stats",
+} as const;
 
 /**
  * Owns the modals and the global shortcut handler. Navigation shortcuts route directly;
@@ -53,15 +64,20 @@ export function ModalProvider({ children }: { children: ComponentChildren }) {
     (action: ShortcutAction) => {
       switch (action) {
         case "home":
-          setKind(null);
-          navigate("/");
-          return;
+        case "docs":
         case "tags":
+        case "graph":
+        case "stats":
           setKind(null);
-          navigate("/tags");
+          navigate(NAV_ROUTES[action]);
           return;
         case "new":
           createUntitled();
+          return;
+        case "bucket":
+          // The sidebar select is keyboard-operable once focused (arrow keys)
+          setKind(null);
+          document.querySelector<HTMLElement>(".bucket-select")?.focus();
           return;
         default:
           setKind(action);
@@ -72,7 +88,7 @@ export function ModalProvider({ children }: { children: ComponentChildren }) {
   useShortcuts(run);
 
   return (
-    <ModalContext.Provider value={{ open, close, createUntitled }}>
+    <ModalContext.Provider value={{ open, close, isOpen: kind !== null, createUntitled }}>
       {children}
       {kind === "search" && <SearchModal onClose={close} />}
       {kind === "recent" && <RecentModal onClose={close} />}

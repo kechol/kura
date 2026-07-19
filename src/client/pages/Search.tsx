@@ -2,8 +2,10 @@ import { useEffect, useState } from "preact/hooks";
 import { Link, useLocation, useSearch } from "wouter-preact";
 import { type SearchMode, searchDocs } from "../api";
 import { useBucket } from "../bucket";
+import { docHref } from "../components/DocLink";
 import { snippetHtml } from "../format";
-import { useAsync, useDocumentTitle } from "../hooks";
+import { useAsync, useDocumentTitle, usePageListNavigation } from "../hooks";
+import { useModal } from "../modal";
 
 const MODES: Array<[SearchMode, string]> = [
   ["keyword", "キーワード"],
@@ -49,6 +51,11 @@ export function SearchPage() {
     }
     navigate(`/search?${next.toString()}`);
   };
+
+  const modal = useModal();
+  const cursor = usePageListNavigation(result.data?.hits, (h) => navigate(docHref(h.key)), {
+    disabled: modal.isOpen,
+  });
 
   return (
     <div class="page">
@@ -108,8 +115,8 @@ export function SearchPage() {
       {result.data && result.data.hits.length === 0 && <p class="empty">ヒットなし</p>}
       {result.data && result.data.hits.length > 0 && (
         <ol class="search-hits">
-          {result.data.hits.map((h) => (
-            <li key={h.key} class="search-hit">
+          {result.data.hits.map((h, i) => (
+            <li key={h.key} class={`search-hit${i === cursor ? " kbd-cursor" : ""}`}>
               <div class="hit-head">
                 <Link href={`/docs/${encodeURIComponent(h.key)}`}>{h.title}</Link>
                 <span class="badge">{h.source}</span>

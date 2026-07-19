@@ -52,7 +52,7 @@ export function RecentModal({ onClose }: { onClose: () => void }) {
       </div>
       <ModalHints
         hints={[
-          ["↑↓", "移動"],
+          ["↑↓ / J K", "移動"],
           ["Enter", "開く"],
           ["Esc", "閉じる"],
         ]}
