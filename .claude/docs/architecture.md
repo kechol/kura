@@ -61,8 +61,8 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/core/frontmatter.ts` | YAML frontmatter parse/serialize, timestamp conversion (see [document-notation.md](document-notation.md)) |
 | `src/core/wiki.ts` | `[[link]]` / `#tag` extraction, code-block masking, rename rewriting |
 | `src/core/chunker.ts` | Markdown-aware chunk splitting for embeddings (context header per chunk) |
-| `src/core/search/` | `keyword.ts` (FTS5 BM25), `vector.ts` (KNN + backfill), `hybrid.ts` (RRF + blend), `rerank.ts`, `expand.ts`, `types.ts` |
-| `src/core/llm/` | `provider.ts` (interface + auto-detection), `ollama.ts`, `lmstudio.ts`, `cache.ts` (`llm_cache`) |
+| `src/core/search/` | `keyword.ts` (FTS5 BM25), `vector.ts` (KNN + backfill), `hybrid.ts` (RRF + blend), `rerank.ts`, `expand.ts`, `ask.ts` (cited-source answer generation), `types.ts` |
+| `src/core/llm/` | `provider.ts` (interface + auto-detection), `ollama.ts`, `lmstudio.ts`, `cache.ts` (`llm_cache`, symmetric `pairKey`), `parse.ts` (`parseJsonObject` / `parseJsonArray` for LLM replies) |
 | `src/core/clip/` | `extract.ts` (readability + linkedom), `format.ts` (LLM formatting / turndown fallback) |
 | `src/core/doctor.ts` | Self-healing fixes: FTS rebuild/retokenize, orphan GC, hash repair, link resolution, vec recreation |
 | `src/core/stale.ts` / `gardening.ts` / `stats.ts` | Staleness scoring, tag-audit gardening (`kura audit tags`), `kura status` statistics (incl. the `unfiled` / `untagged` / `triageBacklog` counts) |

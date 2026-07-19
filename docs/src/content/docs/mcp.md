@@ -34,7 +34,7 @@ no account.
 | `kura_add` | Create a document; an optional `path` files it under a folder-like document path |
 | `kura_update` | Update an existing document; changing `title` or `path` rewrites `[[links]]` in referring documents |
 | `kura_list_tags` | List the tag hierarchy |
-| `kura_related` | Documents related to a given one (links + similarity) |
+| `kura_related` | Documents related to a given one (outlinks, backlinks, 2-hop links) |
 | `kura_changes` | What changed since a point in time (`7d`, a date) — renames and moves included |
 | `kura_status` | Store statistics |
 

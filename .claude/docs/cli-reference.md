@@ -343,13 +343,16 @@ the `--apply` / `--limit` flags it carried.
 ### `kura ls`
 
 ```
-kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views] [--stale] [--limit n] [--json]
+kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|title|views] [--stale] [--unfiled] [--untagged] [--limit n] [--json]
 ```
 
 `listDocuments` with filters; `--tag` includes descendant tags
 (`t` matches `t` and `t/…`); `--prefix` filters by document path,
 descendants included (`p` matches path `p` and `p/…`, case-insensitively) —
-the value is normalized and must not be empty (usage error). Default sort is
+the value is normalized and must not be empty (usage error). `--unfiled`
+keeps only bucket-root documents (`path = ''`) and `--untagged` only
+documents with no tags — the two components of the triage backlog, and
+composable with the other filters. Default sort is
 `updated` (desc); `accessed`
 puts never-accessed docs last; `views` orders by `access_count` (most-viewed
 first, ties broken by most-recently accessed); invalid sorts are usage
