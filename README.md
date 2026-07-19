@@ -102,6 +102,7 @@ kura history "Today's note"    # every edit keeps the replaced version; show / r
 kura mv "Today's note" --path db/sqlite   # optional document path; [[links]] follow
 kura ls --tag tech/db --sort updated
 kura ls --prefix db            # documents under a path prefix (descendants included)
+kura changes --since 7d        # what was created or updated since then
 
 # Links & tags
 kura link ls "Today's note"    # outlinks / backlinks / 2-hop links
@@ -138,7 +139,8 @@ kura skills install                 # agent skill (CLI guide) → ~/.agents/skil
 
 MCP tools: `kura_query` (hybrid search), `kura_ask` (answers with cited
 sources), `kura_search`, `kura_get`, `kura_add`, `kura_update`,
-`kura_list_tags`, `kura_related`, `kura_status`.
+`kura_list_tags`, `kura_related`, `kura_changes` (what changed since a
+point in time), `kura_status`.
 `kura_add` / `kura_update` accept an optional document `path` and `aliases`,
 and `kura_get` also resolves a full path (`clips/Title`) or a unique alias.
 

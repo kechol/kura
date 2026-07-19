@@ -45,12 +45,13 @@ afterEach(async () => {
 });
 
 describe("kura mcp server", () => {
-  test("exposes 9 tools with guidance in descriptions", async () => {
+  test("exposes 10 tools with guidance in descriptions", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "kura_add",
       "kura_ask",
+      "kura_changes",
       "kura_get",
       "kura_list_tags",
       "kura_query",
@@ -138,6 +139,28 @@ describe("kura mcp server", () => {
     const md = contentText(result);
     expect(md).toContain("Backlinks");
     expect(md).toContain("SQLite の WAL モード");
+  });
+
+  test("kura_changes lists documents changed since a point in time", async () => {
+    const all = await client.callTool({
+      name: "kura_changes",
+      arguments: { since: "1h" },
+    });
+    const md = contentText(all);
+    expect(md).toContain("**created**");
+    expect(md).toContain("SQLite の WAL モード");
+
+    const none = await client.callTool({
+      name: "kura_changes",
+      arguments: { since: "2099-01-01" },
+    });
+    expect(contentText(none)).toContain("No changes");
+
+    const bad = (await client.callTool({
+      name: "kura_changes",
+      arguments: { since: "そのうち" },
+    })) as { isError?: boolean };
+    expect(bad.isError).toBe(true);
   });
 
   test("kura_status returns statistics", async () => {

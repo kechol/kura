@@ -40,6 +40,7 @@ description: Every kura command grouped by task, with global conventions, --json
 | `kura mv suggest` | Propose paths for unfiled documents from links/tags/search signals (plus the LLM when available); `--apply`, `--json`, `--limit` |
 | `kura ls` | List documents; `--tag`, `--bucket`, `--prefix`, `--sort`, `--stale` |
 | `kura history <ref>` | List a document's revisions — every edit keeps the replaced version. `show <ref> <rN>` prints one; `restore <ref> <rN>` brings its content back (and is itself undoable) |
+| `kura changes --since <t>` | List documents created or updated since a time (`7d`, `2026-07-01`); renames and moves are detected from revision history |
 | `kura clip <url>` | Capture a web page, cleaned up by the LLM; filed under `clip.path` (default `clips`) |
 | `kura export --dir <d>` | Write documents as Markdown with frontmatter; paths become subdirectories |
 | `kura import <dir>` | Round-trip via `kura_key` (update or create); subdirectories become document paths |

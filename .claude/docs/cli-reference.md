@@ -55,7 +55,7 @@ There is no single global default; each command class behaves differently:
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
 | `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias`, `history` (title resolution) | all buckets, ambiguity is an error |
 | `mv --prefix` (bulk path move) | `general.default_bucket` |
-| `ls`, `search`, `vsearch`, `query`, `ask`, `export`, `link broken` (filters) | all buckets |
+| `ls`, `search`, `vsearch`, `query`, `ask`, `changes`, `export`, `link broken` (filters) | all buckets |
 
 ### Exit codes
 
@@ -82,7 +82,7 @@ mode).
 Accepted by every command (parser-level), but only read commands and the
 bulk I/O commands honor it: `status`, `config list/get`, `add`, `get`, `ls`,
 `export`, `import`, `bucket ls`, `tag ls`, `link ls/broken`, `alias ls`,
-`history`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
+`history`, `changes`, `search`, `vsearch`, `query`, `ask`. Write commands like `rm`, `mv`, `edit`
 silently ignore it. JSON goes to stdout; warnings and progress always go to stderr, so
 `--json` output stays parseable when piped.
 
@@ -641,6 +641,44 @@ are kept.
 
 Point-in-time reads live on `kura get --as-of` (above). A **deleted
 document's history is deleted with it** (`ON DELETE CASCADE`).
+
+### `kura changes`
+
+```
+kura changes --since <time> [--bucket b] [--limit 50] [--json]
+```
+
+Change feed (`src/cli/commands/changes.ts`, core `src/core/changes.ts`):
+documents created or updated after `--since`, newest first, default limit
+50. Built for agents catching up at session start
+(`kura changes --since 7d --json`); pure SQL, so it works fully without an
+LLM provider.
+
+- `--since` is **required** — missing or unparsable values are a usage
+  error (exit 2). It accepts a relative time (`30m` / `24h` / `7d` / `2w`)
+  or anything `Date`-parsable (ISO 8601, `YYYY-MM-DD`), normalized to a
+  SQLite datetime by `parseSince`.
+- `kind` is `created` when `created_at > since`, `updated` otherwise. For
+  updated documents the state as of `--since` comes from the revision
+  history (`stateAsOf` — [data-model.md](data-model.md)), yielding the
+  `content_changed` / `renamed` / `moved` flags plus the previous
+  title/path. A pruned or coalesced-away snapshot degrades to "changed,
+  previous state unknown" (`content_changed: true`, previous fields
+  `null`).
+- **Deletions are not tracked** — revisions are deleted with their
+  document, so nothing outlives a `kura rm`.
+
+Plain output, one change per line (details only where they apply):
+
+```
+created  #a1b2c3d4  clips/記事タイトル  [main]  2026-07-19 03:12:44
+updated  #b2c3d4e5  検索設計  [main]  2026-07-19 04:01:02  (content, renamed from 旧タイトル)
+```
+
+`--json` → `{since, changes: [{key, bucket, path, title, kind, created_at,
+updated_at, content_changed, renamed, moved, previous_title,
+previous_path}]}` (`since` is the normalized SQLite datetime actually
+used).
 
 ### `kura bucket`
 

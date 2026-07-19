@@ -81,6 +81,7 @@ kura history "今日のメモ"      # 編集のたびに直前の版を保存。
 kura mv "今日のメモ" --path db/sqlite   # 任意のドキュメント path を付ける（[[リンク]] も追従）
 kura ls --tag tech/db --sort updated
 kura ls --prefix db            # パスプレフィックス配下を一覧（子孫を含む）
+kura changes --since 7d        # 指定時点以降に作成・更新されたドキュメントを一覧
 
 # リンクとタグ
 kura link ls "今日のメモ"      # アウトリンク / バックリンク / 2ホップ
@@ -111,7 +112,7 @@ kura mcp --print-config             # .mcp.json 用スニペット
 kura skills install                 # エージェントスキル（CLI ガイド）→ ~/.agents/skills
 ```
 
-MCP ツール: `kura_query`（ハイブリッド検索）, `kura_ask`（出典付き回答）, `kura_search`, `kura_get`, `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`
+MCP ツール: `kura_query`（ハイブリッド検索）, `kura_ask`（出典付き回答）, `kura_search`, `kura_get`, `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_changes`（指定時点以降の変更一覧）, `kura_status`
 
 `kura_add` / `kura_update` は任意の `path` / `aliases` パラメータを受け付け、`kura_get` はフルパス（`clips/タイトル`）や一意な別名でも解決できます。
 

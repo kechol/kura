@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `kura history show <doc> <rN>` prints one, `kura history restore` brings
   a body back (content only, itself undoable), and `kura get --as-of`
   reads a document as it was at any past time.
+- `kura changes --since` — a change feed for agents (and humans) catching
+  up: documents created or updated since a point in time, newest first,
+  with renames and moves detected against the revision history. `--since`
+  accepts relative times (`30m` / `24h` / `7d` / `2w`) or a date. Also
+  exposed as the `kura_changes` MCP tool, meant to be called at session
+  start. Deletions are not tracked. Works fully without an LLM provider.
 - `kura skills` — manage an agent skill that teaches AI coding agents to
   drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`

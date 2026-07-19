@@ -28,25 +28,29 @@ no account.
 | Tool | Purpose |
 |---|---|
 | `kura_query` | Hybrid search (keyword + semantic + rerank) — the default retrieval tool |
+| `kura_ask` | Ask a question, answered from your notes with cited sources |
 | `kura_search` | Keyword search (FTS5 BM25) |
 | `kura_get` | Fetch a document by key, full path (`clips/Title`), or title |
 | `kura_add` | Create a document; an optional `path` files it under a folder-like document path |
 | `kura_update` | Update an existing document; changing `title` or `path` rewrites `[[links]]` in referring documents |
 | `kura_list_tags` | List the tag hierarchy |
 | `kura_related` | Documents related to a given one (links + similarity) |
+| `kura_changes` | What changed since a point in time (`7d`, a date) — renames and moves included |
 | `kura_status` | Store statistics |
 
-An agent typically reaches for `kura_query` to recall context,
-`kura_related` to explore around a hit, and `kura_add` / `kura_update`
-to write findings back — turning kura into durable memory across
-sessions.
+An agent typically starts a session with `kura_changes` to catch up on
+what changed, reaches for `kura_query` to recall context (or `kura_ask`
+for an answer with citations), `kura_related` to explore around a hit,
+and `kura_add` / `kura_update` to write findings back — turning kura
+into durable memory across sessions.
 
 ## Degraded operation
 
-The MCP tools follow the same rule as the CLI: `kura_search` works with
-no LLM provider, and `kura_query` falls back toward keyword results
-when semantic search or reranking is unavailable (see
-[Search](/kura/search/)). An agent never gets a hard failure just
+The MCP tools follow the same rule as the CLI: `kura_search` and
+`kura_changes` work with no LLM provider, `kura_query` falls back
+toward keyword results when semantic search or reranking is
+unavailable, and `kura_ask` returns search results instead of an answer
+(see [Search](/kura/search/)). An agent never gets a hard failure just
 because no model is running.
 
 ## `--json` everywhere

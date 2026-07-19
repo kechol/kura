@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { changesSince, parseSince } from "../core/changes";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
 import { createDocument, resolveDoc, touchAccess, updateDocument } from "../core/documents";
@@ -63,7 +64,7 @@ function sliceLines(content: string, lines?: string): string {
   return all.slice(Math.max(0, start - 1), end).join("\n");
 }
 
-/** kura MCP server (docs: mcp-server.md). Exposes 9 tools; results are returned as Markdown strings */
+/** kura MCP server (docs: mcp-server.md). Exposes 10 tools; results are returned as Markdown strings */
 export function createMcpServer(deps: McpDeps): McpServer {
   const { db, tokenizer, config } = deps;
   const server = new McpServer({ name: "kura", version: KURA_VERSION });
@@ -346,6 +347,47 @@ export function createMcpServer(deps: McpDeps): McpServer {
                 )
                 .join("\n"),
         );
+        return text(lines.join("\n"));
+      } catch (e) {
+        return errorResult(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "kura_changes",
+    {
+      description:
+        "List documents created or updated since a point in time. Call at the start " +
+        "of a session to catch up on what changed in the knowledge base since you " +
+        "last looked. Renames and moves are detected against the revision history; " +
+        "deletions are not tracked.",
+      inputSchema: {
+        since: z
+          .string()
+          .describe("Relative time (30m / 24h / 7d / 2w) or a date/datetime (ISO 8601)"),
+        bucket: z.string().optional().describe("Filter by bucket name (all buckets if omitted)"),
+        limit: z.number().int().min(1).max(200).optional().describe("Maximum entries (default 50)"),
+      },
+    },
+    ({ since, bucket, limit }) => {
+      try {
+        const parsed = parseSince(since);
+        if (parsed === null) {
+          throw new Error(`invalid since: ${since} (expected e.g. 7d or 2026-07-01)`);
+        }
+        const changes = changesSince(db, parsed, { bucket, limit });
+        if (changes.length === 0) return text(`No changes since ${parsed}.`);
+        const lines = changes.map((c) => {
+          const details: string[] = [];
+          if (c.kind === "updated" && c.contentChanged) details.push("content");
+          if (c.renamed) details.push(`renamed from ${c.previousTitle}`);
+          if (c.moved)
+            details.push(`moved from ${c.previousPath === "" ? "(root)" : c.previousPath}`);
+          const suffix = details.length > 0 ? ` — ${details.join(", ")}` : "";
+          return `- **${c.kind}** ${joinDocPath(c.path, c.title)} (key: \`${c.key}\`, bucket: ${c.bucket}) at ${c.updatedAt}${suffix}`;
+        });
+        lines.push("", "Pass a key to `kura_get` to read a document.");
         return text(lines.join("\n"));
       } catch (e) {
         return errorResult(e);

@@ -122,6 +122,10 @@ Write semantics (`snapshotRevision`):
 Point-in-time reads (`stateAsOf`): the newest state — current row or
 revision — whose `saved_at` is `<= asOf`; `null` when the document has no
 recorded state that old (created later, or the snapshot was pruned).
+Consumers: `kura get --as-of`, `kura history`, and the change feed
+(`changesSince` in `src/core/changes.ts` — `kura changes` / MCP
+`kura_changes` diff the current row against the state as of `--since` to
+flag renames and moves).
 
 ### `links`
 

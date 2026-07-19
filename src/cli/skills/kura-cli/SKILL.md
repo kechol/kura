@@ -21,7 +21,10 @@ features degrade gracefully (see "Degraded operation").
 - Pass `--json` to read commands for machine-readable output
   (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `ask`, `add`,
   `config list`, `bucket ls`, `tag ls`, `link ls`, `link broken`,
-  `alias ls`, `history`, `mv suggest`).
+  `alias ls`, `history`, `changes`, `mv suggest`).
+- Starting a session? `kura changes --since 7d --json` lists what was
+  created or updated since you last looked (renames and moves included;
+  deletions are not tracked).
 - Exit codes: `0` ok, `1` error, `2` usage, `3` not found,
   `4` LLM provider unavailable.
 - `<doc>` arguments accept a doc key (`a1b2c3d4` or `#a1b2c3d4`), a full
@@ -91,6 +94,7 @@ kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|tit
 kura link ls <doc> [--json]     # outgoing links + backlinks
 kura link broken [--json]       # unresolved [[links]]
 kura history <doc> [--json]     # revision list; also: show <doc> <rN>, restore <doc> <rN>
+kura changes --since 7d [--bucket b] [--limit n] [--json]   # created/updated since a point in time
 kura status [--json]            # counts, tokenizer, embedding coverage
 ```
 

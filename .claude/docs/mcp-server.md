@@ -85,7 +85,7 @@ describe them as "doc_key (8 characters), full path, or title". An
 ambiguous title or alias returns a `ConflictError`-flavored error result
 listing candidates with their buckets and paths.
 
-## Tool reference (9 tools)
+## Tool reference (10 tools)
 
 ### `kura_query`
 
@@ -188,6 +188,25 @@ Link neighborhood via `outlinks()` / `backlinks()` / `twoHopLinks()`.
   target)` grouped as `via [[shared target]]: docs...`. Empty sections say
   `(none)`.
 
+### `kura_changes`
+
+Change feed via `changesSince()` (`src/core/changes.ts`) — documents
+created or updated since a point in time. The description tells agents to
+call it at session start to catch up; pure SQL, works without an LLM
+provider.
+
+- Input: `since` (**required** — relative `30m` / `24h` / `7d` / `2w` or an
+  ISO 8601 / `YYYY-MM-DD` date, normalized by `parseSince()`; unparsable →
+  error result), `bucket?`, `limit?` (`int 1–200`, default 50). Its own
+  schema, not `filterShape` — there is no `tag` filter.
+- Output: `- **created**/**updated** path/title (key: \`key\`, bucket: b)
+  at <updated_at>` bullets, with ` — content, renamed from 旧タイトル,
+  moved from (root)` details where they apply (previous state derived from
+  the revision history, [data-model.md](data-model.md)), plus a `kura_get`
+  hint. An empty window returns `No changes since <since>.`.
+- **Deletions are not tracked** — revisions are deleted with their
+  document.
+
 ### `kura_status`
 
 - Input: none (`inputSchema: {}`).
@@ -243,7 +262,7 @@ The server uses the global `~/.kura` database (respecting `KURA_HOME` /
 4. Wrap the body in `try/catch` returning `errorResult(e)`; return via
    `text(markdown)`.
 5. Extend `tests/mcp.test.ts`: update the expected tool-name list (the
-   9-tool assertion will fail until you do — by design) and add a call test
+   10-tool assertion will fail until you do — by design) and add a call test
    through the in-memory client.
 6. Update this document and, if the tool changes user-facing behavior, the
    READMEs.
@@ -260,9 +279,9 @@ The server uses the global `~/.kura` database (respecting `KURA_HOME` /
   with an explicit ambiguity error.
 - **`path` params on `kura_add` / `kura_update` are additions** —
   hierarchical document paths post-date SPEC §9.
-- **`limit` is capped at 50** by the zod schema and defaults differ per tool
-  (`kura_query`: config `default_limit`; `kura_search`: 10) — SPEC leaves
-  these unspecified.
+- **`limit` is capped at 50** by the zod schema (200 for `kura_changes`)
+  and defaults differ per tool (`kura_query`: config `default_limit`;
+  `kura_search`: 10) — SPEC leaves these unspecified.
 - `kura_list_tags` output is a flat `path (count)` list; SPEC just says
   "list tags" (the tree rendering exists only in the CLI and browser UI).
 

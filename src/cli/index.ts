@@ -85,6 +85,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Show and restore document revisions",
     load: () => import("./commands/history"),
   },
+  changes: {
+    summary: "List documents created or updated since a point in time",
+    load: () => import("./commands/changes"),
+  },
   search: {
     summary: "Fast keyword search (FTS5 BM25)",
     load: () => import("./commands/search"),
