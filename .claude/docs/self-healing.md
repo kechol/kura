@@ -1,8 +1,9 @@
 # Self-healing and knowledge health
 
 > Covers SPEC §10. Key sources: `src/core/doctor.ts`, `src/core/gardening.ts`,
-> `src/core/stale.ts`, `src/core/links.ts`, `src/core/documents.ts`,
-> `src/cli/commands/{doctor,tag,ls,status}.ts`, `tests/m6.test.ts`.
+> `src/core/stale.ts`, `src/core/links.ts`, `src/core/aliases.ts`,
+> `src/core/documents.ts`, `src/cli/commands/{doctor,tag,ls,status}.ts`,
+> `tests/m6.test.ts`, `tests/aliases.test.ts`.
 
 kura assumes its environment drifts — extensions go missing, configs change,
 indexes desync — and treats recovery as a feature: diagnose with
@@ -64,13 +65,14 @@ repaired state. Order (from `runFixes`):
    transaction instead of just patching the hash column.
 5. **`fts-rebuild`** (`rebuildFtsIfNeeded`) — if `documents_fts` and
    `documents` row counts differ, wipe FTS and re-insert every document with
-   its synthesized `tags` column (space-joined tag paths).
+   its synthesized `tags` and `aliases` columns (space-joined tag paths /
+   aliases).
 6. **`resolve-links`** (`resolveAllUnresolvedLinks`) — re-runs the shared
-   two-stage resolution (`resolveLinkTarget` in `src/core/links.ts`) for
+   three-stage resolution (`resolveLinkTarget` in `src/core/links.ts`) for
    every `target_id IS NULL` link, **scoped to the source document's
    bucket**, case-insensitive, self-links excluded: full-path spellings
-   resolve exactly; a short-form title resolves only when exactly one
-   candidate exists — **ambiguous short forms are skipped, not
+   resolve exactly; a short-form title or alias resolves only when exactly
+   one candidate exists — **ambiguous short forms are skipped, not
    force-resolved** (they stay visible in `kura link broken`).
 7. **`fts-retokenize`** (`retokenizeFts`) — only when the DB tokenizer is
    `trigram` but vaporetto loaded in this process: drop `documents_fts`,
@@ -90,18 +92,28 @@ Wiki-link health is maintained continuously, not just by doctor
 
 - **Write-first linking.** Saving a document records every `[[title]]` /
   `[[full/path/Title]]` in `links`, resolving targets through the shared
-  two-stage resolution (`resolveLinkTarget`: full path first, then
-  title-only-when-exactly-one-candidate; same bucket, case-insensitive —
+  three-stage resolution (`resolveLinkTarget`: full path first, then
+  title, then alias — the last two only when exactly one candidate exists;
+  same bucket, case-insensitive —
   see [document-notation.md](document-notation.md)); non-matches **and
   ambiguous short forms** are stored with `target_id = NULL` (unresolved),
   not dropped or force-resolved.
-- **Auto-resolution on create/rename/move.** `createDocument` and any
+- **Auto-resolution on create/rename/move/alias.** `createDocument` and any
   title/path/bucket-changing `updateDocument` call `resolveUnresolvedLinks`,
-  which rewires unresolved links whose `target_title` matches the new title
-  or full path (same bucket, case-insensitive, ambiguity guard applies) —
-  the "write the link first, it connects when the page appears" behavior.
+  which rewires unresolved links whose `target_title` matches the new title,
+  full path, **or one of the document's aliases** (same bucket,
+  case-insensitive, ambiguity guard applies) — the "write the link first, it
+  connects when the page appears" behavior. `addAliasesToDoc`
+  (`src/core/aliases.ts`) triggers the same pass, so `[[alias]]` links
+  written before the alias existed connect when it is added.
   Already-resolved links are **sticky**: creating a second same-title
   document later does not retro-unresolve them.
+- **Alias removal re-resolves.** `removeAliasesFromDoc` re-runs
+  `resolveLinkTarget` for every link that pointed at the document via a
+  removed alias (`reresolveLinksForRemovedAliases` in
+  `src/core/aliases.ts`) — each either finds another target or returns to
+  unresolved; nothing keeps pointing at a document through an alias it no
+  longer has.
 - **Rename rewires, delete unresolves.** `kura mv` rewrites `[[old title]]`
   and `[[old/full/path]]` occurrences in referrers' bodies inside the same
   transaction (a path-only move rewrites just the full-path spelling — the

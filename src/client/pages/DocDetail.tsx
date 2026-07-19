@@ -63,6 +63,8 @@ export function DocDetail({ docKey }: { docKey: string }) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [pathEdit, setPathEdit] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
+  const [aliasEdit, setAliasEdit] = useState<string | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
   const tree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
     [bucket, docKey],
@@ -146,6 +148,26 @@ export function DocDetail({ docKey }: { docKey: string }) {
     } catch (e) {
       setStatus("error");
       setPathError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // The comma-separated field is the full alias set (the server diff-syncs it)
+  const saveAliases = async (raw: string) => {
+    const next = raw
+      .split(/[,、]/)
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+    setAliasEdit(null);
+    setAliasError(null);
+    if (next.join("\n") === d.aliases.join("\n")) return;
+    setStatus("saving");
+    try {
+      await updateDoc(d.key, { aliases: next });
+      setStatus("saved");
+      doc.reload();
+    } catch (e) {
+      setStatus("error");
+      setAliasError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -282,6 +304,51 @@ export function DocDetail({ docKey }: { docKey: string }) {
                   </form>
                 )}
                 {pathError !== null && <p class="error">{pathError}</p>}
+              </dd>
+            </div>
+            <div>
+              <dt>別名</dt>
+              <dd>
+                {aliasEdit === null ? (
+                  <button
+                    type="button"
+                    class="path-edit-trigger"
+                    title="クリックして編集"
+                    onClick={() => setAliasEdit(d.aliases.join(", "))}
+                  >
+                    {d.aliases.length === 0 ? (
+                      <span class="muted">なし</span>
+                    ) : (
+                      d.aliases.join(", ")
+                    )}
+                  </button>
+                ) : (
+                  <form
+                    class="path-edit-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveAliases(aliasEdit);
+                    }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="別名1, 別名2"
+                      value={aliasEdit}
+                      // biome-ignore lint/a11y/noAutofocus: the field only exists once the user asks for it
+                      autoFocus
+                      onInput={(e) => setAliasEdit((e.target as HTMLInputElement).value)}
+                      onBlur={(e) => void saveAliases((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          (e.currentTarget as HTMLInputElement).value = d.aliases.join(", ");
+                          setAliasEdit(null);
+                          setAliasError(null);
+                        }
+                      }}
+                    />
+                  </form>
+                )}
+                {aliasError !== null && <p class="error">{aliasError}</p>}
               </dd>
             </div>
             <div>

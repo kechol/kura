@@ -14,10 +14,12 @@ function count(db: Database, sql: string): number {
 }
 
 const FTS_REINSERT = `
-  INSERT INTO documents_fts (rowid, title, content, tags)
+  INSERT INTO documents_fts (rowid, title, content, tags, aliases)
   SELECT d.id, d.title, d.content,
          COALESCE((SELECT group_concat(t.path, ' ') FROM document_tags dt
-                   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id), '')
+                   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id), ''),
+         COALESCE((SELECT group_concat(da.alias, ' ') FROM document_aliases da
+                   WHERE da.document_id = d.id), '')
   FROM documents d`;
 
 /** Detect a row-count mismatch between documents_fts and documents, then rebuild (docs: self-healing.md) */
@@ -37,7 +39,7 @@ export function retokenizeFts(db: Database, tokenizer: FtsTokenizer): FixReport 
   db.transaction(() => {
     db.exec("DROP TABLE documents_fts");
     db.exec(
-      `CREATE VIRTUAL TABLE documents_fts USING fts5(title, content, tags, tokenize='${tokenizer}')`,
+      `CREATE VIRTUAL TABLE documents_fts USING fts5(title, content, tags, aliases, tokenize='${tokenizer}')`,
     );
     db.exec(FTS_REINSERT);
     setMeta(db, "fts_tokenizer", tokenizer);

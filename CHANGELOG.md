@@ -7,11 +7,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Document aliases — alternate titles for a document, backed by schema v4
+  (a `document_aliases` table, migrated automatically). `[[alias]]` wiki
+  links resolve to the document (and self-heal when an alias is added
+  later), `kura get` and every `<doc>` reference accept a unique alias,
+  and keyword search matches aliases at title weight. Manage them with
+  `kura alias ls|add|rm`, the frontmatter `aliases:` key (round-tripped by
+  `kura export` / `kura import`), the `aliases` parameter on the
+  `kura_add` / `kura_update` MCP tools, the `aliases` field in the REST
+  document JSON (`PUT /api/docs/:key` diff-syncs the set), or the 別名 row
+  in the browser's document sidebar. Useful for orthographic variants
+  (サーバー/サーバ) and abbreviations.
 - `kura skills` — manage an agent skill that teaches AI coding agents to
   drive kura from the CLI. `kura skills install` writes `kura-cli/SKILL.md`
   into `~/.agents/skills` (any skills directory via `--dir`), `uninstall`
   removes it, and `show` prints it to stdout. The skill ships inside the
   binary and is stamped with the kura version on install.
+
+### Fixed
+
+- Browser UI: `[[Title|display text]]` wiki links now render the display
+  text and resolve by the title, instead of showing the raw text with the
+  pipe.
 
 ### Changed
 

@@ -54,6 +54,7 @@ export interface DocMeta {
   title: string;
   bucket: string;
   tags: string[];
+  aliases: string[];
   content_type: string;
   source_url: string | null;
   created_at: string;
@@ -264,7 +265,7 @@ export function resolveDocSpec(spec: string, bucket?: string): Promise<DocMeta> 
 
 export function updateDoc(
   key: string,
-  body: { title?: string; path?: string; content?: string; tags?: string[] },
+  body: { title?: string; path?: string; content?: string; tags?: string[]; aliases?: string[] },
 ): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`, {
     method: "PUT",

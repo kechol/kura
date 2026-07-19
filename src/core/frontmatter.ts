@@ -1,4 +1,4 @@
-import { normalizeDocPath, normalizeTagPath } from "./wiki";
+import { normalizeAlias, normalizeDocPath, normalizeTagPath } from "./wiki";
 
 /** Frontmatter for import/export round-trips (docs: document-notation.md) */
 export interface Frontmatter {
@@ -8,6 +8,7 @@ export interface Frontmatter {
   /** Document path; '' is an explicit bucket root, undefined means the key was absent */
   path?: string;
   tags?: string[];
+  aliases?: string[];
   /** Sidebar pin; absent means "leave whatever the store has" */
   favorite?: boolean;
   source_url?: string;
@@ -67,6 +68,22 @@ function asTags(v: unknown): string[] | undefined {
   return tags;
 }
 
+/** Invalid entries are dropped (hand-written files stay importable); dedupe is case-insensitive */
+function asAliases(v: unknown): string[] | undefined {
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : null;
+  if (!raw) return undefined;
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const normalized = normalizeAlias(item);
+    if (normalized === null || seen.has(normalized.toLowerCase())) continue;
+    seen.add(normalized.toLowerCase());
+    aliases.push(normalized);
+  }
+  return aliases;
+}
+
 /**
  * Parse the leading YAML frontmatter and separate it from the body.
  * fm is null when there is no frontmatter. Throws on invalid YAML (callers attach the file name).
@@ -91,6 +108,7 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
     bucket: asString(obj.bucket),
     path: asDocPath(obj.path),
     tags: asTags(obj.tags),
+    aliases: asAliases(obj.aliases),
     favorite: asBoolean(obj.favorite),
     source_url: asString(obj.source_url),
     content_type:
@@ -112,6 +130,7 @@ export function serializeFrontmatter(fm: {
   bucket: string;
   path: string;
   tags: string[];
+  aliases?: string[];
   favorite?: boolean;
   source_url?: string | null;
   content_type?: string;
@@ -126,6 +145,9 @@ export function serializeFrontmatter(fm: {
   if (fm.path !== "") lines.push(`path: ${yamlScalar(fm.path)}`);
   if (fm.tags.length > 0) {
     lines.push(`tags: [${fm.tags.map(yamlScalar).join(", ")}]`);
+  }
+  if (fm.aliases !== undefined && fm.aliases.length > 0) {
+    lines.push(`aliases: [${fm.aliases.map(yamlScalar).join(", ")}]`);
   }
   // Only written when set: an absent key leaves the flag alone on import
   if (fm.favorite) lines.push("favorite: true");

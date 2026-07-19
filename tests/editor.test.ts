@@ -43,6 +43,11 @@ describe("editor model (docs: browser-ui.md)", () => {
     expect(stable(src)).toBe(src);
   });
 
+  test("wiki links with display text ([[title|display]]) round-trip unchanged", () => {
+    const src = "[[データベース設計|DB設計]] を参照。\n";
+    expect(stable(src)).toBe(src);
+  });
+
   test("[[link]] typed as plain text becomes a wikilink node", () => {
     const nodes = normalizeInline([
       { kind: "text", text: "詳しくは [[全文検索の設計]] を参照。", marks: [] },

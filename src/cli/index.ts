@@ -77,6 +77,10 @@ const commands: Record<string, CommandDef> = {
     summary: "Show links and backlinks",
     load: () => import("./commands/link"),
   },
+  alias: {
+    summary: "Manage document aliases (alternate titles)",
+    load: () => import("./commands/alias"),
+  },
   search: {
     summary: "Fast keyword search (FTS5 BM25)",
     load: () => import("./commands/search"),

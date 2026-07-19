@@ -148,6 +148,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
           `key: \`${doc.key}\` / bucket: ${doc.bucket}`,
           doc.path !== "" ? `path: ${doc.path}` : null,
           doc.tags.length > 0 ? `tags: ${doc.tags.join(", ")}` : null,
+          doc.aliases.length > 0 ? `aliases: ${doc.aliases.join(", ")}` : null,
           doc.sourceUrl ? `source: ${doc.sourceUrl}` : null,
           `updated: ${doc.updatedAt}`,
         ]
@@ -175,9 +176,13 @@ export function createMcpServer(deps: McpDeps): McpServer {
           .optional()
           .describe("Folder-like document path (e.g. 'db/sqlite'); omit for the bucket root"),
         tags: z.array(z.string()).optional().describe("Tags (hierarchy separated by /)"),
+        aliases: z
+          .array(z.string())
+          .optional()
+          .describe("Alternate titles for [[links]] and search (e.g. orthographic variants)"),
       },
     },
-    ({ title, content, bucket, path, tags }) => {
+    ({ title, content, bucket, path, tags, aliases }) => {
       try {
         const doc = createDocument(db, {
           title,
@@ -185,6 +190,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
           bucket: bucket ?? config.general.default_bucket,
           path,
           tags,
+          aliases,
         });
         return text(
           `Added: **${joinDocPath(doc.path, doc.title)}** (key: \`${doc.key}\`, bucket: ${doc.bucket})`,
@@ -201,20 +207,27 @@ export function createMcpServer(deps: McpDeps): McpServer {
       description:
         "Update an existing document. Passing content replaces the entire body. " +
         "Passing title renames the document, passing path moves it; both " +
-        "automatically rewrite [[links]] from other documents. tags are add-only " +
-        "(never removed).",
+        "automatically rewrite [[links]] from other documents. tags and aliases " +
+        "are add-only (never removed).",
       inputSchema: {
         key: z.string().describe("doc_key (8 characters), full path, or title"),
         content: z.string().optional().describe("New Markdown body (full replacement)"),
         title: z.string().optional().describe("New title (rename)"),
         path: z.string().optional().describe("New document path ('' moves to the bucket root)"),
         tags: z.array(z.string()).optional().describe("Tags to add"),
+        aliases: z.array(z.string()).optional().describe("Aliases (alternate titles) to add"),
       },
     },
-    ({ key, content, title, path, tags }) => {
+    ({ key, content, title, path, tags, aliases }) => {
       try {
         const doc = resolveDoc(db, key);
-        const { record, relinked } = updateDocument(db, doc.id, { content, title, path, tags });
+        const { record, relinked } = updateDocument(db, doc.id, {
+          content,
+          title,
+          path,
+          tags,
+          aliases,
+        });
         const note = relinked > 0 ? ` (relinked ${relinked} backlinks)` : "";
         return text(
           `Updated: **${joinDocPath(record.path, record.title)}** (key: \`${record.key}\`)${note}`,

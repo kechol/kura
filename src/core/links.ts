@@ -28,13 +28,15 @@ export function fullPathSql(alias = ""): string {
 }
 
 /**
- * Two-stage, bucket-scoped, case-insensitive wiki-link resolution
+ * Three-stage, bucket-scoped, case-insensitive wiki-link resolution
  * (docs: document-notation.md):
  *   1. exact computed-full-path match (unique per bucket by construction)
  *   2. title match, resolved only when exactly one candidate exists
- * Returns null when unresolved or ambiguous. The explicit LIMIT 2 count guard
- * replaces the old scalar subquery, which silently picked an arbitrary row
- * when several titles matched.
+ *   3. alias match, resolved only when exactly one document carries the alias
+ * Returns null when unresolved or ambiguous. The explicit LIMIT 2 count guards
+ * replace the old scalar subquery, which silently picked an arbitrary row
+ * when several titles matched. A stage that matches at all (even ambiguously)
+ * ends the search — an ambiguous title never falls through to aliases.
  */
 export function resolveLinkTarget(
   db: Database,
@@ -54,7 +56,15 @@ export function resolveLinkTarget(
       "SELECT id FROM documents WHERE bucket_id = ? AND id != ? AND lower(title) = lower(?) LIMIT 2",
     )
     .all(bucketId, excludeId, ref) as Array<{ id: number }>;
-  return byTitle.length === 1 ? (byTitle[0]?.id ?? null) : null;
+  if (byTitle.length > 0) return byTitle.length === 1 ? (byTitle[0]?.id ?? null) : null;
+  const byAlias = db
+    .prepare(
+      `SELECT DISTINCT da.document_id AS id FROM document_aliases da
+       JOIN documents d ON d.id = da.document_id
+       WHERE d.bucket_id = ? AND da.document_id != ? AND lower(da.alias) = lower(?) LIMIT 2`,
+    )
+    .all(bucketId, excludeId, ref) as Array<{ id: number }>;
+  return byAlias.length === 1 ? (byAlias[0]?.id ?? null) : null;
 }
 
 /** Re-sync links extracted from the body, resolving each target via resolveLinkTarget */
@@ -74,10 +84,11 @@ export function syncLinks(
 }
 
 /**
- * Auto-resolve unresolved links matching a newly created, renamed, or moved
- * document (docs: self-healing.md). Both the title and the full-path spelling
- * are considered; ambiguous short-form references stay unresolved. Only links
- * from documents in the same bucket are resolved.
+ * Auto-resolve unresolved links matching a newly created, renamed, moved, or
+ * newly aliased document (docs: self-healing.md). The title, the full-path
+ * spelling, and the document's aliases are considered; ambiguous short-form
+ * references stay unresolved. Only links from documents in the same bucket
+ * are resolved.
  */
 export function resolveUnresolvedLinks(
   db: Database,
@@ -93,9 +104,11 @@ export function resolveUnresolvedLinks(
        FROM links l
        JOIN documents s ON s.id = l.source_id
        WHERE l.target_id IS NULL AND s.bucket_id = ? AND l.source_id != ?
-         AND (lower(l.target_title) = lower(?) OR lower(l.target_title) = lower(?))`,
+         AND (lower(l.target_title) = lower(?) OR lower(l.target_title) = lower(?)
+              OR lower(l.target_title) IN (
+                SELECT lower(alias) FROM document_aliases WHERE document_id = ?))`,
     )
-    .all(bucketId, docId, title, full) as Array<{
+    .all(bucketId, docId, title, full, docId) as Array<{
     id: number;
     source_id: number;
     target_title: string;

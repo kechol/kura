@@ -60,7 +60,8 @@ deliberately encode the intended workflow (SPEC §9):
 - **Taxonomy reuse**: `kura_list_tags` tells agents to check the existing
   hierarchy *before* tagging, which keeps LLM-assigned tags convergent.
 - Behavioral gotchas live in the description too: `kura_update` states that
-  `content` replaces the whole body and that `tags` are add-only.
+  `content` replaces the whole body and that `tags` and `aliases` are
+  add-only.
 
 `tests/mcp.test.ts` asserts the guidance is present (e.g. `kura_query`'s
 description must contain `kura_get`) — treat descriptions as tested API
@@ -78,10 +79,10 @@ Search tools share `filterShape` (zod):
 
 Document specifiers (`key` fields) go through `resolveDoc()`
 (`src/core/documents.ts`), so they accept a `doc_key`, **a full path**
-(e.g. `clips/Title`), **or a unique title** — the schemas describe them as
-"doc_key (8 characters), full path, or title". An ambiguous title returns a
-`ConflictError`-flavored error result listing candidates with their buckets
-and paths.
+(e.g. `clips/Title`), **a unique title, or a unique alias** — the schemas
+describe them as "doc_key (8 characters), full path, or title". An
+ambiguous title or alias returns a `ConflictError`-flavored error result
+listing candidates with their buckets and paths.
 
 ## Tool reference (8 tools)
 
@@ -114,8 +115,8 @@ Fetch a document body.
 - **Side effect**: `touchAccess()` — increments `access_count` and stamps
   `last_accessed_at`, same as CLI `get` and REST GET (SPEC §3.1).
 - Output: `# <title>` heading, a `>` metadata line (key, bucket, `path:`
-  when non-empty, tags, source URL, updated), then the (optionally
-  line-sliced) body.
+  when non-empty, tags, `aliases:` when non-empty, source URL, updated),
+  then the (optionally line-sliced) body.
 
 ### `kura_add`
 
@@ -124,11 +125,12 @@ Create a document via `createDocument()`.
 - Input: `title` (path + title is unique within a bucket), `content`
   (Markdown), `bucket?` (defaults to `config.general.default_bucket`),
   `path?` (folder-like document path, e.g. `db/sqlite`; omit for the bucket
-  root), `tags?` (string array, `/`-separated hierarchy).
+  root), `tags?` (string array, `/`-separated hierarchy), `aliases?`
+  (alternate titles for `[[links]]` and search).
 - The body is parsed like any other save: `[[Title]]` links and inline
   `#tag/path` hashtags are extracted, FTS/chunks synced, and unresolved
-  links elsewhere pointing at this title or full path resolve automatically
-  ([document-notation.md](document-notation.md)).
+  links elsewhere pointing at this title, full path, or an alias resolve
+  automatically ([document-notation.md](document-notation.md)).
 - A duplicate computed full path in the bucket → error result
   (`ConflictError` message with the existing key).
   Output: `Added: **path/title** (key: ..., bucket: ...)`.
@@ -141,7 +143,8 @@ Update via `updateDocument()`.
   replacement**), `title?` (rename), `path?` (move; `''` moves to the
   bucket root), `tags?` (**add-only** — the repository merges them via
   `addTagsToDoc`; there is deliberately no tag removal over MCP, unlike the
-  REST PUT's diff-sync).
+  REST PUT's diff-sync), `aliases?` (**add-only** likewise, via
+  `addAliasesToDoc`; removal is CLI `kura alias rm` / REST only).
 - Rename and move automatically rewrite `[[links]]` in referring documents
   (rename: short title + full-path spelling; move: full-path spelling only —
   [document-notation.md](document-notation.md)); the output appends

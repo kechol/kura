@@ -48,7 +48,7 @@ const TAG_FILTER = `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id =
 const TAGS_SELECT = `(SELECT group_concat(t.path, ' ') FROM document_tags dt
   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id)`;
 
-/** FTS5 BM25 keyword search. Weights title/content/tags at 5.0/1.0/3.0 (docs: search-pipeline.md) */
+/** FTS5 BM25 keyword search. Weights title/content/tags/aliases at 5.0/1.0/3.0/5.0 — an alias is an alternate title (docs: search-pipeline.md) */
 export function keywordSearch(
   db: Database,
   tokenizer: FtsTokenizer,
@@ -82,7 +82,7 @@ export function keywordSearch(
 
   const sql = `
     SELECT d.id, d.doc_key, d.path, d.title, b.name AS bucket, ${TAGS_SELECT} AS tag_paths,
-           bm25(documents_fts, 5.0, 1.0, 3.0) AS rank_score,
+           bm25(documents_fts, 5.0, 1.0, 3.0, 5.0) AS rank_score,
            snippet(documents_fts, 1, '**', '**', '…', 20) AS snip
     FROM documents_fts
     JOIN documents d ON d.id = documents_fts.rowid

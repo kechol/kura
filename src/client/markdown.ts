@@ -73,10 +73,14 @@ md.inline.ruler.before("link", "wikilink", (state, silent) => {
 });
 
 md.renderer.rules.wikilink = (tokens, idx, _options, env) => {
-  const title = tokens[idx]?.content ?? "";
+  const raw = tokens[idx]?.content ?? "";
+  // [[title|display]]: resolve by the title part, label with the display part
+  const pipe = raw.indexOf("|");
+  const title = (pipe === -1 ? raw : raw.slice(0, pipe)).trim();
+  const display = pipe === -1 ? title : raw.slice(pipe + 1).trim() || title;
   const resolve = (env as { resolve?: WikiResolver }).resolve;
   const key = resolve ? resolve(title) : null;
-  const label = md.utils.escapeHtml(title);
+  const label = md.utils.escapeHtml(display);
   if (key) {
     return `<a class="wikilink" href="/docs/${encodeURIComponent(key)}">${label}</a>`;
   }

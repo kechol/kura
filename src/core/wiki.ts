@@ -42,6 +42,17 @@ export function joinDocPath(path: string, title: string): string {
   return path === "" ? title : `${path}/${title}`;
 }
 
+/**
+ * Normalize a document alias: trim, reject characters that would break the
+ * [[...]] notation ([ ] | and newlines) or collide with full-path resolution
+ * (/). Case is preserved; matching is case-insensitive. null when invalid.
+ */
+export function normalizeAlias(raw: string): string | null {
+  const alias = raw.trim();
+  if (alias === "" || /[[\]|/\n\r]/.test(alias)) return null;
+  return alias;
+}
+
 /** [[title]] / [[title|display]]. The title part cannot contain [ ] | */
 const LINK_RE = /\[\[([^[\]|\n]*)(?:\|([^[\]\n]*))?\]\]/g;
 

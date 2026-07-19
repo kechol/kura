@@ -182,6 +182,24 @@ describe("REST API (docs: http-api.md)", () => {
     expect(gone.status).toBe(404);
   });
 
+  test("aliases: exposed in doc JSON and diff-synced by PUT", async () => {
+    const created = createDocument(db, {
+      title: "検索設計",
+      content: "全文検索の方針。",
+      bucket: "main",
+      aliases: ["FTS設計"],
+    });
+    const got = await api(`/api/docs/${created.key}`);
+    expect(got.body.aliases).toEqual(["FTS設計"]);
+
+    const put = await api(`/api/docs/${created.key}`, {
+      method: "PUT",
+      body: JSON.stringify({ aliases: ["全文検索設計"] }),
+    });
+    expect(put.status).toBe(200);
+    expect(put.body.aliases).toEqual(["全文検索設計"]);
+  });
+
   test("GET /api/docs/:key/related", async () => {
     const list = await api("/api/docs");
     const key: string = list.body.docs.find(

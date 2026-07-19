@@ -97,7 +97,7 @@ describe("migration 003: favorites (docs: data-model.md)", () => {
     db.exec(`INSERT INTO documents (id, doc_key, bucket_id, path, title, content, content_hash)
       VALUES (1, 'aaaa1111', 1, 'db/sqlite', 'WAL モード', 'ログ先行書き込み。', 'h1')`);
 
-    migrate(db, CTX);
+    migrate(db, CTX, 3);
     expect(schemaVersion(db)).toBe(3);
 
     const row = db.prepare("SELECT favorite FROM documents WHERE id = 1").get();
@@ -108,6 +108,40 @@ describe("migration 003: favorites (docs: data-model.md)", () => {
       .all()
       .map((r) => (r as { name: string }).name);
     expect(indexes).toContain("idx_documents_favorite");
+    db.close();
+  });
+});
+
+describe("migration 004: document aliases (docs: data-model.md)", () => {
+  test("v3 → v4 recreates FTS with the aliases column and repopulates rows", () => {
+    const db = openRaw();
+    migrate(db, CTX, 3);
+    db.exec(`INSERT INTO documents (id, doc_key, bucket_id, path, title, content, content_hash)
+      VALUES (1, 'aaaa1111', 1, '', '検索設計', '全文検索の設計方針。', 'h1')`);
+    db.exec("INSERT INTO tags (id, path) VALUES (1, 'tech/db')");
+    db.exec("INSERT INTO document_tags (document_id, tag_id) VALUES (1, 1)");
+    db.exec(
+      "INSERT INTO documents_fts (rowid, title, content, tags) VALUES (1, '検索設計', '全文検索の設計方針。', 'tech/db')",
+    );
+
+    migrate(db, CTX);
+    expect(schemaVersion(db)).toBe(4);
+
+    // documents_fts was rebuilt with the aliases column; existing rows searchable again
+    const hit = db
+      .prepare("SELECT rowid FROM documents_fts WHERE documents_fts MATCH ?")
+      .all('"全文検索"');
+    expect(hit).toEqual([{ rowid: 1 }]);
+    const ftsRow = db
+      .prepare("SELECT title, tags, aliases FROM documents_fts WHERE rowid = 1")
+      .get();
+    expect(ftsRow).toEqual({ title: "検索設計", tags: "tech/db", aliases: "" });
+
+    // Alias uniqueness is case-insensitive per document
+    db.exec("INSERT INTO document_aliases (document_id, alias) VALUES (1, 'FTS設計')");
+    expect(() =>
+      db.exec("INSERT INTO document_aliases (document_id, alias) VALUES (1, 'fts設計')"),
+    ).toThrow(/UNIQUE/);
     db.close();
   });
 });

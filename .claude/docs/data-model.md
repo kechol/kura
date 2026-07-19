@@ -1,15 +1,17 @@
 # Data Model
 
-> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
+> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/migrations/004_aliases.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/aliases.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
 
 Schema v1 lives in `src/core/migrations/001_init.sql`; schema v2
-(`002_document_paths.sql`) adds hierarchical document paths and schema v3
-(`003_favorites.sql`) the `favorite` flag (see the `documents` table and the
-migration-runner section below). Two placeholders are substituted into
-`001_init.sql` by the migration runner at apply time: `{{FTS_TOKENIZE}}`
-(`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}` (embedding dimensions).
-All derived tables are kept in sync by the repository layer — see the
-invariants in [architecture.md](architecture.md).
+(`002_document_paths.sql`) adds hierarchical document paths, schema v3
+(`003_favorites.sql`) the `favorite` flag, and schema v4
+(`004_aliases.sql`) document aliases (see the `documents` /
+`document_aliases` tables and the migration-runner section below). Two
+placeholders are substituted into `001_init.sql` (and `{{FTS_TOKENIZE}}`
+again into `004_aliases.sql`) by the migration runner at apply time:
+`{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}`
+(embedding dimensions). All derived tables are kept in sync by the
+repository layer — see the invariants in [architecture.md](architecture.md).
 
 ## Tables
 
@@ -62,6 +64,27 @@ DELETE CASCADE`. `source` is `'manual'` (default; body hashtags, frontmatter,
 `kura tag add`) or `'auto'` (LLM suggestions applied by `kura tag suggest
 --apply` / `kura clip`).
 
+### `document_aliases`
+
+Alternate titles (schema v4), one row per alias. Aliases join wiki-link /
+`resolveDoc` resolution as a third stage and are FTS-indexed, so
+orthographic variants (サーバ/サーバー) and abbreviations find the document
+(see [document-notation.md](document-notation.md)).
+
+| Column | Meaning / constraints |
+| --- | --- |
+| `id` | PK (aliases list in creation order) |
+| `document_id` | FK → documents, `ON DELETE CASCADE` |
+| `alias` | Case-preserving free text; matching is case-insensitive. May not contain `[`, `]`, `\|`, `/`, or newlines (`normalizeAlias` in `src/core/wiki.ts`) |
+
+Indexes: `idx_document_aliases_doc_alias` — UNIQUE on
+`(document_id, lower(alias))` — and `idx_document_aliases_alias` on
+`lower(alias)` for resolution lookups. Writes go through
+`src/core/aliases.ts` (`addAliasesToDoc` / `removeAliasesFromDoc` /
+`setAliasesForDoc`), which refresh the FTS `aliases` column and re-run link
+resolution in the same transaction; an alias equal to the document's own
+title is silently skipped on add.
+
 ### `links`
 
 One row per distinct `[[target]]` in a document body.
@@ -75,9 +98,10 @@ One row per distinct `[[target]]` in a document body.
 
 `syncLinks` (`src/core/links.ts`) deletes and re-inserts a document's rows on
 every save, resolving each `target_id` through `resolveLinkTarget` — the
-shared two-stage, bucket-scoped, case-insensitive resolution (computed full
-path first, then title, resolved only when exactly one candidate exists; see
-[document-notation.md](document-notation.md)). Self-links resolve to NULL.
+shared three-stage, bucket-scoped, case-insensitive resolution (computed full
+path first, then title, then alias, each resolved only when exactly one
+candidate exists; see [document-notation.md](document-notation.md)).
+Self-links resolve to NULL.
 
 ### `chunks`
 
@@ -94,15 +118,18 @@ The unit of embedding, rebuilt from the body by `rebuildChunks`
 
 ### `documents_fts` (FTS5 virtual table)
 
-`fts5(title, content, tags, tokenize='{{FTS_TOKENIZE}}')`.
+`fts5(title, content, tags, aliases, tokenize='{{FTS_TOKENIZE}}')` (the
+`aliases` column since schema v4).
 
 - **`rowid` = `documents.id`.** Every insert passes the rowid explicitly.
 - Standard (not contentless) so `snippet()` / `highlight()` work; storage
   duplication is acceptable at ~10k docs.
-- The `tags` column is **synthesized** at write time (space-joined tag paths)
-  — this is why sync cannot be done with SQL triggers. Helpers live in
-  `src/core/fts.ts`; tag-only changes call `ftsRefreshTags`.
-- BM25 column weights at query time: title 5.0, content 1.0, tags 3.0.
+- The `tags` and `aliases` columns are **synthesized** at write time
+  (space-joined tag paths / aliases) — this is why sync cannot be done with
+  SQL triggers. Helpers live in `src/core/fts.ts`; tag-only changes call
+  `ftsRefreshTags`, alias-only changes `ftsRefreshAliases`.
+- BM25 column weights at query time: title 5.0, content 1.0, tags 3.0,
+  aliases 5.0 (an alias is an alternate title).
 
 ### `chunks_vec` (sqlite-vec `vec0` virtual table)
 
@@ -168,6 +195,13 @@ The schema version is **not** in `meta`; it lives in `PRAGMA user_version`.
 - **Schema v3** (`003_favorites.sql`) adds `documents.favorite` with a plain
   `ALTER TABLE … ADD COLUMN` (no rebuild) plus a partial index. Existing
   documents default to unpinned.
+- **Schema v4** (`004_aliases.sql`) creates `document_aliases` and rebuilds
+  `documents_fts` with the `aliases` column — FTS5 has no
+  `ALTER TABLE … ADD COLUMN`, so the migration drops the virtual table,
+  recreates it with `tokenize='{{FTS_TOKENIZE}}'` (this is why `render`
+  substitutes the tokenizer again for v4), and repopulates
+  title/content/tags from `documents` + `document_tags`; the `aliases`
+  column starts empty because `document_aliases` was just created.
 
 **Adding a migration**: create `src/core/migrations/00N_name.sql`, import it
 in `db.ts` with `with { type: "text" }`, append `{ version: N, render }` to
@@ -193,10 +227,13 @@ existing DBs will not re-run it.
      given. Unique per bucket by construction, so several matches means
      several buckets → `ConflictError` (use `#key` or `--bucket`).
   4. title — case-insensitive match, scoped to `--bucket` when given,
-     otherwise across all buckets. Zero matches → `NotFoundError` (exit 3);
+     otherwise across all buckets. Exactly one match resolves;
      multiple matches (possible even inside one bucket now, under different
      paths) → `ConflictError` listing `#key (bucket, path/)` candidates
      (exit 1; use `#key`, the full path, or `--bucket`).
+  5. alias — case-insensitive match against `document_aliases`, same
+     scoping. Exactly one document resolves; multiple → `ConflictError`;
+     zero → `NotFoundError` (exit 3).
 - **YAML lesson**: an all-digit key (`16052989`) or an exponent-like key
   (`12e45678`) is coerced to a number by YAML if unquoted. Export therefore
   always quotes `kura_key`, and the parser rescues hand-written unquoted
@@ -217,7 +254,9 @@ existing DBs will not re-run it.
 ## Consistency rules (SPEC §3.2)
 
 - Every documents write syncs `documents_fts` / `links` / `document_tags` /
-  `chunks` in the same transaction (`syncDerived`). The two exceptions are
+  `chunks` in the same transaction (`syncDerived`); alias writes
+  (`src/core/aliases.ts`) run in their own transaction and sync the FTS
+  `aliases` column plus link resolution. The two exceptions are
   `touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`
   (`favorite`): both write a column that no derived table reads, so they skip
   `syncDerived` — and `setFavorite` deliberately also skips the `updated_at`
@@ -275,6 +314,10 @@ existing DBs will not re-run it.
   for the browser sidebar and is deliberately a boolean column rather than a
   table — a favorite carries no attributes of its own, so nothing about it
   would be worth a row (docs: [browser-ui.md](browser-ui.md)).
+- **Aliases (schema v4)**: SPEC §3.1 has no `document_aliases` table and §4
+  resolves links by title only; aliases (with the FTS `aliases` column and
+  the third resolution stage) are an implementation addition
+  (docs: [document-notation.md](document-notation.md)).
 - **Case-insensitive uniqueness**: the DDL UNIQUE constraint is
   case-sensitive; the repository additionally rejects case-insensitive
   duplicates of the computed full path, which SPEC doesn't state explicitly.

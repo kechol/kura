@@ -32,12 +32,20 @@ without you choosing which drawer it goes in.
 
 ### Wiki links
 
-`[[Title]]` links one document to another by title. The twist that
+`[[Title]]` links one document to another by title, and
+`[[Title|display text]]` shows different text while linking to the same
+place. The twist that
 makes it work for note-taking: **write the link before the target
 exists.** kura records it as an unresolved link, and the moment a
 document with that title is created, the link connects automatically.
 Backlinks and two-hop links (documents that share a neighbor) fall out
 of the same graph for free.
+
+Documents can also carry **aliases** — alternate titles added with
+`kura alias add`. An alias resolves `[[links]]` and document references
+just like the real title and is matched by keyword search, which keeps
+spelling variants (サーバー/サーバ) and abbreviations (DB設計) pointing
+at one document instead of splitting your notes.
 
 ## Optional document paths
 

@@ -91,8 +91,8 @@ never throws it (it degrades with warnings instead).
 ## Common JSON shapes
 
 - **Document** (`docJson()`): `key`, `path` (slash-separated document path,
-  `""` = bucket root), `title`, `bucket`, `tags` (string array),
-  `content_type`, `source_url`, `created_at`, `updated_at`,
+  `""` = bucket root), `title`, `bucket`, `tags` (string array), `aliases`
+  (string array), `content_type`, `source_url`, `created_at`, `updated_at`,
   `last_accessed_at`, `access_count`, `favorite` (boolean), plus `content`
   where noted. Timestamps are SQLite `YYYY-MM-DD HH:MM:SS` strings (UTC).
 - **Search hit** (`hitJson()`): `key`, `path`, `title`, `bucket`, `tags`,
@@ -212,13 +212,13 @@ incremented count. 404 when the key is unknown.
 
 ### `PUT /api/docs/:key`
 
-Body: `{title?, path?, content?, tags?}` (all optional). This is the
-browser editor's save path and re-parses the body exactly like a CLI edit
-(`updateDocument()` re-extracts `[[links]]` and `#hashtags`, re-syncs FTS,
-rebuilds chunks when content or title changed, and rewrites `[[old title]]`
-/ `[[old/full/path]]` in referring documents on rename or move — see
-[document-notation.md](document-notation.md)). `path` moves the document
-(`""` = bucket root).
+Body: `{title?, path?, content?, tags?, aliases?}` (all optional). This is
+the browser editor's save path and re-parses the body exactly like a CLI
+edit (`updateDocument()` re-extracts `[[links]]` and `#hashtags`, re-syncs
+FTS, rebuilds chunks when content or title changed, and rewrites
+`[[old title]]` / `[[old/full/path]]` in referring documents on rename or
+move — see [document-notation.md](document-notation.md)). `path` moves the
+document (`""` = bucket root).
 
 **Tag diff-sync semantics**: unlike the repository layer (add-only), the PUT
 handler treats `tags` as the *complete* desired tag set — the editor state is
@@ -226,7 +226,11 @@ the source of truth. It removes tags present on the document but absent from
 the array, then adds the new ones, then calls `updateDocument()`. Caveat:
 hashtags still written inline in the body are re-extracted on save, so a tag
 cannot be removed via the array while `#tag` remains in the content.
-Omitting `tags` (or sending a non-array) leaves tags untouched.
+Omitting `tags` (or sending a non-array) leaves tags untouched. `aliases`
+gets the same treatment: the array is the complete desired set, diff-synced
+via `setAliasesForDoc()` (`src/core/aliases.ts`); omitting it (or sending a
+non-array) leaves aliases untouched. An invalid alias (contains
+`[ ] | /` or newlines) → 400.
 
 Returns the updated document including `content`. Renaming or moving onto
 an existing computed full path in the same bucket → 409.

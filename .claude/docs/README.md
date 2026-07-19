@@ -16,7 +16,7 @@ history (`SPEC.md`, removed after the docs restructure).
 | --- | --- |
 | [architecture.md](architecture.md) | Layers, module map, data flow, core invariants, non-goals (SPEC §1, §12) |
 | [data-model.md](data-model.md) | Schema, consistency rules, migrations, meta keys, doc keys (§3) |
-| [document-notation.md](document-notation.md) | Wiki links, hashtags, frontmatter round-trip, rename semantics (§4) |
+| [document-notation.md](document-notation.md) | Wiki links, hashtags, aliases, frontmatter round-trip, rename semantics (§4) |
 | [search-pipeline.md](search-pipeline.md) | Search modes, hybrid pipeline, chunking, embedding backfill (§5) |
 | [llm-providers.md](llm-providers.md) | Provider abstraction, detection, models, caching, degradation (§6) |
 | [cli-reference.md](cli-reference.md) | Global CLI conventions and every command in detail (§7) |

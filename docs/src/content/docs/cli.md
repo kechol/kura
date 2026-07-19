@@ -12,8 +12,8 @@ description: Every kura command grouped by task, with global conventions, --json
   instead of formatted text. Handy for scripts and consumed by the
   [MCP server](/kura/mcp/).
 - **Document references** — commands that take a document accept a doc
-  key, a `#key`, a full path (`db/sqlite/Notes`), or a unique title
-  (e.g. `kura get "Today's note"` or `kura get #a1b2c3`).
+  key, a `#key`, a full path (`db/sqlite/Notes`), a unique title, or a
+  unique alias (e.g. `kura get "Today's note"` or `kura get #a1b2c3`).
 - **`NO_COLOR`** — set it to disable colored output.
 - **Data location** — `KURA_HOME` overrides the data directory
   (default `~/.kura`); `KURA_DB` overrides the database file.
@@ -68,6 +68,7 @@ degraded behavior without an LLM provider.
 | `kura tag audit` | Merge candidates for similar tags; oversized-tag warnings |
 | `kura link ls <ref>` | Outlinks, backlinks, and 2-hop links for a document |
 | `kura link broken` | List unresolved wiki links |
+| `kura alias ls\|add\|rm <doc> <alias>…` | Manage aliases (alternate titles): `[[alias]]` links resolve to the document and search matches it |
 
 ## Servers & agent integration
 

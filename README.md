@@ -94,7 +94,7 @@ kura vsearch "how writes stay readable"   # semantic (KNN)
 kura query "SQLite concurrency"       # hybrid + rerank (best quality)
 
 # View & edit
-kura get "Today's note"        # by doc key, #key, full path, or unique title
+kura get "Today's note"        # by doc key, #key, full path, unique title, or alias
 kura edit "Today's note"       # edit in $EDITOR (frontmatter edits title/path/tags too)
 kura mv "Today's note" --path db/sqlite   # optional document path; [[links]] follow
 kura ls --tag tech/db --sort updated
@@ -103,6 +103,7 @@ kura ls --prefix db            # documents under a path prefix (descendants incl
 # Links & tags
 kura link ls "Today's note"    # outlinks / backlinks / 2-hop links
 kura link broken               # unresolved links
+kura alias add "Today's note" 今日のメモ   # alternate titles: [[今日のメモ]] resolves, search matches
 kura tag ls --tree
 kura tag suggest --untagged --apply   # LLM tag suggestions (reuses your existing taxonomy)
 kura tag audit                 # merge candidates for similar tags, oversized-tag warnings
@@ -120,7 +121,8 @@ Notation inside documents:
 - `[[Title]]` / `[[Title|display text]]` — wiki links. **Write the link first
   and it connects automatically when the page is created later.** If two
   documents share a title, `[[db/sqlite/Title]]` (full path) pins the link to
-  one of them
+  one of them. Aliases (`kura alias add`) work as alternate titles, so
+  spelling variants and abbreviations resolve to the same document
 - `#tech/db/sqlite` — hierarchical tags (extracted on save)
 
 ## AI agent integration
@@ -133,8 +135,8 @@ kura skills install                 # agent skill (CLI guide) → ~/.agents/skil
 
 MCP tools: `kura_query` (hybrid search), `kura_search`, `kura_get`,
 `kura_add`, `kura_update`, `kura_list_tags`, `kura_related`, `kura_status`.
-`kura_add` / `kura_update` accept an optional document `path`, and `kura_get`
-also resolves a full path (`clips/Title`).
+`kura_add` / `kura_update` accept an optional document `path` and `aliases`,
+and `kura_get` also resolves a full path (`clips/Title`) or a unique alias.
 
 For CLI-driven agents, `kura skills install` writes the `kura-cli` skill — a
 guide to driving kura from the shell — into `~/.agents/skills` (use `--dir`

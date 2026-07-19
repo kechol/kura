@@ -75,7 +75,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | --- | --- |
 | `/` | Home — reading history (redirects to the last-read document on a fresh visit) |
 | `/docs` | Document list (filters live in the query string: `tag`, `prefix`, `sort`, `stale`, `page`) |
-| `/docs/title/:title` | Wiki-link → key resolution (full path or title, wikilink fallback) |
+| `/docs/title/:title` | Wiki-link → key resolution (full path, title, or alias; wikilink fallback) |
 | `/docs/:key/edit` | Gone — redirects to the document (reading and editing are the same screen) |
 | `/docs/:key` | Document detail — read and edit in place |
 | `/search` | Search (`q`, `mode`, `tag` in query string) |
@@ -130,8 +130,9 @@ name on the detail page, the screen name elsewhere, both suffixed with
   itself is editable in place; a save-status line and a **favorite star**
   (`PUT /api/docs/:key/favorite`) in the title row. The **left** sidebar becomes
   the document's own (tags, same-tag and same-path neighbours), and the right
-  one keeps metadata (bucket, **path**, access count, created/updated, source
-  URL), **backlinks**, **two-hop links grouped by the shared target** from
+  one keeps metadata (bucket, **path**, **別名 (aliases)**, access count,
+  created/updated, source URL), **backlinks**, **two-hop links grouped by the
+  shared target** from
   `/api/docs/:key/related`, and — last, below everything reversible — the
   delete button (confirm dialog). Delete is deliberately quiet: no panel, no
   warning copy, muted until hover turns it red. It says what it does and gets
@@ -139,7 +140,11 @@ name on the detail page, the screen name elsewhere, both suffixed with
   in the bucket (a `datalist` built from `GET /api/docs/tree`) and saves with
   `PUT /api/docs/:key` `{path}`, so a move rewrites referring `[[links]]`
   exactly like `kura mv --path`; an empty value is the bucket root, Escape
-  cancels, and a collision renders the 409 message inline.
+  cancels, and a collision renders the 409 message inline. The 別名 row works
+  the same way: clicking it opens a comma-separated field (both `,` and `、`
+  split), saved as the complete set with `PUT /api/docs/:key` `{aliases}`
+  (server-side diff-sync — [http-api.md](http-api.md)); Escape cancels and a
+  validation error renders inline.
 - **Search page (`/search`)** — mode toggle (キーワード / ベクトル /
   ハイブリッド) and a tag filter, `limit=30`, always within the selected
   bucket. Renders API `warnings` (degraded mode) above results; each hit
@@ -165,8 +170,9 @@ name on the detail page, the screen name elsewhere, both suffixed with
   list. Tags no document in the bucket uses do not appear.
 - **Knowledge graph** — see below.
 - **Link resolution (`/docs/title/:title`)** — calls `GET /api/resolve`
-  (`resolveDocSpec()` in `api.ts`) with the raw link text — full path or
-  unique title, the same `resolveDoc` grammar as the CLI — and redirects to
+  (`resolveDocSpec()` in `api.ts`) with the raw link text — full path,
+  unique title, or unique alias, the same `resolveDoc` grammar as the CLI —
+  and redirects to
   the detail page on success (`replace: true` so history stays clean). A 404
   (not created yet) or 409 (ambiguous) falls back to a keyword search and
   shows an "unresolved link" page listing the closest matches with their
@@ -306,14 +312,16 @@ markdown-it (html: true, linkify)
   keeps the bundle small). `mermaid` fences are deliberately *not*
   highlighted so they stay findable as `code.language-mermaid`.
 - **Wikilinks**: an inline rule registered before `link` parses `[[Title]]`
-  (rejecting empty titles, newlines, and nested `[`). The renderer consults
-  `env.resolve` (a `WikiResolver`): resolved titles become
+  / `[[Title|display]]` (rejecting empty titles, newlines, and nested `[`).
+  The renderer splits on the first `|` — the title part drives resolution,
+  the display part (title when absent or empty) becomes the label — and
+  consults `env.resolve` (a `WikiResolver`): resolved titles become
   `<a class="wikilink" href="/docs/<key>">`, unresolved ones become
   `<a class="wikilink wikilink-unresolved" href="/docs/title/<title>">`
   (rendered red) pointing at the resolution route above. `DocDetail` builds
   the resolver from the already-fetched related outlinks, so no extra
-  request is needed. The `[[Title|display text]]` form from SPEC §4 is not
-  rendered specially (see Deviations).
+  request is needed (aliases resolve too — `links.target_title` stores the
+  alias spelling and the outlink row carries the resolved key).
 - **Sanitization invariant**: every string that reaches
   `dangerouslySetInnerHTML` **must pass through DOMPurify** —
   `renderMarkdown()` sanitizes its own output, `sanitizeHtml()` covers
@@ -469,12 +477,8 @@ identifiers, and CSS class names stay English.
 - **The `/docs/title/:title` route and `GET /api/resolve` are additions.**
   SPEC §8.3 only asks for `[[リンク]]` to become clickable; the
   implementation resolves link text server-side via `resolveDoc` (full path
-  / unique title — [http-api.md](http-api.md)) and gives unresolved or
-  ambiguous links a landing page with near-match suggestions.
-- **`[[Title|display text]]` is not special-cased** in the renderer: the raw
-  inner text (including the `|display`) is used as both label and lookup key,
-  whereas SPEC §4 defines the pipe form. Core extraction handles it; the
-  browser renderer currently does not split it.
+  / unique title / unique alias — [http-api.md](http-api.md)) and gives
+  unresolved or ambiguous links a landing page with near-match suggestions.
 - **There is no separate editor and no `<textarea>`.** SPEC §8.3 asks for a
   plain textarea editor on its own route; the UI edits the rendered document in
   place (block-level contenteditable, autosaved), and `/docs/:key/edit`

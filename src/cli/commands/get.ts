@@ -58,6 +58,7 @@ export function run(argv: string[]): number {
       title: doc.title,
       bucket: doc.bucket,
       tags: doc.tags,
+      aliases: doc.aliases,
       content,
       content_type: doc.contentType,
       source_url: doc.sourceUrl,
@@ -76,7 +77,13 @@ export function run(argv: string[]): number {
     return EXIT.OK;
   }
 
-  const meta = [`#${doc.key}`, doc.bucket, doc.path, doc.tags.join(", ")]
+  const meta = [
+    `#${doc.key}`,
+    doc.bucket,
+    doc.path,
+    doc.tags.join(", "),
+    doc.aliases.length > 0 ? `aliases: ${doc.aliases.join(", ")}` : "",
+  ]
     .filter((s) => s !== "")
     .join(" · ");
   const md = `# ${doc.title}\n\n${meta}\n\n${content}`;

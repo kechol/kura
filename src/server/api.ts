@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { setAliasesForDoc } from "../core/aliases";
 import { listBuckets } from "../core/buckets";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
@@ -50,6 +51,7 @@ function docJson(doc: DocumentRecord, content = false): Record<string, unknown> 
     title: doc.title,
     bucket: doc.bucket,
     tags: doc.tags,
+    aliases: doc.aliases,
     content_type: doc.contentType,
     source_url: doc.sourceUrl,
     created_at: doc.createdAt,
@@ -199,6 +201,7 @@ export function createApiRoutes(
           path?: string;
           content?: string;
           tags?: string[];
+          aliases?: string[];
         };
         // Tags are diff-synced with the editor state as the source of truth
         if (Array.isArray(body.tags)) {
@@ -209,6 +212,8 @@ export function createApiRoutes(
           const toAdd = [...next].filter((t) => !current.has(t));
           if (toAdd.length > 0) addTagsToDoc(db, doc.id, toAdd);
         }
+        // Aliases likewise: the payload is the full set
+        if (Array.isArray(body.aliases)) setAliasesForDoc(db, doc.id, body.aliases);
         const { record } = updateDocument(db, doc.id, {
           title: body.title,
           path: body.path,

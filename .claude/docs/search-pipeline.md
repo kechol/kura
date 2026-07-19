@@ -142,9 +142,10 @@ whose MATCH expression depends on the tokenizer recorded in `meta`
 - **trigram**: `buildTrigramQuery()` splits on whitespace, wraps each term
   in a `"..."` phrase (doubling embedded quotes), and joins with `OR`
   (`AND` for `--all`).
-- **Ranking**: `bm25(documents_fts, 5.0, 1.0, 3.0)` weights
-  title / content / tags. Title is the strongest curated relevance signal
-  (5×), tags are deliberate classification (3×), body text is the 1×
+- **Ranking**: `bm25(documents_fts, 5.0, 1.0, 3.0, 5.0)` weights
+  title / content / tags / aliases. Title is the strongest curated relevance
+  signal (5×), aliases are alternate titles so they weigh the same (5×),
+  tags are deliberate classification (3×), body text is the 1×
   baseline. bm25 is lower-is-better, so the hit score is its negation.
 - **Snippets**: `snippet(documents_fts, 1, '**', '**', '…', 20)` — column 1
   (content), `**` highlight markers, `…` ellipsis, 20 tokens.

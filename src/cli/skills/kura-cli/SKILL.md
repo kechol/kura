@@ -20,12 +20,12 @@ features degrade gracefully (see "Degraded operation").
 
 - Pass `--json` to read commands for machine-readable output
   (`status`, `get`, `ls`, `search`, `vsearch`, `query`, `add`, `config list`,
-  `bucket ls`, `tag ls`, `link ls`, `link broken`, `mv suggest`).
+  `bucket ls`, `tag ls`, `link ls`, `link broken`, `alias ls`, `mv suggest`).
 - Exit codes: `0` ok, `1` error, `2` usage, `3` not found,
   `4` LLM provider unavailable.
 - `<doc>` arguments accept a doc key (`a1b2c3d4` or `#a1b2c3d4`), a full
-  document path (`clips/タイトル`), or a title unique within a bucket;
-  disambiguate with `--bucket`.
+  document path (`clips/タイトル`), a title unique within a bucket, or a
+  unique alias; disambiguate with `--bucket`.
 - Non-interactive use: `kura rm` needs `--force` when stdin is not a TTY.
   Avoid `kura edit` (opens `$EDITOR`); to update a document
   programmatically, `kura export` it, modify the file, and `kura import` it
@@ -39,7 +39,11 @@ features degrade gracefully (see "Degraded operation").
 - **hierarchical tag** — `技術/データベース/SQLite`; tag filters include
   descendants.
 - **wiki link** — `[[タイトル]]` (or `[[full/path/タイトル]]` to pin one
-  document) inside bodies; `kura mv` rewrites them on rename/move.
+  document, `[[タイトル|表示名]]` for display text) inside bodies; `kura mv`
+  rewrites them on rename/move.
+- **alias** — alternate title (`kura alias add <doc> <alias>`): `[[別名]]`
+  links resolve to the document and keyword search matches it. Use for
+  orthographic variants (サーバー/サーバ) and abbreviations.
 - **doc key** (`kura_key`) — stable 8-hex identity used by
   `get` / `export` / `import`.
 
@@ -86,6 +90,7 @@ kura mv <doc> [<new-title>] [--path <new-path>] [--bucket b]   # relinks [[refer
 kura mv --prefix <old-prefix> <new-prefix>                     # move a whole subtree
 kura mv suggest [--limit n] [--apply] [--json]                 # file unfiled documents
 kura tag ls [--tree] | add <doc> <tag>... | rm <doc> <tag>... | mv <old> <new> | gc | suggest [--untagged] [--apply] | audit [--apply]
+kura alias ls <doc> | add <doc> <alias>... | rm <doc> <alias>...
 kura bucket ls | add <name> [--desc t] | rm <name> [--force] | mv <old> <new>
 kura rm <doc> --force [--bucket b]
 ```

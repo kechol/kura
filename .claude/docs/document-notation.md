@@ -1,6 +1,6 @@
 # Document Notation
 
-> Covers SPEC §4. Key sources: `src/core/wiki.ts`, `src/core/frontmatter.ts`, `src/core/links.ts`, `src/core/documents.ts`, `tests/wiki.test.ts`
+> Covers SPEC §4. Key sources: `src/core/wiki.ts`, `src/core/frontmatter.ts`, `src/core/links.ts`, `src/core/aliases.ts`, `src/core/documents.ts`, `tests/wiki.test.ts`, `tests/aliases.test.ts`
 
 Document bodies are Markdown (GFM); raw HTML is stored with
 `content_type = 'html'`. On every save the repository extracts wiki links
@@ -22,7 +22,7 @@ Syntax: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (`LINK_RE` i
   only the innermost bracket pair becomes a link.
 - Extraction **deduplicates by lowercased title**, keeping the first
   occurrence in document order (`[[SQLite]] と [[sqlite]]` yields one link).
-- **Resolution is two-stage, bucket-scoped, and case-insensitive**
+- **Resolution is three-stage, bucket-scoped, and case-insensitive**
   (`resolveLinkTarget` in `src/core/links.ts` — the single shared
   implementation behind `syncLinks`, `resolveUnresolvedLinks`, and doctor's
   `resolveAllUnresolvedLinks`):
@@ -34,10 +34,14 @@ Syntax: `[[タイトル]]` or `[[タイトル|表示テキスト]]` (`LINK_RE` i
      silently picked an arbitrary row). An ambiguous short form stays
      unresolved (`target_id = NULL`) and surfaces via `kura link broken` and
      doctor.
+  3. `[[Alias]]` — match against `document_aliases`, resolved only when
+     **exactly one** document carries the alias (same `LIMIT 2` guard).
 
-  `[[bun runtime]]` resolves to a same-bucket document titled `Bun Runtime`,
-  never to another bucket. Self-references stay unresolved. Unresolved links
-  keep the raw `target_title` with `target_id = NULL`.
+  A stage that matches at all — even ambiguously — ends the search: an
+  ambiguous title never falls through to aliases. `[[bun runtime]]` resolves
+  to a same-bucket document titled `Bun Runtime`, never to another bucket.
+  Self-references stay unresolved. Unresolved links keep the raw
+  `target_title` with `target_id = NULL`.
 - **Already-resolved links are sticky**: creating a second same-title
   document later does not retro-unresolve links that already point at the
   first one — resolution only re-runs when the referring document is saved.
@@ -62,6 +66,34 @@ Both extraction and rename rewriting ignore code (`visibleLines` /
   backtick characters, which is **length-preserving** — match indexes found
   on the masked line apply directly to the original line. Extraction only
   needs the masked text; rename rewriting depends on the preserved offsets.
+
+## Aliases
+
+Documents may carry **aliases** — alternate titles stored in
+`document_aliases` (schema v4, [data-model.md](data-model.md)) and managed
+by `src/core/aliases.ts` (`kura alias ls|add|rm`, frontmatter, MCP, REST).
+They exist for orthographic variants (サーバ/サーバー), abbreviations
+(DB設計), and old titles kept resolvable after a rename.
+
+- **Validation** (`normalizeAlias` in `src/core/wiki.ts`): trimmed,
+  non-empty, and may not contain `[`, `]`, `|`, `/`, or newlines — an alias
+  must be usable inside `[[...]]`, and `/` would collide with full-path
+  resolution. Case is **preserved**; all matching is case-insensitive.
+- An alias equal to the document's own title (case-insensitive) is silently
+  skipped on add, and duplicates are deduped case-insensitively — this keeps
+  frontmatter round-trips idempotent. Invalid aliases throw `UsageError`
+  from the repository functions; the frontmatter parser drops them instead
+  (hand-written files stay importable).
+- Aliases participate in wiki-link resolution (stage 3 above), in
+  `resolveDoc` (a `<doc>` specifier that matches nothing as a full path or
+  title is tried as an alias — unique → resolve, ambiguous →
+  `ConflictError`, none → `NotFoundError`; see
+  [data-model.md](data-model.md)), and in keyword search (the FTS `aliases`
+  column is weighted like the title,
+  [search-pipeline.md](search-pipeline.md)).
+- Adding an alias self-heals unresolved links that match it; removing one
+  re-resolves the links that resolved through it
+  ([self-healing.md](self-healing.md)).
 
 ## Document paths
 
@@ -150,6 +182,7 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
 | `bucket` | string | `--bucket` flag wins over frontmatter; otherwise config `default_bucket`. Missing buckets are auto-created |
 | `path` | string (normalized via `normalizeDocPath`; `""` = explicit bucket root) | Falls back to the file's subdirectory relative to the scanned root, with the leading segment stripped when it equals the bucket name (so an export tree round-trips); direct file arguments ⇒ root |
 | `tags` | string array or comma-separated string | No tags. Each entry is normalized (`normalizeTagPath`) and deduped |
+| `aliases` | string array or comma-separated string | No change. Invalid entries are dropped (`normalizeAlias`), dedupe is case-insensitive; applied **add-only** on update (like tags). Export emits `aliases: [...]` only when non-empty |
 | `favorite` | boolean (`true`/`false`, or the strings `yes`/`no`) | The stored flag is **left alone**. Export writes the key only when the document is pinned, so re-importing an unpinned export never silently unstars anything; an explicit `favorite: false` does unstar |
 | `source_url` | string | Kept from the existing document on update; `null` on create |
 | `content_type` | `'markdown'` \| `'html'` (anything else ignored) | `'markdown'` |
@@ -202,11 +235,15 @@ HTML documents are stored verbatim and mostly opt out of notation handling
   so HTML documents survive the export/import round-trip.
 - **`favorite` frontmatter field**: likewise not in SPEC §4; added so the
   browser's sidebar pins survive the round-trip (`.claude/rules/scope.md` R4).
-- **Document paths and two-stage link resolution are additions**: SPEC §4
+- **Document paths and multi-stage link resolution are additions**: SPEC §4
   resolves `[[Title]]` by title only. The `path` column / frontmatter key,
-  the full-path resolution stage, the exactly-one-candidate guard, and the
-  ambiguity → unresolved behavior are implementation-defined (locked in by
-  `tests/paths.test.ts`).
+  the full-path resolution stage, the alias stage, the
+  exactly-one-candidate guard, and the ambiguity → unresolved behavior are
+  implementation-defined (locked in by `tests/paths.test.ts` and
+  `tests/aliases.test.ts`).
+- **Aliases are an addition**: SPEC §4 has no alias concept and no
+  `aliases` frontmatter field; the `document_aliases` table, `kura alias`,
+  and the alias resolution stages are implementation-defined.
 - **HTML opt-outs**: SPEC doesn't define how `content_type='html'` interacts
   with wiki syntax; skipping extraction and rename rewriting for HTML is
   implementation-defined.

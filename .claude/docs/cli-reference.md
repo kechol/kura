@@ -41,6 +41,10 @@ Resolved by `resolveDoc` in `src/core/documents.ts`, in this order:
    different paths — throws `ConflictError` (exit 1) listing
    `#key (bucket, path/)` candidates and suggesting `#key`, the full path,
    or `--bucket`.
+5. Alias, matched case-insensitively against `document_aliases` with the
+   same `--bucket` scoping. Exactly one owning document resolves; several →
+   `ConflictError`; none → `NotFoundError` (exit 3). See
+   [document-notation.md](document-notation.md).
 
 ### `--bucket` defaults
 
@@ -49,7 +53,7 @@ There is no single global default; each command class behaves differently:
 | Commands | `--bucket` omitted means |
 | --- | --- |
 | `add`, `clip`, `import` (write target) | `general.default_bucket` from config (frontmatter `bucket:` wins over the default for `add`/`import`) |
-| `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls` (title resolution) | all buckets, ambiguity is an error |
+| `get`, `edit`, `rm`, `mv`, `tag add/rm`, `link ls`, `alias` (title resolution) | all buckets, ambiguity is an error |
 | `mv --prefix` (bulk path move) | `general.default_bucket` |
 | `ls`, `search`, `vsearch`, `query`, `export`, `link broken` (filters) | all buckets |
 
@@ -226,12 +230,13 @@ Resolves the document, calls `touchAccess` (increments `access_count`, sets
 `--lines A:B` slices 1-based inclusive line ranges; open ends `50:` and
 `:100` are allowed, `":"` alone or inverted ranges are usage errors.
 Output modes: `--json` → full record
-(`key, path, title, bucket, tags, content, content_type, source_url,
-created_at, updated_at, last_accessed_at, access_count`; `content` is the
-sliced text); otherwise pretty ANSI (TTY default, or `--pretty`) with a
-synthesized `# title` heading and a `#key · bucket · path · tags` meta line
-(empty parts omitted), or the raw body (piped default, or `--raw`).
-`--pretty --raw` together is a usage error.
+(`key, path, title, bucket, tags, aliases, content, content_type,
+source_url, created_at, updated_at, last_accessed_at, access_count`;
+`content` is the sliced text); otherwise pretty ANSI (TTY default, or
+`--pretty`) with a synthesized `# title` heading and a
+`#key · bucket · path · tags · aliases: …` meta line (empty parts omitted),
+or the raw body (piped default, or `--raw`). `--pretty --raw` together is a
+usage error.
 
 ### `kura edit`
 
@@ -362,7 +367,8 @@ kura export [--bucket b] [--tag t] --dir <path> [--json]
 
 Writes every matching document to `<dir>/<bucket>/<path…>/<title>.md` with
 a serialized frontmatter block (`kura_key` always quoted; `path` emitted
-when non-root; `favorite: true` emitted only for pinned documents;
+when non-root; `aliases: [...]` emitted only when non-empty;
+`favorite: true` emitted only for pinned documents;
 datetimes emitted as ISO 8601). Document path segments become
 real subdirectories; each segment and the title are sanitized independently
 (`/ \ : * ? " < > |` and control chars → `-`) — a literal `/` in a *title*
@@ -387,7 +393,8 @@ present, otherwise the file's subdirectory relative to the scanned root —
 with the leading segment stripped when it equals the target bucket name, so
 a `kura export` tree (`<dir>/<bucket>/<path…>`) round-trips; direct file
 arguments import to the bucket root. Frontmatter `created_at`/`updated_at`
-are preserved on round-trip, and `favorite:` is applied when present (`true`
+are preserved on round-trip, `aliases:` is applied add-only (invalid
+entries dropped), and `favorite:` is applied when present (`true`
 pins, `false` unpins); an absent key leaves the stored flag alone, so
 importing an unpinned export never unstars anything. Invalid frontmatter or title conflicts (`ConflictError`) are
 skipped with a `skip <path>: reason` line on stderr and the run continues.
@@ -538,6 +545,27 @@ title (`[[target]] <- #key title (bucket)` per source); `--bucket` filters by
 the **source** document's bucket and a nonexistent bucket exits 3. Creating
 the missing target later auto-resolves the links (SPEC §10.1), which
 `link broken` then reflects.
+
+### `kura alias`
+
+```
+kura alias ls <doc> [--bucket b] [--json]
+kura alias add <doc> <alias...> [--bucket b] [--json]
+kura alias rm <doc> <alias...> [--bucket b] [--json]
+```
+
+Manages a document's aliases (alternate titles —
+[document-notation.md](document-notation.md)): `[[alias]]` links resolve to
+the document, `<doc>` specifiers match it, and keyword search indexes it at
+title weight. `add` validates each alias (`normalizeAlias`: non-empty,
+no `[ ] | /` or newlines — usage error otherwise), skips the document's own
+title and case-insensitive duplicates, and self-heals matching unresolved
+links; `rm` matches case-insensitively and re-resolves links that resolved
+through the removed alias. Text output: the alias list (`ls`, one per
+line, or `no aliases for #key title`), `added N alias(es) to #key title`,
+`removed N alias(es) from #key title`. `--json` → `ls`
+`{key, title, aliases}`; `add` `{key, added, aliases}`; `rm`
+`{key, removed, aliases}` (`aliases` is the post-change list).
 
 ### `kura bucket`
 

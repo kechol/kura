@@ -167,4 +167,15 @@ describe("kura mcp server", () => {
     });
     expect(contentText(result)).toContain("db/トランザクション設計");
   });
+
+  test("kura_add accepts aliases; kura_get shows and resolves them", async () => {
+    await client.callTool({
+      name: "kura_add",
+      arguments: { title: "データベース設計", content: "正規化の方針。", aliases: ["DB設計"] },
+    });
+    const got = await client.callTool({ name: "kura_get", arguments: { key: "DB設計" } });
+    const md = contentText(got);
+    expect(md).toContain("# データベース設計");
+    expect(md).toContain("aliases: DB設計");
+  });
 });

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { addAliasesToDoc, docAliases } from "./aliases";
 import { getOrCreateBucket, requireBucket } from "./buckets";
 import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
@@ -35,6 +36,8 @@ export interface DocumentRecord {
   /** Pinned to the browser sidebar (docs: browser-ui.md) */
   favorite: boolean;
   tags: string[];
+  /** Alternate titles for link resolution and search (docs: document-notation.md) */
+  aliases: string[];
 }
 
 interface DocRow {
@@ -79,6 +82,7 @@ function toRecord(db: Database, row: DocRow): DocumentRecord {
     accessCount: row.access_count,
     favorite: row.favorite === 1,
     tags: docTags(db, row.id),
+    aliases: docAliases(db, row.id),
   };
 }
 
@@ -179,6 +183,7 @@ export interface CreateDocumentInput {
   sourceUrl?: string | null;
   tags?: string[];
   tagSource?: "manual" | "auto";
+  aliases?: string[];
   /** For import round-trips (a new key is generated when unused) */
   docKey?: string;
   createdAt?: string;
@@ -225,6 +230,11 @@ export function createDocument(db: Database, input: CreateDocumentInput): Docume
       );
 
     const row = getRowById(db, Number(result.lastInsertRowid));
+    // Aliases go in before syncDerived: ftsUpsert composes the aliases column
+    // and resolveIncoming self-heals [[alias]] links written before this doc
+    if (input.aliases !== undefined && input.aliases.length > 0) {
+      addAliasesToDoc(db, row.id, input.aliases);
+    }
     syncDerived(db, row, {
       tags: input.tags,
       tagSource: input.tagSource,
@@ -245,6 +255,8 @@ export interface UpdateDocumentInput {
   sourceUrl?: string | null;
   tags?: string[];
   tagSource?: "manual" | "auto";
+  /** Add-only, like tags (removal goes through removeAliasesFromDoc / setAliasesForDoc) */
+  aliases?: string[];
   updatedAt?: string;
 }
 
@@ -339,6 +351,9 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
       }
     }
 
+    if (input.aliases !== undefined && input.aliases.length > 0) {
+      addAliasesToDoc(db, id, input.aliases);
+    }
     const updatedRow = getRowById(db, id);
     syncDerived(db, updatedRow, {
       tags: input.tags,
@@ -463,7 +478,7 @@ export function getDocumentById(db: Database, id: number): DocumentRecord {
 
 /**
  * Resolve a document specifier (docs: cli-reference.md): doc_key / #key /
- * full path / a title unique among the searched documents.
+ * full path / a title unique among the searched documents / a unique alias.
  * Ambiguous matches throw ConflictError listing the candidates.
  */
 export function resolveDoc(db: Database, spec: string, bucketName?: string): DocumentRecord {
@@ -504,14 +519,29 @@ export function resolveDoc(db: Database, spec: string, bucketName?: string): Doc
           .all(trimmed, bucketName)
       : db.prepare(`${SELECT_DOC} WHERE lower(d.title) = lower(?)`).all(trimmed)
   ) as DocRow[];
-
-  if (rows.length === 0) throw new NotFoundError(`document not found: ${trimmed}`);
+  if (rows.length === 1) return toRecord(db, rows[0]!);
   if (rows.length > 1) {
     throw new ConflictError(
       `title '${trimmed}' is ambiguous: ${candidates(rows)}. Use #key, the full path, or --bucket`,
     );
   }
-  return toRecord(db, rows[0]!);
+
+  // Stage 3: alias, unique among the searched documents
+  const ALIAS = `EXISTS (SELECT 1 FROM document_aliases da
+    WHERE da.document_id = d.id AND lower(da.alias) = lower(?))`;
+  const aliasRows = (
+    bucketName
+      ? db.prepare(`${SELECT_DOC} WHERE ${ALIAS} AND b.name = ?`).all(trimmed, bucketName)
+      : db.prepare(`${SELECT_DOC} WHERE ${ALIAS}`).all(trimmed)
+  ) as DocRow[];
+
+  if (aliasRows.length === 0) throw new NotFoundError(`document not found: ${trimmed}`);
+  if (aliasRows.length > 1) {
+    throw new ConflictError(
+      `alias '${trimmed}' is ambiguous: ${candidates(aliasRows)}. Use #key, the full path, or --bucket`,
+    );
+  }
+  return toRecord(db, aliasRows[0]!);
 }
 
 /** Record access from get / MCP get / search-result content fetches (docs: data-model.md) */
@@ -749,6 +779,7 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
         contentType: fm?.content_type,
         sourceUrl: fm?.source_url ?? existing.sourceUrl,
         tags: fm?.tags,
+        aliases: fm?.aliases,
         updatedAt: fm?.updated_at,
       });
       return { record: pin(record), action: "updated" as const };
@@ -762,6 +793,7 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
       contentType: fm?.content_type,
       sourceUrl: fm?.source_url ?? null,
       tags: fm?.tags,
+      aliases: fm?.aliases,
       docKey: fm?.kura_key,
       createdAt: fm?.created_at,
       updatedAt: fm?.updated_at,

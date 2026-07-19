@@ -34,7 +34,7 @@ describe("openDatabase", () => {
       path: ":memory:",
       vaporettoPath: null,
     });
-    expect(schemaVersion(db)).toBe(3);
+    expect(schemaVersion(db)).toBe(4);
     expect(tokenizer).toBe("trigram");
     expect(vaporettoLoaded).toBe(false);
 
@@ -47,6 +47,7 @@ describe("openDatabase", () => {
       "documents",
       "tags",
       "document_tags",
+      "document_aliases",
       "links",
       "chunks",
       "documents_fts",
@@ -73,7 +74,7 @@ describe("openDatabase", () => {
     first.db.close();
 
     const second = openDatabase({ path, vaporettoPath: null });
-    expect(schemaVersion(second.db)).toBe(3);
+    expect(schemaVersion(second.db)).toBe(4);
     expect(second.tokenizer).toBe("trigram");
     second.db.close();
   });
@@ -129,7 +130,7 @@ describe("getDb", () => {
     process.env.KURA_DB = ":memory:";
     const { db, tokenizer } = getDb();
     expect(tokenizer).toBe("trigram");
-    expect(schemaVersion(db)).toBe(3);
+    expect(schemaVersion(db)).toBe(4);
   });
 });
 
