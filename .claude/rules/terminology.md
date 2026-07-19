@@ -50,9 +50,9 @@ kura is a Japanese-first knowledge tool, so two product surfaces are
 Japanese by design:
 
 - Browser UI strings under `src/client/`.
-- LLM prompt templates (clip formatting, tag suggestion, query
-  expansion, answer generation, contradiction audit) — tuned for
-  Japanese content.
+- LLM prompt templates (clip formatting, tag suggestion, path
+  suggestion, query expansion, answer generation, contradiction
+  audit) — tuned for Japanese content.
 
 Everything else user-facing (CLI output, MCP descriptions, errors) is
 English (`workflow.md` R7). Keep the comments around the Japanese

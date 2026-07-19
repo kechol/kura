@@ -105,6 +105,7 @@ Purpose ledger — every purpose, its key composition, and its single writer:
 | `rerank` | `llm.models.reranker` | `query \x00 candidateText` (text pre-truncated to 2,000 chars) | `rerankCandidates()` — `src/core/search/rerank.ts` | relevance score (`1 \| 0 \| 0.5`) |
 | `tag` | `llm.models.generation` | `sha256(first 4,000 chars) \x00 existing-tag list (≤ 200 tags)` | `suggestTagsForText()` — `src/core/clip/format.ts` | up to 5 tag paths (`string[]`) |
 | `clip` | `llm.models.generation` | `page URL \x00 sha256(turndown markdown)` | `formatClip()` — `src/core/clip/format.ts` | `{ title, markdown }` |
+| `path` | `llm.models.generation` | `sha256(title + first 2,000 chars) \x00 candidate-path list \x00 existing-path list` | `llmPick()` — `src/core/filing.ts` (`kura mv suggest`) | raw model answer (`string`; JSON `{path, reason}` parsed by the caller) |
 | `ask` | `llm.models.generation` | `question \x00 key1:contentHash1,key2:contentHash2,…` (the cited sources) | `askQuestion()` — `src/core/search/ask.ts` | answer text (`string`, `<think>` blocks stripped) |
 | `audit` | `llm.models.generation` | sorted pair of excerpt SHA256 hashes, `:`-joined (1,200 chars per side) | `findContradictions()` — `src/core/audit.ts` | contradiction verdict (`1 \| 0 \| 0.5` via `parseYesNo`) |
 
@@ -133,6 +134,7 @@ never silently misbehaves.
 | `kura clip` | `resolveProvider` | Warning, then mechanical turndown conversion (`llmFormatted: false`) and **no tag suggestions**. `--no-llm` forces the same path. A formatting failure or an LLM answer that dropped the body (< 40 chars) also falls back to turndown. |
 | `kura tag suggest` | `requireProvider` | `LLMUnavailableError`, **exit 4** — suggestions are the whole feature. |
 | `kura tag audit` | `resolveProvider` | Warning "auditing with edit distance only"; embedding-similarity merge candidates are skipped (`usedEmbeddings: false`), edit-distance and singular/plural detection still run (`src/core/gardening.ts`). |
+| `kura mv suggest` | `resolveProvider` | Warning, then suggestions from link/tag/keyword signals only — no semantic neighbours and no LLM pick (`src/core/filing.ts`). |
 | `kura audit` | `requireProvider` | `LLMUnavailableError`, **exit 4** — both the candidate embeddings and the judge need a provider. |
 
 `kura embed` also uses `requireProvider` (exit 4), but only after checking
@@ -141,7 +143,7 @@ the network.
 
 ## Intentionally-Japanese prompts
 
-kura is a Japanese-first knowledge tool; exactly **five prompt templates
+kura is a Japanese-first knowledge tool; exactly **six prompt templates
 are deliberately written in Japanese** and tuned for Japanese content
 (policy in `CLAUDE.md`). Each is marked with an
 `// Intentionally Japanese` comment; the surrounding code comments stay
@@ -150,8 +152,9 @@ English:
 1. Query expansion — `PROMPT` in `src/core/search/expand.ts`
 2. Clip formatting — `FORMAT_PROMPT` in `src/core/clip/format.ts`
 3. Tag suggestion — `TAG_PROMPT` in `src/core/clip/format.ts`
-4. Answer generation — `PROMPT` in `src/core/search/ask.ts`
-5. Contradiction audit — `PROMPT` in `src/core/audit.ts`
+4. Path suggestion — `PATH_PROMPT` in `src/core/filing.ts`
+5. Answer generation — `PROMPT` in `src/core/search/ask.ts`
+6. Contradiction audit — `PROMPT` in `src/core/audit.ts`
 
 Do not translate these to English "for consistency" — that would degrade
 output quality on Japanese content. The **rerank prompt is intentionally
