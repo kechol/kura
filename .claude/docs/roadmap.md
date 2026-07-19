@@ -15,6 +15,14 @@ later does not require breaking changes. None of them are commitments.
 - **Query-expansion model fine-tuning.** The expansion
   prompt lives in `src/core/search/expand.ts` behind the `llm_cache`, so a
   tuned model would slot in via config without pipeline changes.
+- **Synonym expansion via the Sudachi synonym dictionary.** Document
+  aliases (schema v4) cover per-document orthographic variants; a general
+  synonym layer (サーバ/サーバー across the whole store) could expand FTS
+  queries from a bundled dictionary (Apache-2.0, license-compatible).
+  Deliberately deferred: fetching the dictionary is new network access, so
+  scope.md R1 makes it a design discussion, not a chore commit. A local
+  synonym table consulted at query-build time (`src/core/search/keyword.ts`)
+  would need no schema change.
 - **Scale beyond ~10k documents** (quantization, partitioning) is a declared
   non-goal for v1; sqlite-vec brute-force KNN is sufficient at the target
   scale (see [performance.md](performance.md)).
