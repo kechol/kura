@@ -1,7 +1,17 @@
 import type { Database } from "bun:sqlite";
 import { sha256Hex } from "../documents";
 
-export type CachePurpose = "expand" | "rerank" | "tag" | "clip" | "path" | "ask" | "audit";
+export type CachePurpose =
+  | "expand"
+  | "rerank"
+  | "tag"
+  | "clip"
+  | "path"
+  | "ask"
+  | "audit"
+  | "title"
+  | "dupe"
+  | "link";
 
 function cacheKey(purpose: CachePurpose, model: string, input: string): string {
   return sha256Hex(`${purpose}\x00${model}\x00${input}`);
@@ -35,6 +45,11 @@ export function cacheSet(
     `INSERT INTO llm_cache (cache_key, purpose, value) VALUES (?, ?, ?)
      ON CONFLICT(cache_key) DO UPDATE SET value = excluded.value`,
   ).run(cacheKey(purpose, model, input), purpose, JSON.stringify(value));
+}
+
+/** Unordered pair key for symmetric verdicts: sort so (a, b) and (b, a) collide */
+export function pairKey(a: string, b: string): string {
+  return [a, b].sort().join(":");
 }
 
 /** Read-through cache: return a hit, or store and return the result of fn() */

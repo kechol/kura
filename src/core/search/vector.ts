@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { Database, Statement } from "bun:sqlite";
 import type { KuraConfig } from "../config";
 import type { LLMProvider } from "../llm/provider";
 import type { SearchHit } from "./types";
@@ -121,6 +121,28 @@ export function chunkSnippet(text: string, max = 160): string {
   return body.length > max ? `${body.slice(0, max)}…` : body;
 }
 
+/**
+ * KNN distance ⇄ similarity score. chunks_vec returns a raw L2 distance; the
+ * search pipeline reports a bounded 0-1 similarity of 1 / (1 + distance)
+ * (docs: search-pipeline.md). similarityToDistance inverts it to turn a
+ * similarity floor back into a distance ceiling for KNN filtering.
+ */
+export function distanceToSimilarity(d: number): number {
+  return 1 / (1 + d);
+}
+export function similarityToDistance(s: number): number {
+  return 1 / s - 1;
+}
+
+/**
+ * Prepared chunks_vec KNN statement (`embedding MATCH ? AND k = ?`, returning
+ * chunk_id + distance). Shared by the audit and dedupe scans that run it per
+ * chunk in a loop; any chunk→document join or filtering stays at the call site.
+ */
+export function prepareChunkKnn(db: Database): Statement {
+  return db.prepare("SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?");
+}
+
 /** Query embedding -> chunks_vec KNN -> aggregate per document by best chunk (docs: search-pipeline.md) */
 export async function vectorSearchDetailed(
   db: Database,
@@ -195,7 +217,7 @@ export async function vectorSearchDetailed(
         title: row.title,
         bucket: row.bucket,
         tags: row.tag_paths ? row.tag_paths.split(" ") : [],
-        score: 1 / (1 + row.distance),
+        score: distanceToSimilarity(row.distance),
         snippet: chunkSnippet(row.chunk_text),
         source: "vector",
       },

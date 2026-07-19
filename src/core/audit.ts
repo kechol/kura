@@ -1,10 +1,15 @@
 import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import { sha256Hex } from "./documents";
-import { cached } from "./llm/cache";
+import { cached, pairKey } from "./llm/cache";
 import type { LLMProvider } from "./llm/provider";
 import { parseYesNo } from "./search/rerank";
-import { chunkSnippet, ensureEmbeddings } from "./search/vector";
+import {
+  chunkSnippet,
+  distanceToSimilarity,
+  ensureEmbeddings,
+  prepareChunkKnn,
+} from "./search/vector";
 import { joinDocPath } from "./wiki";
 
 /**
@@ -49,7 +54,7 @@ export interface AuditDocRef {
 export interface ContradictionPair {
   a: AuditDocRef;
   b: AuditDocRef;
-  /** 1 / (1 + L2 distance), same scale as vector search scores */
+  /** Similarity on the vector-search scale (distanceToSimilarity) */
   similarity: number;
   contradictory: boolean;
 }
@@ -58,6 +63,13 @@ export interface AuditOptions {
   bucket?: string;
   /** Maximum candidate pairs judged (default 10) */
   limit?: number;
+}
+
+export interface SimilarPairsOptions extends AuditOptions {
+  /** Maximum candidate pairs returned (default: opts.limit ?? 10) */
+  maxPairs?: number;
+  /** Drop neighbour hits whose L2 distance exceeds this before pairing */
+  maxDistance?: number;
 }
 
 export interface AuditOutcome {
@@ -72,7 +84,7 @@ interface ChunkRow {
   text: string;
 }
 
-interface CandidatePair {
+export interface CandidatePair {
   aDoc: number;
   bDoc: number;
   aText: string;
@@ -81,12 +93,19 @@ interface CandidatePair {
 }
 
 /**
- * Semantically closest cross-document chunk pairs among recent documents.
- * The recent-doc set is resolved first so the chunk query is a plain IN list
- * (no duplicated bucket predicates), and each chunk's stored embedding rides
- * along via the chunks_vec join instead of a per-chunk lookup.
+ * Semantically closest cross-document chunk pairs, shared by the contradiction
+ * audit and duplicate detection (docs: self-healing.md). Each chunk's stored
+ * embedding rides along via the chunks_vec join (no per-chunk lookup) and drives
+ * a per-chunk KNN over chunks_vec; the single closest cross-document pair is kept
+ * per document pair.
+ *
+ * The candidate document set is resolved first — the most recently updated
+ * documents, optionally within one bucket — so the chunk query is a plain IN
+ * list with no duplicated bucket predicate. Pairs form only within that set.
  */
-function candidatePairs(db: Database, opts: AuditOptions, maxPairs: number): CandidatePair[] {
+export function similarChunkPairs(db: Database, opts: SimilarPairsOptions): CandidatePair[] {
+  const maxPairs = opts.maxPairs ?? opts.limit ?? 10;
+
   const docParams: string[] = [];
   let docWhere = "";
   if (opts.bucket) {
@@ -112,9 +131,7 @@ function candidatePairs(db: Database, opts: AuditOptions, maxPairs: number): Can
     .all(...docIds) as Array<ChunkRow & { embedding: Uint8Array }>;
 
   const textByChunk = new Map(chunks.map((c) => [c.chunk_id, c] as const));
-  const knnStmt = db.prepare(
-    `SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?`,
-  );
+  const knnStmt = prepareChunkKnn(db);
 
   const best = new Map<string, CandidatePair>();
   for (const chunk of chunks) {
@@ -123,6 +140,7 @@ function candidatePairs(db: Database, opts: AuditOptions, maxPairs: number): Can
       distance: number;
     }>;
     for (const n of neighbours) {
+      if (opts.maxDistance !== undefined && n.distance > opts.maxDistance) continue;
       const other = textByChunk.get(n.chunk_id);
       if (!other || other.doc_id === chunk.doc_id) continue;
       const key =
@@ -158,7 +176,7 @@ export async function findContradictions(
   const warn = await ensureEmbeddings(db, provider, config);
   if (warn) warnings.push(warn);
 
-  const candidates = candidatePairs(db, opts, opts.limit ?? 10);
+  const candidates = similarChunkPairs(db, opts);
   const model = config.llm.models.generation;
   const refStmt = db.prepare(
     `SELECT d.doc_key, d.title, d.path, b.name AS bucket
@@ -188,7 +206,7 @@ export async function findContradictions(
       const c = candidates[i]!;
       const aText = c.aText.slice(0, MAX_JUDGE_CHARS);
       const bText = c.bText.slice(0, MAX_JUDGE_CHARS);
-      const cacheInput = [sha256Hex(aText), sha256Hex(bText)].sort().join(":");
+      const cacheInput = pairKey(sha256Hex(aText), sha256Hex(bText));
       const score = await cached<number>(db, "audit", model, cacheInput, async () => {
         const answer = await provider.chat(
           [
@@ -203,7 +221,7 @@ export async function findContradictions(
       pairs[i] = {
         a: docRef(c.aDoc, c.aText),
         b: docRef(c.bDoc, c.bText),
-        similarity: 1 / (1 + c.distance),
+        similarity: distanceToSimilarity(c.distance),
         contradictory: score === 1,
       };
     }

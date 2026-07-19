@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { extractContent, fetchAndExtract } from "../src/core/clip/extract";
-import { formatClip, htmlToMarkdown, suggestTagsForText } from "../src/core/clip/format";
+import { formatClip, htmlToMarkdown } from "../src/core/clip/format";
 import { defaultConfig, type KuraConfig } from "../src/core/config";
 import { openDatabase, setMeta } from "../src/core/db";
 import {
@@ -13,9 +13,10 @@ import {
   retokenizeFts,
 } from "../src/core/doctor";
 import { createDocument } from "../src/core/documents";
-import { auditTags, levenshtein, untaggedDocuments } from "../src/core/gardening";
+import { auditTags, levenshtein } from "../src/core/gardening";
 import type { LLMProvider, Message } from "../src/core/llm/provider";
 import { staleDocuments, staleScore } from "../src/core/stale";
+import { suggestTagsForText } from "../src/core/tagging";
 
 const PAGE_HTML = `<!doctype html>
 <html><head><title>SQLite の WAL モード徹底解説 | Tech Blog</title></head>
@@ -155,13 +156,6 @@ describe("gardening (docs: self-healing.md)", () => {
     expect(result.oversized.some((o) => o.path === "tech/db")).toBe(true);
     // Ancestor/descendant tags (tech and tech/db) are not merge candidates
     expect(result.merges.some((m) => m.from === "tech" || m.to === "tech")).toBe(false);
-  });
-
-  test("untaggedDocuments", () => {
-    createDocument(db, { title: "タグなし", content: "本文のみ", bucket: "main" });
-    createDocument(db, { title: "タグあり", content: "#tagged", bucket: "main" });
-    const untagged = untaggedDocuments(db);
-    expect(untagged.map((d) => d.title)).toEqual(["タグなし"]);
   });
 });
 
