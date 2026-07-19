@@ -15,6 +15,7 @@ import {
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
 import { DocLinkList } from "../components/DocLink";
+import { InlineEditField } from "../components/InlineEditField";
 import { useCurrentDoc } from "../currentdoc";
 import { Editor, type SaveStatus } from "../editor/Editor";
 import { formatDateTime } from "../format";
@@ -61,9 +62,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
   }, [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
   const [status, setStatus] = useState<SaveStatus>("idle");
-  const [pathEdit, setPathEdit] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
-  const [aliasEdit, setAliasEdit] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
   const tree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
@@ -137,7 +136,6 @@ export function DocDetail({ docKey }: { docKey: string }) {
   // '' is a legal path (the bucket root), so an empty field saves rather than cancelling
   const moveTo = async (raw: string) => {
     const next = raw.trim().replace(/^\/+|\/+$/g, "");
-    setPathEdit(null);
     setPathError(null);
     if (next === d.path) return;
     setStatus("saving");
@@ -157,7 +155,6 @@ export function DocDetail({ docKey }: { docKey: string }) {
       .split(/[,、]/)
       .map((s) => s.trim())
       .filter((s) => s !== "");
-    setAliasEdit(null);
     setAliasError(null);
     if (next.join("\n") === d.aliases.join("\n")) return;
     setStatus("saving");
@@ -260,95 +257,38 @@ export function DocDetail({ docKey }: { docKey: string }) {
             <div>
               <dt>パス</dt>
               <dd>
-                {pathEdit === null ? (
-                  <button
-                    type="button"
-                    class="path-edit-trigger"
-                    title="クリックして移動"
-                    onClick={() => setPathEdit(d.path)}
-                  >
-                    {d.path === "" ? <span class="muted">bucket 直下</span> : d.path}
-                  </button>
-                ) : (
-                  <form
-                    class="path-edit-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void moveTo(pathEdit);
-                    }}
-                  >
-                    <input
-                      type="text"
-                      list="kura-path-options"
-                      placeholder="db/sqlite（空欄で bucket 直下）"
-                      value={pathEdit}
-                      // biome-ignore lint/a11y/noAutofocus: the field only exists once the user asks for it
-                      autoFocus
-                      onInput={(e) => setPathEdit((e.target as HTMLInputElement).value)}
-                      onBlur={(e) => void moveTo((e.target as HTMLInputElement).value)}
-                      onKeyDown={(e) => {
-                        // Restore the current path before leaving, so the blur that
-                        // follows saves nothing (moveTo skips an unchanged path)
-                        if (e.key === "Escape") {
-                          (e.currentTarget as HTMLInputElement).value = d.path;
-                          setPathEdit(null);
-                          setPathError(null);
-                        }
-                      }}
-                    />
-                    <datalist id="kura-path-options">
-                      {[...new Set(treePaths(tree.data ?? []))].sort().map((p) => (
-                        <option key={p} value={p} />
-                      ))}
-                    </datalist>
-                  </form>
-                )}
-                {pathError !== null && <p class="error">{pathError}</p>}
+                <InlineEditField
+                  display={d.path === "" ? <span class="muted">bucket 直下</span> : d.path}
+                  value={d.path}
+                  placeholder="db/sqlite（空欄で bucket 直下）"
+                  title="クリックして移動"
+                  list="kura-path-options"
+                  onSave={moveTo}
+                  onCancel={() => setPathError(null)}
+                  error={pathError}
+                >
+                  <datalist id="kura-path-options">
+                    {[...new Set(treePaths(tree.data ?? []))].sort().map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
+                </InlineEditField>
               </dd>
             </div>
             <div>
               <dt>別名</dt>
               <dd>
-                {aliasEdit === null ? (
-                  <button
-                    type="button"
-                    class="path-edit-trigger"
-                    title="クリックして編集"
-                    onClick={() => setAliasEdit(d.aliases.join(", "))}
-                  >
-                    {d.aliases.length === 0 ? (
-                      <span class="muted">なし</span>
-                    ) : (
-                      d.aliases.join(", ")
-                    )}
-                  </button>
-                ) : (
-                  <form
-                    class="path-edit-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void saveAliases(aliasEdit);
-                    }}
-                  >
-                    <input
-                      type="text"
-                      placeholder="別名1, 別名2"
-                      value={aliasEdit}
-                      // biome-ignore lint/a11y/noAutofocus: the field only exists once the user asks for it
-                      autoFocus
-                      onInput={(e) => setAliasEdit((e.target as HTMLInputElement).value)}
-                      onBlur={(e) => void saveAliases((e.target as HTMLInputElement).value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                          (e.currentTarget as HTMLInputElement).value = d.aliases.join(", ");
-                          setAliasEdit(null);
-                          setAliasError(null);
-                        }
-                      }}
-                    />
-                  </form>
-                )}
-                {aliasError !== null && <p class="error">{aliasError}</p>}
+                <InlineEditField
+                  display={
+                    d.aliases.length === 0 ? <span class="muted">なし</span> : d.aliases.join(", ")
+                  }
+                  value={d.aliases.join(", ")}
+                  placeholder="別名1, 別名2"
+                  title="クリックして編集"
+                  onSave={saveAliases}
+                  onCancel={() => setAliasError(null)}
+                  error={aliasError}
+                />
               </dd>
             </div>
             <div>

@@ -57,22 +57,19 @@ export function run(argv: string[]): number {
   const doc = getDocumentByKey(db, resolved.key) ?? resolved;
 
   // --as-of: swap in the historical title / path / body (docs: cli-reference.md)
-  let view = { title: doc.title, path: doc.path, content: doc.content };
-  let asOf: string | null = null;
-  let revisionId: number | null = null;
   const asOfRaw = strOpt(parsed, "as-of");
-  if (asOfRaw !== undefined) {
-    asOf = toSqliteDatetime(asOfRaw);
-    if (asOf === null) throw new UsageError(`--as-of must be a date or datetime, got: ${asOfRaw}`);
-    const state = stateAsOf(db, doc.id, asOf);
-    if (state === null) {
-      throw new NotFoundError(
-        `no recorded state of #${doc.key} at ${asOf} (created later, or the snapshot was pruned)`,
-      );
-    }
-    view = { title: state.title, path: state.path, content: state.content };
-    revisionId = state.source === "revision" ? (state.revisionId ?? null) : null;
+  const asOf = asOfRaw === undefined ? null : toSqliteDatetime(asOfRaw);
+  if (asOfRaw !== undefined && asOf === null) {
+    throw new UsageError(`--as-of must be a date or datetime, got: ${asOfRaw}`);
   }
+  const state = asOf === null ? null : stateAsOf(db, doc.id, asOf);
+  if (asOf !== null && state === null) {
+    throw new NotFoundError(
+      `no recorded state of #${doc.key} at ${asOf} (created later, or the snapshot was pruned)`,
+    );
+  }
+  const view = state ?? doc;
+  const revisionId = state?.revisionId ?? null;
   const content = sliceLines(view.content, strOpt(parsed, "lines"));
 
   if (boolOpt(parsed, "json")) {

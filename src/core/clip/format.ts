@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "../config";
 import { sha256Hex } from "../documents";
 import { cached } from "../llm/cache";
-import type { LLMProvider } from "../llm/provider";
+import { type LLMProvider, stripThinkBlocks } from "../llm/provider";
 import type { ExtractedPage } from "./extract";
 import { htmlToMarkdown } from "./turndown";
 
@@ -32,7 +32,7 @@ function parseFormatted(
   answer: string,
   fallbackTitle: string,
 ): { title: string; markdown: string } {
-  const cleaned = answer.replaceAll(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const cleaned = stripThinkBlocks(answer);
   const m = cleaned.match(/^TITLE:\s*(.+)\n+([\s\S]*)$/);
   if (!m) return { title: fallbackTitle, markdown: cleaned };
   const title = (m[1] ?? "").trim() || fallbackTitle;

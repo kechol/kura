@@ -64,6 +64,25 @@ export function docTags(db: Database, docId: number): string[] {
   return rows.map((r) => r.path);
 }
 
+/** Tags for many documents in one query (the listDocuments batch path) */
+export function docTagsBatch(db: Database, docIds: number[]): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  if (docIds.length === 0) return map;
+  const rows = db
+    .prepare(
+      `SELECT dt.document_id, t.path FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
+       WHERE dt.document_id IN (${docIds.map(() => "?").join(", ")})
+       ORDER BY dt.document_id, t.path`,
+    )
+    .all(...docIds) as Array<{ document_id: number; path: string }>;
+  for (const r of rows) {
+    const list = map.get(r.document_id);
+    if (list) list.push(r.path);
+    else map.set(r.document_id, [r.path]);
+  }
+  return map;
+}
+
 /** Add tags and refresh the FTS tags column. Returns the normalized tags that were actually added */
 export function addTagsToDoc(
   db: Database,

@@ -4,6 +4,7 @@ import { sha256Hex } from "./documents";
 import { cached } from "./llm/cache";
 import type { LLMProvider } from "./llm/provider";
 import { parseYesNo } from "./search/rerank";
+import { chunkSnippet, ensureEmbeddings } from "./search/vector";
 import { joinDocPath } from "./wiki";
 
 /**
@@ -17,13 +18,16 @@ import { joinDocPath } from "./wiki";
  */
 
 /** Documents examined per run (most recently updated first) */
-export const MAX_AUDIT_DOCS = 50;
+const MAX_AUDIT_DOCS = 50;
 
 /** KNN neighbours fetched per chunk when generating candidate pairs */
 const KNN_PER_CHUNK = 6;
 
 /** Characters of each excerpt shown to the judge */
 const MAX_JUDGE_CHARS = 1200;
+
+/** Parallel judge calls (same shape as the rerank worker pool) */
+const CONCURRENCY = 4;
 
 // Intentionally Japanese — kura is a Japanese-first knowledge tool; this prompt is tuned for Japanese content.
 const PROMPT = `あなたはナレッジベースの品質を点検するアシスタントです。
@@ -59,6 +63,7 @@ export interface AuditOptions {
 export interface AuditOutcome {
   pairs: ContradictionPair[];
   examinedPairs: number;
+  warnings: string[];
 }
 
 interface ChunkRow {
@@ -75,56 +80,45 @@ interface CandidatePair {
   distance: number;
 }
 
-function docRef(db: Database, docId: number, excerpt: string): AuditDocRef {
-  const row = db
-    .prepare(
-      `SELECT d.doc_key, d.title, d.path, b.name AS bucket
-       FROM documents d JOIN buckets b ON b.id = d.bucket_id WHERE d.id = ?`,
-    )
-    .get(docId) as { doc_key: string; title: string; path: string; bucket: string };
-  const clean = excerpt.replaceAll(/\s+/g, " ").trim();
-  return {
-    key: row.doc_key,
-    title: row.title,
-    path: row.path,
-    bucket: row.bucket,
-    excerpt: clean.length > 200 ? `${clean.slice(0, 200)}…` : clean,
-  };
-}
-
-/** Semantically closest cross-document chunk pairs among recent documents */
+/**
+ * Semantically closest cross-document chunk pairs among recent documents.
+ * The recent-doc set is resolved first so the chunk query is a plain IN list
+ * (no duplicated bucket predicates), and each chunk's stored embedding rides
+ * along via the chunks_vec join instead of a per-chunk lookup.
+ */
 function candidatePairs(db: Database, opts: AuditOptions, maxPairs: number): CandidatePair[] {
-  const params: Array<string | number> = [];
-  let bucketWhere = "";
+  const docParams: string[] = [];
+  let docWhere = "";
   if (opts.bucket) {
-    bucketWhere = "AND b.name = ?";
-    params.push(opts.bucket);
+    docWhere = "WHERE b.name = ?";
+    docParams.push(opts.bucket);
   }
+  const docIds = (
+    db
+      .prepare(
+        `SELECT d.id FROM documents d JOIN buckets b ON b.id = d.bucket_id
+         ${docWhere} ORDER BY d.updated_at DESC LIMIT ${MAX_AUDIT_DOCS}`,
+      )
+      .all(...docParams) as Array<{ id: number }>
+  ).map((r) => r.id);
+  if (docIds.length === 0) return [];
+
   const chunks = db
     .prepare(
-      `SELECT c.id AS chunk_id, c.document_id AS doc_id, c.text
-       FROM chunks c
-       JOIN documents d ON d.id = c.document_id
-       JOIN buckets b ON b.id = d.bucket_id
-       WHERE c.embedded_at IS NOT NULL ${bucketWhere}
-         AND c.document_id IN (
-           SELECT d2.id FROM documents d2 JOIN buckets b2 ON b2.id = d2.bucket_id
-           WHERE 1=1 ${bucketWhere.replaceAll("b.name", "b2.name")}
-           ORDER BY d2.updated_at DESC LIMIT ${MAX_AUDIT_DOCS})`,
+      `SELECT c.id AS chunk_id, c.document_id AS doc_id, c.text, v.embedding
+       FROM chunks c JOIN chunks_vec v ON v.chunk_id = c.id
+       WHERE c.document_id IN (${docIds.map(() => "?").join(", ")})`,
     )
-    .all(...params, ...params) as ChunkRow[];
+    .all(...docIds) as Array<ChunkRow & { embedding: Uint8Array }>;
 
   const textByChunk = new Map(chunks.map((c) => [c.chunk_id, c] as const));
-  const embedStmt = db.prepare("SELECT embedding FROM chunks_vec WHERE chunk_id = ?");
   const knnStmt = db.prepare(
     `SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?`,
   );
 
   const best = new Map<string, CandidatePair>();
   for (const chunk of chunks) {
-    const embedding = embedStmt.get(chunk.chunk_id) as { embedding: Uint8Array } | null;
-    if (!embedding) continue;
-    const neighbours = knnStmt.all(embedding.embedding, KNN_PER_CHUNK) as Array<{
+    const neighbours = knnStmt.all(chunk.embedding, KNN_PER_CHUNK) as Array<{
       chunk_id: number;
       distance: number;
     }>;
@@ -149,40 +143,75 @@ function candidatePairs(db: Database, opts: AuditOptions, maxPairs: number): Can
   return [...best.values()].sort((x, y) => x.distance - y.distance).slice(0, maxPairs);
 }
 
-/** Judge candidate pairs with the generation model. Requires a provider */
+/**
+ * Judge candidate pairs with the generation model (worker pool, like rerank).
+ * Requires a provider; embeddings are freshened first so callers cannot
+ * silently audit a stale index (warning surfaced when the backlog is large).
+ */
 export async function findContradictions(
   db: Database,
   provider: LLMProvider,
   config: KuraConfig,
   opts: AuditOptions = {},
 ): Promise<AuditOutcome> {
+  const warnings: string[] = [];
+  const warn = await ensureEmbeddings(db, provider, config);
+  if (warn) warnings.push(warn);
+
   const candidates = candidatePairs(db, opts, opts.limit ?? 10);
   const model = config.llm.models.generation;
-  const pairs: ContradictionPair[] = [];
+  const refStmt = db.prepare(
+    `SELECT d.doc_key, d.title, d.path, b.name AS bucket
+     FROM documents d JOIN buckets b ON b.id = d.bucket_id WHERE d.id = ?`,
+  );
+  const docRef = (docId: number, excerpt: string): AuditDocRef => {
+    const row = refStmt.get(docId) as {
+      doc_key: string;
+      title: string;
+      path: string;
+      bucket: string;
+    };
+    return {
+      key: row.doc_key,
+      title: row.title,
+      path: row.path,
+      bucket: row.bucket,
+      excerpt: chunkSnippet(excerpt, 200),
+    };
+  };
 
-  for (const c of candidates) {
-    const aText = c.aText.slice(0, MAX_JUDGE_CHARS);
-    const bText = c.bText.slice(0, MAX_JUDGE_CHARS);
-    const cacheInput = [sha256Hex(aText), sha256Hex(bText)].sort().join(":");
-    const score = await cached<number>(db, "audit", model, cacheInput, async () => {
-      const answer = await provider.chat(
-        [
-          { role: "system", content: PROMPT },
-          { role: "user", content: `資料A:\n${aText}\n\n資料B:\n${bText}` },
-        ],
-        model,
-        { temperature: 0 },
-      );
-      return parseYesNo(answer);
-    });
-    pairs.push({
-      a: docRef(db, c.aDoc, c.aText),
-      b: docRef(db, c.bDoc, c.bText),
-      similarity: 1 / (1 + c.distance),
-      contradictory: score === 1,
-    });
+  const pairs = new Array<ContradictionPair>(candidates.length);
+  let index = 0;
+  async function worker(): Promise<void> {
+    while (index < candidates.length) {
+      const i = index++;
+      const c = candidates[i]!;
+      const aText = c.aText.slice(0, MAX_JUDGE_CHARS);
+      const bText = c.bText.slice(0, MAX_JUDGE_CHARS);
+      const cacheInput = [sha256Hex(aText), sha256Hex(bText)].sort().join(":");
+      const score = await cached<number>(db, "audit", model, cacheInput, async () => {
+        const answer = await provider.chat(
+          [
+            { role: "system", content: PROMPT },
+            { role: "user", content: `資料A:\n${aText}\n\n資料B:\n${bText}` },
+          ],
+          model,
+          { temperature: 0 },
+        );
+        return parseYesNo(answer);
+      });
+      pairs[i] = {
+        a: docRef(c.aDoc, c.aText),
+        b: docRef(c.bDoc, c.bText),
+        similarity: 1 / (1 + c.distance),
+        contradictory: score === 1,
+      };
+    }
   }
-  return { pairs, examinedPairs: candidates.length };
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, () => worker()),
+  );
+  return { pairs, examinedPairs: candidates.length, warnings };
 }
 
 /** Human-readable pair label for CLI output */

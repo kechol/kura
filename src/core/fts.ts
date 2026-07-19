@@ -28,15 +28,16 @@ function currentAliasesText(db: Database, docId: number): string {
 
 export function ftsUpsert(db: Database, doc: { id: number; title: string; content: string }): void {
   db.prepare("DELETE FROM documents_fts WHERE rowid = ?").run(doc.id);
+  // Tags and aliases are composed as correlated subselects (one statement per
+  // write, same shape as doctor's FTS_REINSERT)
   db.prepare(
-    "INSERT INTO documents_fts (rowid, title, content, tags, aliases) VALUES (?, ?, ?, ?, ?)",
-  ).run(
-    doc.id,
-    doc.title,
-    doc.content,
-    currentTagsText(db, doc.id),
-    currentAliasesText(db, doc.id),
-  );
+    `INSERT INTO documents_fts (rowid, title, content, tags, aliases)
+     VALUES (?, ?, ?,
+       COALESCE((SELECT group_concat(t.path, ' ') FROM document_tags dt
+                 JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = ?), ''),
+       COALESCE((SELECT group_concat(alias, ' ') FROM document_aliases
+                 WHERE document_id = ?), ''))`,
+  ).run(doc.id, doc.title, doc.content, doc.id, doc.id);
 }
 
 export function ftsDelete(db: Database, docId: number): void {

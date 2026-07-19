@@ -338,7 +338,12 @@ describe("REST API (docs: http-api.md)", () => {
 
     // A destination that already holds the same title is a 409
     createDocument(db, { title: "衝突", content: "y", bucket: "main", path: "clips" });
-    const other = createDocument(db, { title: "衝突", content: "z", bucket: "main", path: "notes" });
+    const other = createDocument(db, {
+      title: "衝突",
+      content: "z",
+      bucket: "main",
+      path: "notes",
+    });
     const clash = await api(`/api/docs/${other.key}`, {
       method: "PUT",
       body: JSON.stringify({ path: "clips" }),

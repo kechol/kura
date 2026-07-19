@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "./config";
 import { type FtsTokenizer, getMeta, setMeta } from "./db";
 import { sha256Hex, updateDocument } from "./documents";
-import { resolveLinkTarget } from "./links";
+import { type ReresolveRow, reresolveLinks } from "./links";
 
 export interface FixReport {
   action: string;
@@ -102,21 +102,13 @@ export function fixContentHashes(db: Database): FixReport | null {
 export function resolveAllUnresolvedLinks(db: Database): FixReport | null {
   const rows = db
     .prepare(
-      `SELECT l.id, l.source_id, l.target_title, s.bucket_id
+      `SELECT l.id, l.source_id, l.target_title, l.target_id, s.bucket_id
        FROM links l
        JOIN documents s ON s.id = l.source_id
        WHERE l.target_id IS NULL`,
     )
-    .all() as Array<{ id: number; source_id: number; target_title: string; bucket_id: number }>;
-  let changes = 0;
-  const update = db.prepare("UPDATE links SET target_id = ? WHERE id = ?");
-  for (const row of rows) {
-    const target = resolveLinkTarget(db, row.bucket_id, row.target_title, row.source_id);
-    if (target !== null) {
-      update.run(target, row.id);
-      changes++;
-    }
-  }
+    .all() as ReresolveRow[];
+  const changes = reresolveLinks(db, rows);
   return changes > 0
     ? { action: "resolve-links", detail: `resolved ${changes} unresolved link(s)` }
     : null;

@@ -12,6 +12,7 @@ import {
   snapshotRevision,
   stateAsOf,
 } from "../src/core/revisions";
+import { runCli } from "./helpers";
 
 let db: Database;
 
@@ -157,25 +158,6 @@ describe("stateAsOf (kura get --as-of)", () => {
 });
 
 describe("kura history / get --as-of CLI", () => {
-  const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
-
-  async function runCli(
-    args: string[],
-    env: Record<string, string>,
-  ): Promise<{ code: number; stdout: string; stderr: string }> {
-    const proc = Bun.spawn(["bun", "run", CLI, ...args], {
-      env: { ...process.env, NO_COLOR: "1", ...env },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
-  }
-
   test("history list / show / restore and get --as-of", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-history-cli-"));
     const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };

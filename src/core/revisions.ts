@@ -11,7 +11,7 @@ import { NotFoundError } from "./errors";
 export const MAX_REVISIONS_PER_DOC = 100;
 
 /** Consecutive saves within this window collapse into one revision per editing burst */
-export const COALESCE_MINUTES = 5;
+const COALESCE_MINUTES = 5;
 
 export interface RevisionMeta {
   id: number;
@@ -113,6 +113,24 @@ export function getRevision(db: Database, docId: number, revisionId: number): Re
     .get(docId, revisionId) as Revision | null;
   if (!row) throw new NotFoundError(`revision not found: r${revisionId}`);
   return row;
+}
+
+/**
+ * Lean point-in-time lookup for the change feed: title / path / content_hash
+ * of the newest revision at or before asOf, without transferring bodies.
+ * (The change feed only compares hashes — see src/core/changes.ts.)
+ */
+export function revisionMetaAsOf(
+  db: Database,
+  docId: number,
+  asOf: string,
+): { title: string; path: string; contentHash: string } | null {
+  return db
+    .prepare(
+      `SELECT title, path, content_hash AS contentHash FROM document_revisions
+       WHERE document_id = ? AND saved_at <= ? ORDER BY saved_at DESC, id DESC LIMIT 1`,
+    )
+    .get(docId, asOf) as { title: string; path: string; contentHash: string } | null;
 }
 
 export interface DocState {

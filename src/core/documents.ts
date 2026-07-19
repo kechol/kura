@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { addAliasesToDoc, docAliases } from "./aliases";
+import { addAliasesToDoc, docAliases, docAliasesBatch } from "./aliases";
 import { getOrCreateBucket, requireBucket } from "./buckets";
 import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
@@ -7,7 +7,7 @@ import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
 import { fullPathSql, resolveUnresolvedLinks, syncLinks } from "./links";
 import { snapshotRevision } from "./revisions";
-import { addTagsToDoc, docTags } from "./tags";
+import { addTagsToDoc, docTags, docTagsBatch } from "./tags";
 import {
   extractWiki,
   joinDocPath,
@@ -65,7 +65,12 @@ const SELECT_DOC = `
          d.last_accessed_at, d.access_count, d.favorite
   FROM documents d JOIN buckets b ON b.id = d.bucket_id`;
 
-function toRecord(db: Database, row: DocRow): DocumentRecord {
+/** preloaded lets list paths batch-fetch tags/aliases instead of two queries per row */
+function toRecord(
+  db: Database,
+  row: DocRow,
+  preloaded?: { tags: string[]; aliases: string[] },
+): DocumentRecord {
   return {
     id: row.id,
     key: row.doc_key,
@@ -82,8 +87,8 @@ function toRecord(db: Database, row: DocRow): DocumentRecord {
     lastAccessedAt: row.last_accessed_at,
     accessCount: row.access_count,
     favorite: row.favorite === 1,
-    tags: docTags(db, row.id),
-    aliases: docAliases(db, row.id),
+    tags: preloaded?.tags ?? docTags(db, row.id),
+    aliases: preloaded?.aliases ?? docAliases(db, row.id),
   };
 }
 
@@ -640,7 +645,12 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
     }
   }
   const rows = db.prepare(sql).all(...params) as DocRow[];
-  return rows.map((r) => toRecord(db, r));
+  const ids = rows.map((r) => r.id);
+  const tags = docTagsBatch(db, ids);
+  const aliases = docAliasesBatch(db, ids);
+  return rows.map((r) =>
+    toRecord(db, r, { tags: tags.get(r.id) ?? [], aliases: aliases.get(r.id) ?? [] }),
+  );
 }
 
 function sqliteNow(d: Date): string {

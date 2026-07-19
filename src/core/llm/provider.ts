@@ -10,6 +10,11 @@ export interface ChatOptions {
   temperature?: number;
 }
 
+/** Strip Qwen3-style <think> reasoning blocks from a chat answer */
+export function stripThinkBlocks(answer: string): string {
+  return answer.replaceAll(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
 /** Local LLM provider abstraction (docs: llm-providers.md) */
 export interface LLMProvider {
   name: "ollama" | "lmstudio";

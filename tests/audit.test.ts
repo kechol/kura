@@ -10,6 +10,7 @@ import { createDocument } from "../src/core/documents";
 import type { LLMProvider, Message } from "../src/core/llm/provider";
 import { setProviderForTests } from "../src/core/llm/provider";
 import { backfillEmbeddings } from "../src/core/search/vector";
+import { runCli } from "./helpers";
 
 /**
  * Deterministic mock (testing.md R2): embeddings by keyword presence; the
@@ -106,29 +107,18 @@ describe("findContradictions", () => {
 });
 
 describe("kura audit CLI (degraded)", () => {
-  const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
-
   test("exits 4 when no provider is configured", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-audit-cli-"));
     const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
     try {
-      const init = Bun.spawn(["bun", "run", CLI, "init", "--no-download"], {
-        env: { ...process.env, NO_COLOR: "1", ...env },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(await init.exited).toBe(0);
+      const init = await runCli(["init", "--no-download"], env);
+      expect(init.code).toBe(0);
       // Pin the provider off so the test never talks to a local Ollama (testing.md R2)
       writeFileSync(join(home, "config.toml"), '[llm]\nprovider = "none"\n');
 
-      const proc = Bun.spawn(["bun", "run", CLI, "audit"], {
-        env: { ...process.env, NO_COLOR: "1", ...env },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-      expect(code).toBe(4);
-      expect(stderr).toContain("LLM");
+      const audit = await runCli(["audit"], env);
+      expect(audit.code).toBe(4);
+      expect(audit.stderr).toContain("LLM");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

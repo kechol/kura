@@ -21,6 +21,7 @@ import { UsageError } from "../src/core/errors";
 import { parseFrontmatter, serializeFrontmatter } from "../src/core/frontmatter";
 import { outlinks } from "../src/core/links";
 import { keywordSearch } from "../src/core/search/keyword";
+import { runCli } from "./helpers";
 
 let db: Database;
 
@@ -248,25 +249,6 @@ aliases: ["FTS設計", "a|b", "fts設計", ""]
 });
 
 describe("kura alias CLI", () => {
-  const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
-
-  async function runCli(
-    args: string[],
-    env: Record<string, string>,
-  ): Promise<{ code: number; stdout: string; stderr: string }> {
-    const proc = Bun.spawn(["bun", "run", CLI, ...args], {
-      env: { ...process.env, NO_COLOR: "1", ...env },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
-  }
-
   test("alias add / ls / rm and get-by-alias", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-alias-cli-"));
     const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };

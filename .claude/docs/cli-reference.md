@@ -661,7 +661,7 @@ LLM provider.
   SQLite datetime by `parseSince`.
 - `kind` is `created` when `created_at > since`, `updated` otherwise. For
   updated documents the state as of `--since` comes from the revision
-  history (`stateAsOf` — [data-model.md](data-model.md)), yielding the
+  history (`revisionMetaAsOf` — [data-model.md](data-model.md)), yielding the
   `content_changed` / `renamed` / `moved` flags plus the previous
   title/path. A pruned or coalesced-away snapshot degrades to "changed,
   previous state unknown" (`content_changed: true`, previous fields

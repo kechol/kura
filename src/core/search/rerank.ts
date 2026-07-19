@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "../config";
 import { cached } from "../llm/cache";
-import type { LLMProvider } from "../llm/provider";
+import { type LLMProvider, stripThinkBlocks } from "../llm/provider";
 
 const SYSTEM_PROMPT =
   'Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".';
@@ -10,10 +10,7 @@ const INSTRUCT = "Given a web search query, retrieve relevant passages that answ
 
 /** Extract yes/no from the answer and map to 1/0; 0.5 when undecidable (Qwen3 <think> blocks are stripped) */
 export function parseYesNo(answer: string): number {
-  const cleaned = answer
-    .replaceAll(/<think>[\s\S]*?<\/think>/gi, "")
-    .trim()
-    .toLowerCase();
+  const cleaned = stripThinkBlocks(answer).toLowerCase();
   const m = cleaned.match(/\b(yes|no)\b/);
   if (!m) return 0.5;
   return m[1] === "yes" ? 1 : 0;

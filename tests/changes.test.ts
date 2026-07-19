@@ -7,6 +7,7 @@ import { createBucket } from "../src/core/buckets";
 import { changesSince, parseSince } from "../src/core/changes";
 import { openDatabase } from "../src/core/db";
 import { createDocument, updateDocument } from "../src/core/documents";
+import { runCli } from "./helpers";
 
 let db: Database;
 
@@ -84,25 +85,6 @@ describe("changesSince", () => {
 });
 
 describe("kura changes CLI", () => {
-  const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
-
-  async function runCli(
-    args: string[],
-    env: Record<string, string>,
-  ): Promise<{ code: number; stdout: string; stderr: string }> {
-    const proc = Bun.spawn(["bun", "run", CLI, ...args], {
-      env: { ...process.env, NO_COLOR: "1", ...env },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
-  }
-
   test("changes --since with relative time and --json", async () => {
     const home = mkdtempSync(join(tmpdir(), "kura-changes-cli-"));
     const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };

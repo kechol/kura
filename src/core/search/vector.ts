@@ -112,13 +112,13 @@ export interface VectorHitDetail {
   chunkText: string;
 }
 
-function chunkSnippet(text: string): string {
-  // Return the start of the body without the context header (first line)
+/** Chunk text → display snippet: strip the context header (first line), collapse whitespace, truncate */
+export function chunkSnippet(text: string, max = 160): string {
   const body = text
     .replace(/^# [^\n]*\n+/, "")
     .replaceAll(/\s+/g, " ")
     .trim();
-  return body.length > 160 ? `${body.slice(0, 160)}…` : body;
+  return body.length > max ? `${body.slice(0, max)}…` : body;
 }
 
 /** Query embedding -> chunks_vec KNN -> aggregate per document by best chunk (docs: search-pipeline.md) */

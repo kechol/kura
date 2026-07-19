@@ -1,14 +1,15 @@
 import type { Database } from "bun:sqlite";
 import { toSqliteDatetime } from "./frontmatter";
-import { stateAsOf } from "./revisions";
+import { revisionMetaAsOf } from "./revisions";
 
 /**
  * Change feed (kura changes / MCP kura_changes): what happened in the store
  * since a point in time, so an agent resuming a session can catch up in one
  * call. Built on documents.updated_at plus the revision history — the
- * previous state comes from stateAsOf, so a pruned or coalesced-away
- * snapshot degrades to "changed, previous state unknown". Deletions are not
- * tracked (revisions die with their document, docs: data-model.md).
+ * previous state comes from revisionMetaAsOf (hashes only, no bodies), so a
+ * pruned or coalesced-away snapshot degrades to "changed, previous state
+ * unknown". Deletions are not tracked (revisions die with their document,
+ * docs: data-model.md).
  */
 
 export interface ChangeEntry {
@@ -64,7 +65,7 @@ export function changesSince(
   params.push(opts.limit ?? 50);
   const rows = db
     .prepare(
-      `SELECT d.id, d.doc_key, b.name AS bucket, d.path, d.title, d.content,
+      `SELECT d.id, d.doc_key, b.name AS bucket, d.path, d.title, d.content_hash,
               d.created_at, d.updated_at
        FROM documents d JOIN buckets b ON b.id = d.bucket_id
        WHERE ${where.join(" AND ")}
@@ -76,14 +77,14 @@ export function changesSince(
     bucket: string;
     path: string;
     title: string;
-    content: string;
+    content_hash: string;
     created_at: string;
     updated_at: string;
   }>;
 
   return rows.map((row) => {
     const created = row.created_at > since;
-    const prev = created ? null : stateAsOf(db, row.id, since);
+    const prev = created ? null : revisionMetaAsOf(db, row.id, since);
     return {
       key: row.doc_key,
       bucket: row.bucket,
@@ -92,11 +93,21 @@ export function changesSince(
       kind: created ? ("created" as const) : ("updated" as const),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      contentChanged: created || (prev ? prev.content !== row.content : true),
+      contentChanged: prev === null || prev.contentHash !== row.content_hash,
       renamed: prev !== null && prev.title !== row.title,
       moved: prev !== null && prev.path !== row.path,
       previousTitle: prev?.title ?? null,
       previousPath: prev?.path ?? null,
     };
   });
+}
+
+/** Human-readable what-changed parts; empty for created entries (shared by CLI and MCP) */
+export function changeDetails(c: ChangeEntry): string[] {
+  if (c.kind === "created") return [];
+  const details: string[] = [];
+  if (c.contentChanged) details.push("content");
+  if (c.renamed) details.push(`renamed from ${c.previousTitle}`);
+  if (c.moved) details.push(`moved from ${c.previousPath === "" ? "(root)" : c.previousPath}`);
+  return details;
 }

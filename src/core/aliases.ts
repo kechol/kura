@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { UsageError } from "./errors";
 import { ftsRefreshAliases } from "./fts";
-import { resolveLinkTarget, resolveUnresolvedLinks } from "./links";
+import { type ReresolveRow, reresolveLinks, resolveUnresolvedLinks } from "./links";
 import { normalizeAlias } from "./wiki";
 
 /**
@@ -35,6 +35,25 @@ export function docAliases(db: Database, docId: number): string[] {
     .prepare("SELECT alias FROM document_aliases WHERE document_id = ? ORDER BY id")
     .all(docId) as Array<{ alias: string }>;
   return rows.map((r) => r.alias);
+}
+
+/** Aliases for many documents in one query (the listDocuments batch path) */
+export function docAliasesBatch(db: Database, docIds: number[]): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  if (docIds.length === 0) return map;
+  const rows = db
+    .prepare(
+      `SELECT document_id, alias FROM document_aliases
+       WHERE document_id IN (${docIds.map(() => "?").join(", ")})
+       ORDER BY document_id, id`,
+    )
+    .all(...docIds) as Array<{ document_id: number; alias: string }>;
+  for (const r of rows) {
+    const list = map.get(r.document_id);
+    if (list) list.push(r.alias);
+    else map.set(r.document_id, [r.alias]);
+  }
+  return map;
 }
 
 /**
@@ -75,11 +94,12 @@ export function removeAliasesFromDoc(db: Database, docId: number, raws: string[]
   return db.transaction(() => {
     let removed = 0;
     const affected: string[] = [];
+    const remove = db.prepare(
+      "DELETE FROM document_aliases WHERE document_id = ? AND lower(alias) = lower(?)",
+    );
     for (const raw of raws) {
       const alias = requireAlias(raw);
-      const result = db
-        .prepare("DELETE FROM document_aliases WHERE document_id = ? AND lower(alias) = lower(?)")
-        .run(docId, alias);
+      const result = remove.run(docId, alias);
       if (result.changes > 0) {
         removed += result.changes;
         affected.push(alias.toLowerCase());
@@ -87,13 +107,25 @@ export function removeAliasesFromDoc(db: Database, docId: number, raws: string[]
     }
     if (removed > 0) {
       ftsRefreshAliases(db, docId);
-      reresolveLinksForRemovedAliases(db, docId, affected);
+      // Links that resolved through a removed alias find another home or unresolve
+      const rows = db
+        .prepare(
+          `SELECT l.id, l.source_id, l.target_title, l.target_id, s.bucket_id
+           FROM links l JOIN documents s ON s.id = l.source_id
+           WHERE l.target_id = ? AND lower(l.target_title) IN (${affected.map(() => "?").join(", ")})`,
+        )
+        .all(docId, ...affected) as ReresolveRow[];
+      reresolveLinks(db, rows);
     }
     return removed;
   })();
 }
 
-/** Replace the alias set (diff against the current one; add/remove semantics above) */
+/**
+ * Replace the alias set: remove what fell out of the new set, then add the
+ * rest (addAliasesToDoc already skips existing entries). Wrapped in one
+ * transaction so the replace is atomic (invariants R2).
+ */
 export function setAliasesForDoc(
   db: Database,
   docId: number,
@@ -101,31 +133,9 @@ export function setAliasesForDoc(
 ): { added: string[]; removed: number } {
   return db.transaction(() => {
     const next = new Set(raws.map((r) => requireAlias(r).toLowerCase()));
-    const current = docAliases(db, docId);
-    const toRemove = current.filter((a) => !next.has(a.toLowerCase()));
-    const currentLower = new Set(current.map((a) => a.toLowerCase()));
-    const toAdd = raws.filter((r) => !currentLower.has(requireAlias(r).toLowerCase()));
+    const toRemove = docAliases(db, docId).filter((a) => !next.has(a.toLowerCase()));
     const removed = toRemove.length > 0 ? removeAliasesFromDoc(db, docId, toRemove) : 0;
-    const added = toAdd.length > 0 ? addAliasesToDoc(db, docId, toAdd) : [];
+    const added = addAliasesToDoc(db, docId, raws);
     return { added, removed };
   })();
-}
-
-function reresolveLinksForRemovedAliases(db: Database, docId: number, lowered: string[]): void {
-  const rows = db
-    .prepare(
-      `SELECT l.id, l.source_id, l.target_title, s.bucket_id
-       FROM links l JOIN documents s ON s.id = l.source_id
-       WHERE l.target_id = ? AND lower(l.target_title) IN (${lowered.map(() => "?").join(", ")})`,
-    )
-    .all(docId, ...lowered) as Array<{
-    id: number;
-    source_id: number;
-    target_title: string;
-    bucket_id: number;
-  }>;
-  const update = db.prepare("UPDATE links SET target_id = ? WHERE id = ?");
-  for (const row of rows) {
-    update.run(resolveLinkTarget(db, row.bucket_id, row.target_title, row.source_id), row.id);
-  }
 }

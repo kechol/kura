@@ -125,6 +125,33 @@ export function resolveUnresolvedLinks(
   return changes;
 }
 
+export interface ReresolveRow {
+  id: number;
+  source_id: number;
+  target_title: string;
+  /** Current target_id of the row (null when unresolved) */
+  target_id: number | null;
+  bucket_id: number;
+}
+
+/**
+ * Re-run the three-stage resolution for the given link rows, updating those
+ * whose target changed. Shared by alias removal (src/core/aliases.ts) and
+ * doctor's bulk re-resolution. Returns how many rows changed.
+ */
+export function reresolveLinks(db: Database, rows: ReresolveRow[]): number {
+  const update = db.prepare("UPDATE links SET target_id = ? WHERE id = ?");
+  let changes = 0;
+  for (const row of rows) {
+    const target = resolveLinkTarget(db, row.bucket_id, row.target_title, row.source_id);
+    if (target !== row.target_id) {
+      update.run(target, row.id);
+      changes++;
+    }
+  }
+  return changes;
+}
+
 export function outlinks(db: Database, docId: number): Outlink[] {
   const rows = db
     .prepare(

@@ -2,7 +2,6 @@ import { findContradictions, pairLabel } from "../../core/audit";
 import { loadConfig } from "../../core/config";
 import { getDb } from "../../core/db";
 import { requireProvider } from "../../core/llm/provider";
-import { ensureEmbeddings } from "../../core/search/vector";
 import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt } from "../args";
 
 export const summary = "Audit the knowledge base for contradictions (requires an LLM)";
@@ -25,13 +24,12 @@ export async function run(argv: string[]): Promise<number> {
   const config = loadConfig();
   const { db } = getDb();
   const provider = await requireProvider(config);
-  const warn = await ensureEmbeddings(db, provider, config);
-  if (warn) console.error(`warning: ${warn}`);
 
   const outcome = await findContradictions(db, provider, config, {
     bucket: strOpt(parsed, "bucket"),
     limit: intOpt(parsed, "limit"),
   });
+  for (const w of outcome.warnings) console.error(`warning: ${w}`);
   const contradictions = outcome.pairs.filter((p) => p.contradictory);
 
   if (boolOpt(parsed, "json")) {

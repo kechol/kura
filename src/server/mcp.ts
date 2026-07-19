@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { changesSince, parseSince } from "../core/changes";
+import { changeDetails, changesSince, parseSince } from "../core/changes";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
 import { createDocument, resolveDoc, touchAccess, updateDocument } from "../core/documents";
@@ -379,11 +379,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         const changes = changesSince(db, parsed, { bucket, limit });
         if (changes.length === 0) return text(`No changes since ${parsed}.`);
         const lines = changes.map((c) => {
-          const details: string[] = [];
-          if (c.kind === "updated" && c.contentChanged) details.push("content");
-          if (c.renamed) details.push(`renamed from ${c.previousTitle}`);
-          if (c.moved)
-            details.push(`moved from ${c.previousPath === "" ? "(root)" : c.previousPath}`);
+          const details = changeDetails(c);
           const suffix = details.length > 0 ? ` — ${details.join(", ")}` : "";
           return `- **${c.kind}** ${joinDocPath(c.path, c.title)} (key: \`${c.key}\`, bucket: ${c.bucket}) at ${c.updatedAt}${suffix}`;
         });

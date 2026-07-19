@@ -1,4 +1,4 @@
-import { type ChangeEntry, changesSince, parseSince } from "../../core/changes";
+import { changeDetails, changesSince, parseSince } from "../../core/changes";
 import { getDb } from "../../core/db";
 import { joinDocPath } from "../../core/wiki";
 import { boolOpt, EXIT, intOpt, parseCommandArgs, strOpt, UsageError } from "../args";
@@ -14,15 +14,6 @@ deletions are not tracked.
 Examples:
   kura changes --since 7d
   kura changes --since 2026-07-01 --bucket main --json`;
-
-function detail(c: ChangeEntry): string {
-  if (c.kind === "created") return "";
-  const parts: string[] = [];
-  if (c.contentChanged) parts.push("content");
-  if (c.renamed) parts.push(`renamed from ${c.previousTitle}`);
-  if (c.moved) parts.push(`moved from ${c.previousPath === "" ? "(root)" : c.previousPath}`);
-  return parts.length > 0 ? `  (${parts.join(", ")})` : "";
-}
 
 export function run(argv: string[]): number {
   const parsed = parseCommandArgs(argv, {
@@ -75,8 +66,10 @@ export function run(argv: string[]): number {
     return EXIT.OK;
   }
   for (const c of changes) {
+    const details = changeDetails(c);
+    const suffix = details.length > 0 ? `  (${details.join(", ")})` : "";
     console.log(
-      `${c.kind.padEnd(7)}  #${c.key}  ${joinDocPath(c.path, c.title)}  [${c.bucket}]  ${c.updatedAt}${detail(c)}`,
+      `${c.kind.padEnd(7)}  #${c.key}  ${joinDocPath(c.path, c.title)}  [${c.bucket}]  ${c.updatedAt}${suffix}`,
     );
   }
   return EXIT.OK;

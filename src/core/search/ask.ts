@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { KuraConfig } from "../config";
 import type { FtsTokenizer } from "../db";
 import { cached } from "../llm/cache";
-import { resolveProvider } from "../llm/provider";
+import { resolveProvider, stripThinkBlocks } from "../llm/provider";
 import { joinDocPath } from "../wiki";
 import { type HybridOptions, hybridQuery } from "./hybrid";
 import type { SearchHit } from "./types";
@@ -93,8 +93,7 @@ export async function askQuestion(
         model,
         { temperature: 0.2 },
       );
-      // Qwen3-style think blocks are reasoning, not answer
-      return raw.replaceAll(/<think>[\s\S]*?<\/think>/gi, "").trim();
+      return stripThinkBlocks(raw);
     });
     return {
       answer,
