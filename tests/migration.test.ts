@@ -37,7 +37,7 @@ describe("migration 002: document paths (docs: data-model.md)", () => {
       "INSERT INTO documents_fts (rowid, title, content, tags) VALUES (1, '検索設計', '全文検索の設計方針。', 'tech/db')",
     );
 
-    migrate(db, CTX);
+    migrate(db, CTX, 2);
     expect(schemaVersion(db)).toBe(2);
 
     // ids / doc_keys unchanged; every row lands at the bucket root
@@ -86,6 +86,28 @@ describe("migration 002: document paths (docs: data-model.md)", () => {
       db.exec(`INSERT INTO documents (doc_key, bucket_id, path, title, content, content_hash)
         VALUES ('cccc3333', 1, '', 'メモ', 'x', 'h3')`),
     ).toThrow(/UNIQUE/);
+    db.close();
+  });
+});
+
+describe("migration 003: favorites (docs: data-model.md)", () => {
+  test("v2 → v3 adds favorite, defaulting existing documents to unpinned", () => {
+    const db = openRaw();
+    migrate(db, CTX, 2);
+    db.exec(`INSERT INTO documents (id, doc_key, bucket_id, path, title, content, content_hash)
+      VALUES (1, 'aaaa1111', 1, 'db/sqlite', 'WAL モード', 'ログ先行書き込み。', 'h1')`);
+
+    migrate(db, CTX);
+    expect(schemaVersion(db)).toBe(3);
+
+    const row = db.prepare("SELECT favorite FROM documents WHERE id = 1").get();
+    expect(row).toEqual({ favorite: 0 });
+
+    const indexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'documents'")
+      .all()
+      .map((r) => (r as { name: string }).name);
+    expect(indexes).toContain("idx_documents_favorite");
     db.close();
   });
 });

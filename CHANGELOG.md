@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Favorite documents: star a document from its title row and it stays pinned in
+  the sidebar on every screen, above the document tree. A favorite is rooted at
+  its own full path, so whatever is filed under it expands beneath it as a
+  collapsible tree. Backed by schema v3 (a `favorite` column, migrated
+  automatically), `PUT /api/docs/:key/favorite` and `GET /api/docs?favorite=1`.
+  Starring is not an edit — it leaves `updated_at` alone. `kura export` writes
+  `favorite: true` in the frontmatter and `kura import` restores it.
+- Browser UI: the document path is editable from the detail page — click the
+  path in the sidebar's メタ情報 box, with completions from the paths already
+  in use. Moving a document rewrites `[[links]]` in referring documents, the
+  same as `kura mv --path`.
 - Browser UI: documents are now edited where they are read. The rendered
   document is editable in place — headings, lists, quotes, bold/italic/code and
   links, with Markdown shortcuts (`# `, `- `, `1. `, `> `, ` ``` `) and a
@@ -77,7 +88,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Browser UI: the theme toggle moved from the header to the bottom of the
   sidebar and is now an icon (`lucide-preact`). The per-screen bucket
   dropdowns and the bucket column on the list are gone — the sidebar picker
-  replaces them.
+  replaces them. The shortcut-list icon has since joined it there, and the
+  document's delete button moved out of the title row to the bottom of the
+  document sidebar, where it now says what it deletes and stays muted until
+  you hover it.
 
 ## [0.1.0] - 2026-07-08
 

@@ -10,6 +10,7 @@ import {
   getDocumentByKey,
   listDocuments,
   resolveDoc,
+  setFavorite,
   touchAccess,
   updateDocument,
 } from "../core/documents";
@@ -55,6 +56,7 @@ function docJson(doc: DocumentRecord, content = false): Record<string, unknown> 
     updated_at: doc.updatedAt,
     last_accessed_at: doc.lastAccessedAt,
     access_count: doc.accessCount,
+    favorite: doc.favorite,
     ...(content ? { content: doc.content } : {}),
   };
 }
@@ -125,6 +127,7 @@ export function createApiRoutes(
           throw new UsageError(`invalid sort: ${sortParam}`);
         }
         const stale = url.searchParams.get("stale") === "1";
+        const favorite = url.searchParams.get("favorite") === "1";
         const per = Math.min(Number.parseInt(url.searchParams.get("per") ?? "50", 10) || 50, 200);
         const page = Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1);
 
@@ -132,6 +135,7 @@ export function createApiRoutes(
           bucket,
           tag,
           prefix,
+          favorite,
           sort: sortParam as "updated" | "created" | "accessed" | "title",
           stale,
           staleDays: config.general.stale_days,
@@ -219,6 +223,19 @@ export function createApiRoutes(
       }),
     },
 
+    "/api/docs/:key/favorite": {
+      // A sub-resource rather than a PUT /api/docs/:key field: starring is not an
+      // edit, so it must not bump updated_at the way the document PUT does
+      PUT: wrap(async (req) => {
+        const doc = requireDoc(db, req.params.key ?? "");
+        const body = (await req.json().catch(() => null)) as { favorite?: unknown } | null;
+        if (typeof body?.favorite !== "boolean") {
+          throw new UsageError("body field 'favorite' must be a boolean");
+        }
+        return json(docJson(setFavorite(db, doc.id, body.favorite)));
+      }),
+    },
+
     "/api/docs/:key/related": wrap((req) => {
       const doc = requireDoc(db, req.params.key ?? "");
       return json({
@@ -287,7 +304,14 @@ export function createApiRoutes(
 
 function listDocumentsCount(
   db: Database,
-  filter: { bucket?: string; tag?: string; prefix?: string; stale?: boolean; staleDays: number },
+  filter: {
+    bucket?: string;
+    tag?: string;
+    prefix?: string;
+    favorite?: boolean;
+    stale?: boolean;
+    staleDays: number;
+  },
 ): number {
   const where: string[] = [];
   const params: Array<string | number> = [];
@@ -305,6 +329,9 @@ function listDocumentsCount(
   if (filter.prefix) {
     where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
     params.push(filter.prefix, filter.prefix);
+  }
+  if (filter.favorite) {
+    where.push("d.favorite = 1");
   }
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");

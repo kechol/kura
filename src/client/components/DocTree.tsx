@@ -16,7 +16,7 @@ export function DocTree({ nodes }: Props) {
   return <DocTreeList nodes={nodes} />;
 }
 
-function DocTreeList({ nodes }: Props) {
+export function DocTreeList({ nodes }: Props) {
   return (
     <ul class="tag-tree doc-tree">
       {nodes.map((n) => (

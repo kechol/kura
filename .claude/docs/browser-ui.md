@@ -33,7 +33,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | --- | --- |
 | `index.html` | Static shell: `<div id="app">`, loads `/index.js` + `/index.css`, `lang="ja"` |
 | `index.tsx` | Entry point: theme init, wouter route table, 404 |
-| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`); `resolveDocSpec()` wraps `GET /api/resolve`; `ApiError` carries the HTTP status |
+| `api.ts` | Typed REST client; interfaces mirror `src/server/api.ts` responses (`DocMeta` / `SearchHit` include the document `path`, `DocMeta` also `favorite`); `resolveDocSpec()` wraps `GET /api/resolve`, `fetchFavorites()` / `setFavorite()` the favorites endpoints; `ApiError` carries the HTTP status |
 | `bucket.tsx` | `BucketProvider` / `useBucket()` — the selected bucket every screen is scoped to; persisted in `localStorage["kura-bucket"]` |
 | `lastdoc.ts` | Remembers the last-read document (`localStorage["kura-last-doc"]`) and rewrites `/` to it before the first render |
 | `modal.tsx` | `ModalProvider` / `useModal()` — owns the three modals and the global shortcut handler |
@@ -44,7 +44,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
 | `styles.css` | All styling; CSS custom properties per theme |
 | `types.d.ts` | Ambient module declarations for the bundler |
-| `components/Layout.tsx` | Header (search icon, nav, shortcut help) + sidebar (bucket picker, document tree, tag tree, theme toggle pinned at the bottom); refetches counts on navigation |
+| `components/Layout.tsx` | Header (search / new-document icons, nav) + sidebar (bucket picker, favorites, document tree, tag tree, and a footer pinned at the bottom holding the shortcut-list and theme icons); refetches the trees on navigation and whenever the open document's path / title / favorite changes |
 | `components/Modal.tsx` | Modal shell: overlay, Escape, focus in on open / restored on close; `ModalHints` renders the `<kbd>` footer |
 | `components/SearchModal.tsx` | Raycast-style search: keystroke-by-keystroke keyword search, document / tag tabs, tag filter |
 | `components/RecentModal.tsx` | Recently-viewed documents (Ctrl+R) |
@@ -52,6 +52,7 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
 | `components/DocContextSidebar.tsx` | The open document's tags (add / remove) and its same-tag / same-path neighbours |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
+| `components/FavoriteTree.tsx` | The favorites section: each pinned document, with whatever is filed under it expanding from the same `DocTree` nodes |
 | `currentdoc.tsx` | `CurrentDocProvider` — the detail screen publishes the document it fetched so the sidebar can show it without fetching again |
 | `editor/` | The inline editor: `model.ts` (block model), `parse.ts` / `serialize.ts` (markdown ⇄ model), `dom.ts` (model ⇄ contenteditable, caret math), `Editor.tsx`, `blocks.tsx`, `Toolbar.tsx` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
@@ -126,11 +127,19 @@ name on the detail page, the screen name elsewhere, both suffixed with
   dropdown — the sidebar picker scopes the whole table.
 - **Document detail** — reading and editing are the same screen (below). A path
   breadcrumb above the title (each segment links to `/docs?prefix=`); the title
-  itself is editable in place; a save-status line and delete (confirm dialog);
-  the **left** sidebar becomes the document's own (tags, same-tag and same-path
-  neighbours), and the right one keeps metadata (bucket, access count,
-  created/updated, source URL), **backlinks** and **two-hop links grouped by the
-  shared target** from `/api/docs/:key/related`.
+  itself is editable in place; a save-status line and a **favorite star**
+  (`PUT /api/docs/:key/favorite`) in the title row. The **left** sidebar becomes
+  the document's own (tags, same-tag and same-path neighbours), and the right
+  one keeps metadata (bucket, **path**, access count, created/updated, source
+  URL), **backlinks**, **two-hop links grouped by the shared target** from
+  `/api/docs/:key/related`, and — last, below everything reversible — the
+  delete button (confirm dialog). Delete is deliberately quiet: no panel, no
+  warning copy, muted until hover turns it red. It says what it does and gets
+  out of the way. The path row is a field: clicking it offers the paths already in use
+  in the bucket (a `datalist` built from `GET /api/docs/tree`) and saves with
+  `PUT /api/docs/:key` `{path}`, so a move rewrites referring `[[links]]`
+  exactly like `kura mv --path`; an empty value is the bucket root, Escape
+  cancels, and a collision renders the 409 message inline.
 - **Search page (`/search`)** — mode toggle (キーワード / ベクトル /
   ハイブリッド) and a tag filter, `limit=30`, always within the selected
   bucket. Renders API `warnings` (degraded mode) above results; each hit
@@ -142,6 +151,15 @@ name on the detail page, the screen name elsewhere, both suffixed with
   path prefixes and toggle open/closed (component state, default closed);
   document nodes link to the detail page; a branch whose path is itself a
   document does both. Titles containing a literal `/` stay single leaves.
+- **Sidebar favorites** — pinned above the document tree, on every screen
+  (`GET /api/docs?favorite=1`, scoped to the selected bucket). Each favorite is
+  rooted at its **own full path** (`path` + `title`), which is exactly the tree
+  node `buildDocTree` merges it into — so `FavoriteTree` looks that node up in
+  the already-fetched document tree and hangs its children off it, and nothing
+  new has to be computed server-side. A favorite with nothing filed under it is
+  a plain link with no toggle. Rooting at the full path rather than at
+  `doc.path` is deliberate: a favorite at the bucket root would otherwise expand
+  into the whole bucket.
 - **Tag browser** — the selected bucket's tag tree with "direct / total
   including descendants" counts; every node links to the filtered document
   list. Tags no document in the bucket uses do not appear.
@@ -158,7 +176,8 @@ name on the detail page, the screen name elsewhere, both suffixed with
 
 `ModalProvider` (`modal.tsx`) sits inside the router, owns which modal is open
 and hosts the single window `keydown` listener (`useShortcuts`). The header's
-magnifier icon opens the same search modal the shortcut does.
+magnifier icon opens the same search modal the shortcut does; the keyboard icon
+in the sidebar footer, next to the theme toggle, opens the shortcut list.
 
 | Shortcut | Action |
 | --- | --- |
@@ -321,8 +340,9 @@ markdown-it (html: true, linkify)
 
 1. `initTheme()` (run before first render) prefers `localStorage["kura-theme"]`,
    falling back to `prefers-color-scheme`.
-2. The toggle — an icon-only button (`lucide-preact` Sun / Moon) pinned to the
-   bottom of the sidebar — calls `setTheme()`, which persists the choice.
+2. The toggle — an icon-only button (`lucide-preact` Sun / Moon) in the sidebar
+   footer, beside the shortcut-list icon — calls `setTheme()`, which persists
+   the choice.
 3. All colors are CSS custom properties on `:root` /
    `:root[data-theme="dark"]` in `styles.css`; a
    `@media (prefers-color-scheme: dark)` block targeting
@@ -446,6 +466,14 @@ identifiers, and CSS class names stay English.
   screen to it. Cross-bucket browsing and search were dropped deliberately:
   a bucket is a workspace, and results that straddle two of them were noise.
   This is also the single exception to "no state outside the URL".
+- **Favorites are not in SPEC.** They are a browsing aid, not a third
+  organization axis: a favorite adds no metadata beyond a boolean, cannot be
+  nested, and only ever changes what the sidebar shows first. Being a column
+  rather than a table is what keeps that true (see
+  [data-model.md](data-model.md)). Favorites are browser-only — there is no
+  CLI or MCP surface for them — but `kura export` / `kura import` carry the
+  flag in the frontmatter, so the store still round-trips whole
+  (`.claude/rules/scope.md` R4).
 
 ## Related docs
 

@@ -32,6 +32,8 @@ export interface DocumentRecord {
   updatedAt: string;
   lastAccessedAt: string | null;
   accessCount: number;
+  /** Pinned to the browser sidebar (docs: browser-ui.md) */
+  favorite: boolean;
   tags: string[];
 }
 
@@ -50,12 +52,13 @@ interface DocRow {
   updated_at: string;
   last_accessed_at: string | null;
   access_count: number;
+  favorite: number;
 }
 
 const SELECT_DOC = `
   SELECT d.id, d.doc_key, d.bucket_id, b.name AS bucket, d.path, d.title, d.content,
          d.content_type, d.source_url, d.content_hash, d.created_at, d.updated_at,
-         d.last_accessed_at, d.access_count
+         d.last_accessed_at, d.access_count, d.favorite
   FROM documents d JOIN buckets b ON b.id = d.bucket_id`;
 
 function toRecord(db: Database, row: DocRow): DocumentRecord {
@@ -74,6 +77,7 @@ function toRecord(db: Database, row: DocRow): DocumentRecord {
     updatedAt: row.updated_at,
     lastAccessedAt: row.last_accessed_at,
     accessCount: row.access_count,
+    favorite: row.favorite === 1,
     tags: docTags(db, row.id),
   };
 }
@@ -517,12 +521,25 @@ export function touchAccess(db: Database, id: number): void {
   ).run(id);
 }
 
+/**
+ * Pin / unpin a document in the browser sidebar. Deliberately not part of
+ * updateDocument: starring is not an edit, so it must not touch updated_at (a
+ * favorite would otherwise jump to the top of every "recently updated" list) and
+ * it leaves the derived tables alone — the flag is not indexed, linked or chunked.
+ */
+export function setFavorite(db: Database, id: number, favorite: boolean): DocumentRecord {
+  db.prepare("UPDATE documents SET favorite = ? WHERE id = ?").run(favorite ? 1 : 0, id);
+  return getDocumentById(db, id);
+}
+
 export interface ListFilter {
   bucket?: string;
   /** Tag (descendant tags included) */
   tag?: string;
   /** Document path (descendant paths included) */
   prefix?: string;
+  /** Only favorites */
+  favorite?: boolean;
   sort?: "updated" | "created" | "accessed" | "title";
   stale?: boolean;
   staleDays?: number;
@@ -554,6 +571,9 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
   if (filter.prefix) {
     where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
     params.push(filter.prefix, filter.prefix);
+  }
+  if (filter.favorite) {
+    where.push("d.favorite = 1");
   }
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");
@@ -714,6 +734,11 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
       path = segments.join("/");
     }
 
+    // export only writes `favorite: true`, so an absent key means "leave it as it is"
+    // rather than "unstar" — a hand-written file never silently drops a pin
+    const pin = (record: DocumentRecord): DocumentRecord =>
+      fm?.favorite === undefined ? record : setFavorite(db, record.id, fm.favorite);
+
     const existing = fm?.kura_key ? getDocumentByKey(db, fm.kura_key) : null;
     if (existing) {
       const { record } = updateDocument(db, existing.id, {
@@ -726,7 +751,7 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
         tags: fm?.tags,
         updatedAt: fm?.updated_at,
       });
-      return { record, action: "updated" as const };
+      return { record: pin(record), action: "updated" as const };
     }
 
     const record = createDocument(db, {
@@ -741,6 +766,6 @@ export function importDocument(db: Database, input: ImportInput): ImportResult {
       createdAt: fm?.created_at,
       updatedAt: fm?.updated_at,
     });
-    return { record, action: "created" as const };
+    return { record: pin(record), action: "created" as const };
   })();
 }

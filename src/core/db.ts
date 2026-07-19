@@ -5,6 +5,7 @@ import { VAPORETTO_ENTRY_POINT, vaporettoLibPath, vecLoadablePath } from "./boot
 import { loadConfig } from "./config";
 import migration001 from "./migrations/001_init.sql" with { type: "text" };
 import migration002 from "./migrations/002_document_paths.sql" with { type: "text" };
+import migration003 from "./migrations/003_favorites.sql" with { type: "text" };
 import { dbPath } from "./paths";
 
 export type FtsTokenizer = "vaporetto" | "trigram";
@@ -46,6 +47,10 @@ const MIGRATIONS: Array<{ version: number; render(ctx: MigrateContext): string }
   {
     version: 2,
     render: () => migration002,
+  },
+  {
+    version: 3,
+    render: () => migration003,
   },
 ];
 

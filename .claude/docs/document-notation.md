@@ -150,6 +150,7 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
 | `bucket` | string | `--bucket` flag wins over frontmatter; otherwise config `default_bucket`. Missing buckets are auto-created |
 | `path` | string (normalized via `normalizeDocPath`; `""` = explicit bucket root) | Falls back to the file's subdirectory relative to the scanned root, with the leading segment stripped when it equals the bucket name (so an export tree round-trips); direct file arguments ⇒ root |
 | `tags` | string array or comma-separated string | No tags. Each entry is normalized (`normalizeTagPath`) and deduped |
+| `favorite` | boolean (`true`/`false`, or the strings `yes`/`no`) | The stored flag is **left alone**. Export writes the key only when the document is pinned, so re-importing an unpinned export never silently unstars anything; an explicit `favorite: false` does unstar |
 | `source_url` | string | Kept from the existing document on update; `null` on create |
 | `content_type` | `'markdown'` \| `'html'` (anything else ignored) | `'markdown'` |
 | `created_at` / `updated_at` | ISO 8601 (anything `Date`-parsable) | `datetime('now')` at save; converted to SQLite format via `toSqliteDatetime`, unparsable values ignored |
@@ -164,8 +165,14 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
   `<dir>/<bucket>/<path segments>/<sanitized title>.md` — each path segment
   sanitized like the file name, while a literal `/` in a *title* is
   sanitized to `-` (never nested) — quoting all string scalars, emitting
-  `path` only when non-root, `tags` only when non-empty, `content_type`
-  only when not `markdown`, and timestamps as ISO 8601 (`toIsoDatetime`).
+  `path` only when non-root, `tags` only when non-empty, `favorite` only when
+  pinned, `content_type` only when not `markdown`, and timestamps as ISO 8601
+  (`toIsoDatetime`).
+- **`favorite` is never written as `false`.** That is what makes "key absent ⇒
+  leave the flag alone" safe: an export of an unpinned document carries no
+  `favorite` key, so re-importing it cannot unstar the document it lands on.
+  `kura edit` does not serialize the key at all — favorites are set in the
+  browser, and an editor session must not silently drop one.
 
 ## `content_type: 'html'` special cases
 
@@ -193,6 +200,8 @@ HTML documents are stored verbatim and mostly opt out of notation handling
   are implementation-defined (locked in by `tests/wiki.test.ts`).
 - **`content_type` frontmatter field**: not in SPEC §4's field list; added
   so HTML documents survive the export/import round-trip.
+- **`favorite` frontmatter field**: likewise not in SPEC §4; added so the
+  browser's sidebar pins survive the round-trip (`.claude/rules/scope.md` R4).
 - **Document paths and two-stage link resolution are additions**: SPEC §4
   resolves `[[Title]]` by title only. The `path` column / frontmatter key,
   the full-path resolution stage, the exactly-one-candidate guard, and the

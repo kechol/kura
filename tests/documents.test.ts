@@ -10,6 +10,7 @@ import {
   listDocuments,
   renameDocument,
   resolveDoc,
+  setFavorite,
   touchAccess,
   updateDocument,
 } from "../src/core/documents";
@@ -287,6 +288,71 @@ describe("import / export round-trip", () => {
     });
     expect(created.action).toBe("created");
     expect(created.record.bucket).toBe("new-bucket");
+  });
+
+  test("the favorite flag survives the round-trip; an absent key leaves it alone", () => {
+    const doc = createDocument(db, { title: "WAL モード", content: "本文", bucket: "main" });
+    setFavorite(db, doc.id, true);
+
+    const fmText = serializeFrontmatter({
+      kura_key: doc.key,
+      title: "WAL モード",
+      bucket: "main",
+      path: "",
+      tags: [],
+      favorite: true,
+      created_at: doc.createdAt,
+      updated_at: doc.updatedAt,
+    });
+    expect(fmText).toContain("favorite: true");
+
+    const { fm, body } = parseFrontmatter(`${fmText}\n本文`);
+    expect(fm?.favorite).toBe(true);
+    const back = importDocument(db, { fm, body, fallbackTitle: "x", defaultBucket: "main" });
+    expect(back.record.favorite).toBe(true);
+
+    // export omits the key when unpinned, so importing such a file must not silently unstar
+    const kept = importDocument(db, {
+      fm: { kura_key: doc.key, title: "WAL モード", bucket: "main" },
+      body: "本文",
+      fallbackTitle: "x",
+      defaultBucket: "main",
+    });
+    expect(kept.record.favorite).toBe(true);
+
+    // …but an explicit `favorite: false` does unstar it
+    const cleared = importDocument(db, {
+      fm: { kura_key: doc.key, title: "WAL モード", bucket: "main", favorite: false },
+      body: "本文",
+      fallbackTitle: "x",
+      defaultBucket: "main",
+    });
+    expect(cleared.record.favorite).toBe(false);
+  });
+});
+
+describe("favorites", () => {
+  test("setFavorite pins without bumping updated_at, and listDocuments filters on it", () => {
+    const wal = createDocument(db, {
+      title: "WAL モード",
+      content: "ログ先行書き込み。",
+      bucket: "main",
+      path: "db/sqlite",
+    });
+    createDocument(db, { title: "トランザクション設計", content: "分離レベル。", bucket: "main" });
+
+    expect(wal.favorite).toBe(false);
+    const pinned = setFavorite(db, wal.id, true);
+    expect(pinned.favorite).toBe(true);
+    // Starring is not an edit: the document must not jump to the top of "recently updated"
+    expect(pinned.updatedAt).toBe(wal.updatedAt);
+
+    const favorites = listDocuments(db, { bucket: "main", favorite: true });
+    expect(favorites.map((d) => d.title)).toEqual(["WAL モード"]);
+    expect(listDocuments(db, { bucket: "main" }).length).toBe(2);
+
+    expect(setFavorite(db, wal.id, false).favorite).toBe(false);
+    expect(listDocuments(db, { favorite: true })).toEqual([]);
   });
 });
 

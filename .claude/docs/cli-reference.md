@@ -255,6 +255,9 @@ editor, and re-parses on exit.
   to the bucket root**), `bucket:` moves the document, and the frontmatter
   `tags` list is authoritative — tags removed from the list are detached via
   `removeTagsFromDoc`, new ones attached.
+- **`favorite` is not part of the edit buffer** (unlike `kura export`, which
+  writes it): favorites are a browser affordance, and an editor round-trip
+  must not be able to drop one by accident.
 - `kura_key` must not change; a mismatch aborts with a usage error and keeps
   the temp file. Because YAML would coerce an unquoted all-digit key to a
   number, the raw text is re-scanned (`rawFrontmatterKey`) before rejecting —
@@ -359,7 +362,8 @@ kura export [--bucket b] [--tag t] --dir <path> [--json]
 
 Writes every matching document to `<dir>/<bucket>/<path…>/<title>.md` with
 a serialized frontmatter block (`kura_key` always quoted; `path` emitted
-when non-root; datetimes emitted as ISO 8601). Document path segments become
+when non-root; `favorite: true` emitted only for pinned documents;
+datetimes emitted as ISO 8601). Document path segments become
 real subdirectories; each segment and the title are sanitized independently
 (`/ \ : * ? " < > |` and control chars → `-`) — a literal `/` in a *title*
 becomes `-`, it never nests. Empty results use the key, and case-insensitive
@@ -383,7 +387,9 @@ present, otherwise the file's subdirectory relative to the scanned root —
 with the leading segment stripped when it equals the target bucket name, so
 a `kura export` tree (`<dir>/<bucket>/<path…>`) round-trips; direct file
 arguments import to the bucket root. Frontmatter `created_at`/`updated_at`
-are preserved on round-trip. Invalid frontmatter or title conflicts (`ConflictError`) are
+are preserved on round-trip, and `favorite:` is applied when present (`true`
+pins, `false` unpins); an absent key leaves the stored flag alone, so
+importing an unpinned export never unstars anything. Invalid frontmatter or title conflicts (`ConflictError`) are
 skipped with a `skip <path>: reason` line on stderr and the run continues.
 Summary `imported: X created, Y updated, Z skipped`; `--json` →
 `{created, updated, skipped: [paths]}`. Exit 0 if anything succeeded, **1

@@ -8,6 +8,8 @@ export interface Frontmatter {
   /** Document path; '' is an explicit bucket root, undefined means the key was absent */
   path?: string;
   tags?: string[];
+  /** Sidebar pin; absent means "leave whatever the store has" */
+  favorite?: boolean;
   source_url?: string;
   content_type?: "markdown" | "html";
   created_at?: string;
@@ -34,6 +36,17 @@ function asString(v: unknown): string | undefined {
 /** Unlike asString, an empty string is kept — it is an explicit bucket root */
 function asDocPath(v: unknown): string | undefined {
   return typeof v === "string" ? normalizeDocPath(v) : undefined;
+}
+
+/** Accept the YAML booleans and the strings a hand-written file may carry */
+function asBoolean(v: unknown): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "yes") return true;
+    if (s === "false" || s === "no") return false;
+  }
+  return undefined;
 }
 
 function asDatetime(v: unknown): string | undefined {
@@ -78,6 +91,7 @@ export function parseFrontmatter(raw: string): { fm: Frontmatter | null; body: s
     bucket: asString(obj.bucket),
     path: asDocPath(obj.path),
     tags: asTags(obj.tags),
+    favorite: asBoolean(obj.favorite),
     source_url: asString(obj.source_url),
     content_type:
       contentType === "html" ? "html" : contentType === "markdown" ? "markdown" : undefined,
@@ -98,6 +112,7 @@ export function serializeFrontmatter(fm: {
   bucket: string;
   path: string;
   tags: string[];
+  favorite?: boolean;
   source_url?: string | null;
   content_type?: string;
   created_at: string;
@@ -112,6 +127,8 @@ export function serializeFrontmatter(fm: {
   if (fm.tags.length > 0) {
     lines.push(`tags: [${fm.tags.map(yamlScalar).join(", ")}]`);
   }
+  // Only written when set: an absent key leaves the flag alone on import
+  if (fm.favorite) lines.push("favorite: true");
   if (fm.source_url) lines.push(`source_url: ${yamlScalar(fm.source_url)}`);
   if (fm.content_type && fm.content_type !== "markdown") {
     lines.push(`content_type: ${fm.content_type}`);

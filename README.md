@@ -145,10 +145,15 @@ kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 
 Documents are read and edited on the same screen: the rendered Markdown is
 editable in place (Markdown shortcuts, a selection toolbar, autosave), with
-backlinks and 2-hop links alongside, and tags edited in the sidebar. Plus
-three-mode search, a sidebar document tree following your document paths, a
-tag browser, and a d3-force knowledge graph (colored by tag, stale nodes
-dimmed).
+backlinks and 2-hop links alongside, and tags, the document's path and its
+deletion handled in the sidebar. Plus three-mode search, a sidebar document
+tree following your document paths, a tag browser, and a d3-force knowledge
+graph (colored by tag, stale nodes dimmed).
+
+Star a document and it stays pinned at the top of the sidebar, on every
+screen, with whatever is filed under it expanding beneath it — so the notes
+you keep coming back to are always one click away. Favorites travel with
+`kura export` / `kura import`.
 
 Pick a bucket in the sidebar and the whole UI — browsing, search, trees,
 graph — stays inside it; the choice is remembered. Opening kura resumes the

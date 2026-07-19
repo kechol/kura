@@ -1,6 +1,17 @@
+import { Star, Trash2 } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
-import { ApiError, deleteDoc, fetchDoc, fetchRelated, type RelatedDoc, updateDoc } from "../api";
+import {
+  ApiError,
+  type DocTreeNode,
+  deleteDoc,
+  fetchDoc,
+  fetchDocTree,
+  fetchRelated,
+  type RelatedDoc,
+  setFavorite,
+  updateDoc,
+} from "../api";
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
 import { DocLinkList } from "../components/DocLink";
@@ -25,6 +36,15 @@ function RelatedList({ docs }: { docs: RelatedDoc[] }) {
   return <DocLinkList docs={docs} class="related-list" />;
 }
 
+/** Every path already in use in the bucket, as completions for the path field */
+function treePaths(nodes: DocTreeNode[], into: string[] = []): string[] {
+  for (const n of nodes) {
+    into.push(n.path);
+    treePaths(n.children, into);
+  }
+  return into;
+}
+
 export function DocDetail({ docKey }: { docKey: string }) {
   const [, navigate] = useLocation();
   const { bucket, setBucket } = useBucket();
@@ -41,6 +61,12 @@ export function DocDetail({ docKey }: { docKey: string }) {
   }, [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [pathEdit, setPathEdit] = useState<string | null>(null);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const tree = useAsync(
+    () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
+    [bucket, docKey],
+  );
   const d = doc.data;
 
   useDocumentTitle(d?.title ?? null);
@@ -106,6 +132,32 @@ export function DocDetail({ docKey }: { docKey: string }) {
     }
   };
 
+  // '' is a legal path (the bucket root), so an empty field saves rather than cancelling
+  const moveTo = async (raw: string) => {
+    const next = raw.trim().replace(/^\/+|\/+$/g, "");
+    setPathEdit(null);
+    setPathError(null);
+    if (next === d.path) return;
+    setStatus("saving");
+    try {
+      await updateDoc(d.key, { path: next });
+      setStatus("saved");
+      doc.reload();
+    } catch (e) {
+      setStatus("error");
+      setPathError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const toggleFavorite = async () => {
+    try {
+      await setFavorite(d.key, !d.favorite);
+      doc.reload();
+    } catch (e) {
+      alert(`お気に入りの更新に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const remove = async () => {
     if (!confirm(`「${d.title}」を削除しますか？この操作は取り消せません。`)) return;
     try {
@@ -150,8 +202,15 @@ export function DocDetail({ docKey }: { docKey: string }) {
           </h1>
           <div class="doc-actions">
             <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
-            <button type="button" class="btn btn-danger" onClick={remove}>
-              削除
+            <button
+              type="button"
+              class={`icon-btn favorite-toggle${d.favorite ? " on" : ""}`}
+              aria-pressed={d.favorite}
+              aria-label={d.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+              title={d.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+              onClick={() => void toggleFavorite()}
+            >
+              <Star size={16} fill={d.favorite ? "currentColor" : "none"} />
             </button>
           </div>
         </div>
@@ -175,6 +234,55 @@ export function DocDetail({ docKey }: { docKey: string }) {
             <div>
               <dt>Bucket</dt>
               <dd>{d.bucket}</dd>
+            </div>
+            <div>
+              <dt>パス</dt>
+              <dd>
+                {pathEdit === null ? (
+                  <button
+                    type="button"
+                    class="path-edit-trigger"
+                    title="クリックして移動"
+                    onClick={() => setPathEdit(d.path)}
+                  >
+                    {d.path === "" ? <span class="muted">bucket 直下</span> : d.path}
+                  </button>
+                ) : (
+                  <form
+                    class="path-edit-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void moveTo(pathEdit);
+                    }}
+                  >
+                    <input
+                      type="text"
+                      list="kura-path-options"
+                      placeholder="db/sqlite（空欄で bucket 直下）"
+                      value={pathEdit}
+                      // biome-ignore lint/a11y/noAutofocus: the field only exists once the user asks for it
+                      autoFocus
+                      onInput={(e) => setPathEdit((e.target as HTMLInputElement).value)}
+                      onBlur={(e) => void moveTo((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        // Restore the current path before leaving, so the blur that
+                        // follows saves nothing (moveTo skips an unchanged path)
+                        if (e.key === "Escape") {
+                          (e.currentTarget as HTMLInputElement).value = d.path;
+                          setPathEdit(null);
+                          setPathError(null);
+                        }
+                      }}
+                    />
+                    <datalist id="kura-path-options">
+                      {[...new Set(treePaths(tree.data ?? []))].sort().map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </form>
+                )}
+                {pathError !== null && <p class="error">{pathError}</p>}
+              </dd>
             </div>
             <div>
               <dt>参照数</dt>
@@ -223,6 +331,11 @@ export function DocDetail({ docKey }: { docKey: string }) {
             ))
           )}
         </section>
+        {/* Quiet by design: last in the sidebar, and only red once you reach for it */}
+        <button type="button" class="doc-delete" onClick={() => void remove()}>
+          <Trash2 size={14} />
+          このドキュメントを削除
+        </button>
       </aside>
     </div>
   );

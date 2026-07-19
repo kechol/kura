@@ -301,4 +301,63 @@ describe("REST API (docs: http-api.md)", () => {
     expect(ambiguous.status).toBe(409);
     expect(ambiguous.body.error).toContain("ambiguous");
   });
+
+  test("PUT /api/docs/:key moves a document to another path", async () => {
+    const doc = createDocument(db, { title: "記事", content: "x", bucket: "main" });
+    const moved = await api(`/api/docs/${doc.key}`, {
+      method: "PUT",
+      body: JSON.stringify({ path: "clips/技術" }),
+    });
+    expect(moved.status).toBe(200);
+    expect(moved.body.path).toBe("clips/技術");
+
+    // '' is a move back to the bucket root, not a no-op
+    const home = await api(`/api/docs/${doc.key}`, {
+      method: "PUT",
+      body: JSON.stringify({ path: "" }),
+    });
+    expect(home.body.path).toBe("");
+
+    // A destination that already holds the same title is a 409
+    createDocument(db, { title: "衝突", content: "y", bucket: "main", path: "clips" });
+    const other = createDocument(db, { title: "衝突", content: "z", bucket: "main", path: "notes" });
+    const clash = await api(`/api/docs/${other.key}`, {
+      method: "PUT",
+      body: JSON.stringify({ path: "clips" }),
+    });
+    expect(clash.status).toBe(409);
+    expect((await api(`/api/docs/${other.key}`)).body.path).toBe("notes");
+  });
+
+  test("PUT /api/docs/:key/favorite pins without touching updated_at", async () => {
+    const doc = createDocument(db, { title: "WAL モード", content: "x", bucket: "main" });
+    const before = await api(`/api/docs/${doc.key}`);
+    expect(before.body.favorite).toBe(false);
+
+    const pinned = await api(`/api/docs/${doc.key}/favorite`, {
+      method: "PUT",
+      body: JSON.stringify({ favorite: true }),
+    });
+    expect(pinned.status).toBe(200);
+    expect(pinned.body.favorite).toBe(true);
+    // Starring is not an edit: it must not reorder the "recently updated" list
+    expect(pinned.body.updated_at).toBe(before.body.updated_at);
+
+    const favorites = await api("/api/docs?favorite=1");
+    expect(favorites.body.total).toBe(1);
+    expect(favorites.body.docs[0].key).toBe(doc.key);
+
+    const unpinned = await api(`/api/docs/${doc.key}/favorite`, {
+      method: "PUT",
+      body: JSON.stringify({ favorite: false }),
+    });
+    expect(unpinned.body.favorite).toBe(false);
+    expect((await api("/api/docs?favorite=1")).body.total).toBe(0);
+
+    const invalid = await api(`/api/docs/${doc.key}/favorite`, {
+      method: "PUT",
+      body: JSON.stringify({ favorite: "yes" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
 });

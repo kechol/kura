@@ -60,6 +60,7 @@ export interface DocMeta {
   updated_at: string;
   last_accessed_at: string | null;
   access_count: number;
+  favorite: boolean;
 }
 
 export interface DocDetail extends DocMeta {
@@ -196,6 +197,7 @@ export interface DocsQuery {
   bucket?: string;
   tag?: string;
   prefix?: string;
+  favorite?: boolean;
   sort?: string;
   stale?: boolean;
   page?: number;
@@ -208,12 +210,19 @@ export function fetchDocs(q: DocsQuery = {}): Promise<DocListResult> {
       bucket: q.bucket,
       tag: q.tag,
       prefix: q.prefix,
+      favorite: q.favorite ? "1" : undefined,
       sort: q.sort,
       stale: q.stale ? "1" : undefined,
       page: q.page,
       per: q.per,
     })}`,
   );
+}
+
+/** Favorites of one bucket, alphabetical — the sidebar pins these on every screen */
+export async function fetchFavorites(bucket: string): Promise<DocMeta[]> {
+  const res = await fetchDocs({ bucket, favorite: true, sort: "title", per: 200 });
+  return res.docs;
 }
 
 /**
@@ -255,12 +264,21 @@ export function resolveDocSpec(spec: string, bucket?: string): Promise<DocMeta> 
 
 export function updateDoc(
   key: string,
-  body: { title?: string; content?: string; tags?: string[] },
+  body: { title?: string; path?: string; content?: string; tags?: string[] },
 ): Promise<DocDetail> {
   return request<DocDetail>(`/api/docs/${encodeURIComponent(key)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+/** Pin / unpin. Its own endpoint because starring must not bump updated_at */
+export function setFavorite(key: string, favorite: boolean): Promise<DocMeta> {
+  return request<DocMeta>(`/api/docs/${encodeURIComponent(key)}/favorite`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favorite }),
   });
 }
 

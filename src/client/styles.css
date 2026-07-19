@@ -192,10 +192,6 @@ button:focus-visible {
   text-decoration: none;
 }
 
-.header-help {
-  margin-left: auto;
-}
-
 /* ---- Inline editor ---- */
 
 .editor {
@@ -658,13 +654,14 @@ kbd {
   margin-bottom: 1.4rem;
 }
 
-/* Pinned to the bottom of the sidebar; holds the theme toggle */
+/* Pinned to the bottom of the sidebar; holds the shortcut list and theme toggle */
 .sidebar-footer {
   margin-top: auto;
   padding-top: 0.8rem;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
+  gap: 0.25rem;
 }
 
 .bucket-select {
@@ -873,6 +870,27 @@ mark {
 
 .doc-path-prefix {
   color: var(--text-muted);
+}
+
+/* ---- Favorites (sidebar + document header) ---- */
+
+/* align-self, because the row is a stretch flex container: without it the star
+   is stretched to the line box and rides above the title it belongs to */
+.favorite-star {
+  flex: none;
+  align-self: center;
+  color: var(--accent);
+}
+
+/* Star and title stay together; the subtree count keeps the right edge */
+.doc-tree-row .favorite-star + .tag-segment {
+  flex: 1;
+  min-width: 0;
+  margin-left: -0.15rem;
+}
+
+.favorite-toggle.on {
+  color: var(--accent);
 }
 
 .doc-breadcrumb {
@@ -1237,6 +1255,54 @@ mark {
 .meta-list dd {
   margin: 0;
   overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+
+/* The path reads as text until clicked, then becomes the field that moves the document */
+.path-edit-trigger {
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border-radius: 5px;
+  padding: 0 0.2rem;
+  margin: 0 -0.2rem;
+  cursor: text;
+  width: 100%;
+}
+
+.path-edit-trigger:hover {
+  border-color: var(--border);
+  background: var(--bg-inset);
+}
+
+.path-edit-form input {
+  width: 100%;
+  font-size: 0.88rem;
+}
+
+/* Deletion sits last in the sidebar, and stays quiet until reached for */
+.doc-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+
+.doc-delete:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 .related-list {

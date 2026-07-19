@@ -1,14 +1,15 @@
 # Data Model
 
-> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
+> Covers SPEC §3. Key sources: `src/core/migrations/001_init.sql`, `src/core/migrations/002_document_paths.sql`, `src/core/migrations/003_favorites.sql`, `src/core/db.ts`, `src/core/documents.ts`, `src/core/doctor.ts`, `src/core/frontmatter.ts`
 
 Schema v1 lives in `src/core/migrations/001_init.sql`; schema v2
-(`002_document_paths.sql`) adds hierarchical document paths (see the
-`documents` table and the migration-runner section below). Two placeholders
-are substituted into `001_init.sql` by the migration runner at apply time:
-`{{FTS_TOKENIZE}}` (`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}`
-(embedding dimensions). All derived tables are kept in sync by the
-repository layer — see the invariants in [architecture.md](architecture.md).
+(`002_document_paths.sql`) adds hierarchical document paths and schema v3
+(`003_favorites.sql`) the `favorite` flag (see the `documents` table and the
+migration-runner section below). Two placeholders are substituted into
+`001_init.sql` by the migration runner at apply time: `{{FTS_TOKENIZE}}`
+(`vaporetto` or `trigram`) and `{{VEC_DIMENSIONS}}` (embedding dimensions).
+All derived tables are kept in sync by the repository layer — see the
+invariants in [architecture.md](architecture.md).
 
 ## Tables
 
@@ -44,8 +45,10 @@ The single source of truth for document bodies.
 | `created_at` / `updated_at` | SQLite UTC format (see "Timestamps") |
 | `last_accessed_at` | Nullable; set by `touchAccess` (CLI `get`, MCP `kura_get`, API doc fetch) |
 | `access_count` | Incremented by `touchAccess` |
+| `favorite` | `0` / `1`, `NOT NULL DEFAULT 0` (schema v3). Pins the document to the browser sidebar (docs: [browser-ui.md](browser-ui.md)). Written **only** by `setFavorite` — never by `updateDocument`, so starring leaves `updated_at` alone |
 
-Indexes: `idx_documents_bucket`, `idx_documents_updated`.
+Indexes: `idx_documents_bucket`, `idx_documents_updated`,
+`idx_documents_favorite` (partial, `WHERE favorite = 1`).
 
 ### `tags` / `document_tags`
 
@@ -162,6 +165,9 @@ The schema version is **not** in `meta`; it lives in `PRAGMA user_version`.
   recreating the two indexes. Every existing row gets `path = ''`, so an
   upgraded database's meaning is unchanged. Migrations are forward-only;
   there is no down path.
+- **Schema v3** (`003_favorites.sql`) adds `documents.favorite` with a plain
+  `ALTER TABLE … ADD COLUMN` (no rebuild) plus a partial index. Existing
+  documents default to unpinned.
 
 **Adding a migration**: create `src/core/migrations/00N_name.sql`, import it
 in `db.ts` with `with { type: "text" }`, append `{ version: N, render }` to
@@ -211,7 +217,13 @@ existing DBs will not re-run it.
 ## Consistency rules (SPEC §3.2)
 
 - Every documents write syncs `documents_fts` / `links` / `document_tags` /
-  `chunks` in the same transaction (`syncDerived`).
+  `chunks` in the same transaction (`syncDerived`). The two exceptions are
+  `touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`
+  (`favorite`): both write a column that no derived table reads, so they skip
+  `syncDerived` — and `setFavorite` deliberately also skips the `updated_at`
+  bump, because starring a document is not editing it. They still belong to
+  the repository layer (`invariants.md` R1); nothing outside it writes
+  `documents`.
 - **Re-chunking**: `updateDocument` compares `sha256(new content)` with the
   stored `content_hash` and rebuilds chunks only on change (deleting the
   matching `chunks_vec` rows; new chunks start with `embedded_at = NULL` for
@@ -259,6 +271,10 @@ existing DBs will not re-run it.
   `path TEXT NOT NULL DEFAULT ''` and relaxes the constraint to
   `UNIQUE (bucket_id, path, title)`, so same-title documents can coexist in
   one bucket under different paths.
+- **Favorites (schema v3)**: SPEC §3.1 has no `favorite` column. It exists
+  for the browser sidebar and is deliberately a boolean column rather than a
+  table — a favorite carries no attributes of its own, so nothing about it
+  would be worth a row (docs: [browser-ui.md](browser-ui.md)).
 - **Case-insensitive uniqueness**: the DDL UNIQUE constraint is
   case-sensitive; the repository additionally rejects case-insensitive
   duplicates of the computed full path, which SPEC doesn't state explicitly.

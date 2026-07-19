@@ -80,7 +80,7 @@ statuses. The body is always `{"error": "<message>"}`.
 | Thrown | Status | Typical cause |
 | --- | --- | --- |
 | `NotFoundError` | 404 | unknown doc key |
-| `UsageError` | 400 | bad `sort`, bad `mode`, missing `q` |
+| `UsageError` | 400 | bad `sort`, bad `mode`, missing `q`, non-boolean `favorite` |
 | `ConflictError` | 409 | PUT rename onto an existing title in the bucket |
 | anything else (incl. `LLMUnavailableError`) | 500 | provider down in `mode=vector`, bugs |
 
@@ -93,8 +93,8 @@ never throws it (it degrades with warnings instead).
 - **Document** (`docJson()`): `key`, `path` (slash-separated document path,
   `""` = bucket root), `title`, `bucket`, `tags` (string array),
   `content_type`, `source_url`, `created_at`, `updated_at`,
-  `last_accessed_at`, `access_count`, plus `content` where noted. Timestamps
-  are SQLite `YYYY-MM-DD HH:MM:SS` strings (UTC).
+  `last_accessed_at`, `access_count`, `favorite` (boolean), plus `content`
+  where noted. Timestamps are SQLite `YYYY-MM-DD HH:MM:SS` strings (UTC).
 - **Search hit** (`hitJson()`): `key`, `path`, `title`, `bucket`, `tags`,
   `score`, `snippet` (matches wrapped in `**…**`), `source`
   (`keyword` | `vector` | `hybrid`).
@@ -150,6 +150,7 @@ Paged document listing (metadata only, no `content`).
 | `tag` | — | hierarchical: matches the tag itself **and descendants** (`t.path = ? OR t.path LIKE ? || '/%'`) |
 | `prefix` | — | document-path filter: matches the path itself **and descendants**, case-insensitively. Normalized (`normalizeDocPath`); a value that normalizes to `""` → 400 |
 | `sort` | `updated` | one of `updated` / `created` / `accessed` / `title`; anything else → 400 |
+| `favorite` | off | `favorite=1` keeps only pinned documents — how the sidebar's favorites section is loaded |
 | `stale` | off | `stale=1` keeps only docs with `updated_at` older than `general.stale_days` |
 | `page` | 1 | clamped to ≥ 1 |
 | `per` | 50 | **capped at 200**; non-numeric input falls back to the default |
@@ -229,6 +230,17 @@ Omitting `tags` (or sending a non-array) leaves tags untouched.
 
 Returns the updated document including `content`. Renaming or moving onto
 an existing computed full path in the same bucket → 409.
+
+### `PUT /api/docs/:key/favorite`
+
+Body: `{favorite: boolean}` (anything else → 400). Pins or unpins the
+document for the browser sidebar and returns the document JSON (no
+`content`).
+
+Its own sub-resource rather than a field on `PUT /api/docs/:key`, because
+starring is not an edit: it calls `setFavorite()`, which touches neither
+`updated_at` nor any derived table, so a pinned document does not jump to
+the top of every "recently updated" list.
 
 ### `DELETE /api/docs/:key`
 
@@ -336,6 +348,9 @@ detection, 60 s TTL). Lets the UI say whether vector/hybrid modes will work.
   ([browser-ui.md](browser-ui.md)).
 - **`prefix` on `/api/docs` is an addition** — hierarchical document paths
   post-date SPEC §8.2.
+- **`PUT /api/docs/:key/favorite` and `favorite` on `/api/docs` are
+  additions** — favorites post-date SPEC §8.2, and exist only for the browser
+  sidebar (no CLI or MCP surface).
 - **`limit` on `/api/search`** is an addition; SPEC lists only
   `q`, `mode`, `bucket`, `tag`.
 - **`per` is capped at 200**; SPEC only specifies the default of 50.

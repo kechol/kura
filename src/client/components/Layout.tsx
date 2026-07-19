@@ -2,7 +2,7 @@ import { FilePlus, Keyboard, Moon, Search, Sun } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
-import { fetchDocTree, fetchTagTree } from "../api";
+import { fetchDocTree, fetchFavorites, fetchTagTree } from "../api";
 import { useBucket } from "../bucket";
 import { useCurrentDoc } from "../currentdoc";
 import { useAsync } from "../hooks";
@@ -10,9 +10,13 @@ import { useModal } from "../modal";
 import { currentTheme, setTheme, type Theme } from "../theme";
 import { DocContextSidebar } from "./DocContextSidebar";
 import { DocTree } from "./DocTree";
+import { FavoriteTree } from "./FavoriteTree";
 import { TagTree } from "./TagTree";
 
-/** Shared layout: header (search) + left sidebar (bucket picker / doc tree / tag tree / theme) */
+/**
+ * Shared layout: header (search / new) + left sidebar (bucket picker / favorites /
+ * doc tree / tag tree / theme + shortcuts).
+ */
 export function Layout({ children }: { children: ComponentChildren }) {
   const [location] = useLocation();
   const { bucket, buckets, setBucket, loading } = useBucket();
@@ -21,13 +25,22 @@ export function Layout({ children }: { children: ComponentChildren }) {
   // Every tree is scoped to the selected bucket; refetch on navigation to keep counts current.
   // On a document the tag tree gives way to that document's own sidebar, so it is not fetched.
   const showTagTree = currentDoc.doc === null;
+  // Starring, renaming or moving the open document reshapes the trees without navigating,
+  // so the fields the trees are built from are part of what they refetch on.
+  const open = currentDoc.doc;
+  const docSignature =
+    open === null ? "" : `${open.key}:${open.path}:${open.title}:${open.favorite}`;
   const tags = useAsync(
     () => (bucket === "" || !showTagTree ? Promise.resolve([]) : fetchTagTree(bucket)),
     [location, bucket, showTagTree],
   );
   const docTree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
-    [location, bucket],
+    [location, bucket, docSignature],
+  );
+  const favorites = useAsync(
+    () => (bucket === "" ? Promise.resolve([]) : fetchFavorites(bucket)),
+    [location, bucket, docSignature],
   );
   const [theme, setThemeState] = useState<Theme>(currentTheme());
 
@@ -67,15 +80,6 @@ export function Layout({ children }: { children: ComponentChildren }) {
           <Link href="/graph">グラフ</Link>
           <Link href="/stats">統計</Link>
         </nav>
-        <button
-          type="button"
-          class="icon-btn header-help"
-          onClick={() => modal.open("shortcuts")}
-          aria-label="ショートカット一覧（Ctrl + ?）"
-          title="ショートカット一覧（Ctrl + ?）"
-        >
-          <Keyboard size={16} />
-        </button>
       </header>
       <div class="layout-body">
         <aside class="sidebar">
@@ -94,6 +98,11 @@ export function Layout({ children }: { children: ComponentChildren }) {
               ))}
             </select>
           </section>
+          {/* Pinned on every screen, so a favorite is always one click away */}
+          <section class="sidebar-section">
+            <h2>お気に入り</h2>
+            <FavoriteTree favorites={favorites.data ?? []} tree={docTree.data ?? []} />
+          </section>
           <section class="sidebar-section">
             <h2>ドキュメント</h2>
             <DocTree nodes={docTree.data ?? []} />
@@ -108,6 +117,15 @@ export function Layout({ children }: { children: ComponentChildren }) {
             </section>
           )}
           <div class="sidebar-footer">
+            <button
+              type="button"
+              class="icon-btn"
+              onClick={() => modal.open("shortcuts")}
+              aria-label="ショートカット一覧（Ctrl + ?）"
+              title="ショートカット一覧（Ctrl + ?）"
+            >
+              <Keyboard size={16} />
+            </button>
             <button
               type="button"
               class="icon-btn"

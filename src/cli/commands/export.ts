@@ -58,6 +58,7 @@ export async function run(argv: string[]): Promise<number> {
       bucket: doc.bucket,
       path: doc.path,
       tags: doc.tags,
+      favorite: doc.favorite,
       source_url: doc.sourceUrl,
       content_type: doc.contentType,
       created_at: doc.createdAt,

@@ -49,7 +49,7 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/core/paths.ts` | `KURA_HOME` / `KURA_DB` / lib-dir / config-path resolution, version constant |
 | `src/core/config.ts` | `config.toml` defaults, load/merge/save |
 | `src/core/db.ts` | `setCustomSQLite`, extension loading, migration runner, `meta` accessors, connection singleton |
-| `src/core/migrations/001_init.sql` | Schema v1 DDL with runtime placeholders (see [data-model.md](data-model.md)) |
+| `src/core/migrations/*.sql` | Schema DDL, one file per version — v1 carries the runtime placeholders (see [data-model.md](data-model.md)) |
 | `src/core/bootstrap.ts` | sqlite-vec extraction from the binary; SHA256-pinned sqlite-vaporetto download |
 | `src/core/errors.ts` | Error classes carrying the exit-code convention |
 | `src/core/documents.ts` | Document repository: CRUD + single-transaction sync of all derived data |
@@ -84,6 +84,12 @@ transaction in the repository layer** (`syncDerived` in
 covered by foreign keys. Consequently: **never UPDATE/DELETE `documents`
 directly** — always go through the repository functions. Tag-only operations
 refresh FTS via `ftsRefreshTags` (`src/core/fts.ts`).
+
+Two repository functions write `documents` without `syncDerived`:
+`touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`
+(`favorite`). Both touch a column no derived table reads, which is exactly
+why they are allowed to — and both still live in `src/core/documents.ts`, so
+the "repository layer is the only writer" rule holds.
 
 ### macOS: `setCustomSQLite` before the first `Database`
 
