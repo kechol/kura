@@ -38,31 +38,39 @@ export async function rerankCandidates(
   const model = config.llm.models.reranker;
   const results = new Map<number, number>();
   let index = 0;
+  let failed = false;
+  let failure: unknown;
 
   async function worker(): Promise<void> {
-    while (index < candidates.length) {
+    while (!failed && index < candidates.length) {
       const current = candidates[index++]!;
       const text = current.text.slice(0, MAX_DOC_CHARS);
-      const score = await cached<number>(db, "rerank", model, `${query}\x00${text}`, async () => {
-        const answer = await provider.chat(
-          [
-            { role: "system", content: SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: `<Instruct>: ${INSTRUCT}\n\n<Query>: ${query}\n\n<Document>: ${text}`,
-            },
-          ],
-          model,
-          { temperature: 0 },
-        );
-        return parseYesNo(answer);
-      });
-      results.set(current.docId, score);
+      try {
+        const score = await cached<number>(db, "rerank", model, `${query}\x00${text}`, async () => {
+          const answer = await provider.chat(
+            [
+              { role: "system", content: SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: `<Instruct>: ${INSTRUCT}\n\n<Query>: ${query}\n\n<Document>: ${text}`,
+              },
+            ],
+            model,
+            { temperature: 0 },
+          );
+          return parseYesNo(answer);
+        });
+        results.set(current.docId, score);
+      } catch (error) {
+        if (!failed) failure = error;
+        failed = true;
+      }
     }
   }
 
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, () => worker()),
   );
+  if (failed) throw failure;
   return results;
 }

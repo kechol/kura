@@ -1,7 +1,11 @@
 import { loadConfig } from "../../core/config";
-import { getDb, setMeta } from "../../core/db";
+import { getDb } from "../../core/db";
 import { requireProvider } from "../../core/llm/provider";
-import { backfillEmbeddings, pendingChunkCount } from "../../core/search/vector";
+import {
+  assertEmbeddingIdentity,
+  backfillEmbeddings,
+  pendingChunkCount,
+} from "../../core/search/vector";
 import { boolOpt, EXIT, parseCommandArgs } from "../args";
 
 export const summary = "Generate embeddings for pending chunks";
@@ -19,9 +23,12 @@ export async function run(argv: string[]): Promise<number> {
   const config = loadConfig();
   const { db } = getDb();
 
-  if (!all && pendingChunkCount(db) === 0) {
-    console.log("all chunks are already embedded");
-    return EXIT.OK;
+  if (!all) {
+    assertEmbeddingIdentity(db, config);
+    if (pendingChunkCount(db) === 0) {
+      console.log("all chunks are already embedded");
+      return EXIT.OK;
+    }
   }
   const provider = await requireProvider(config);
 
@@ -37,10 +44,6 @@ export async function run(argv: string[]): Promise<number> {
       }
     },
   });
-
-  // Record the model used in meta after embedding (for doctor's change detection)
-  setMeta(db, "embedding_model", config.llm.models.embedding);
-  setMeta(db, "embedding_dimensions", String(config.llm.models.embedding_dimensions));
 
   console.log(`embedded ${result.embedded} chunks (model: ${config.llm.models.embedding})`);
   return EXIT.OK;

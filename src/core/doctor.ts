@@ -3,6 +3,7 @@ import type { KuraConfig } from "./config";
 import { type FtsTokenizer, getMeta, setMeta } from "./db";
 import { sha256Hex, updateDocument } from "./documents";
 import { type ReresolveRow, reresolveLinks } from "./links";
+import { resetEmbeddingIndex } from "./search/vector";
 
 export interface FixReport {
   action: string;
@@ -122,15 +123,7 @@ export function recreateVecIfModelChanged(db: Database, config: KuraConfig): Fix
   const model = config.llm.models.embedding;
   if (storedDims === String(dims) && storedModel === model) return null;
 
-  db.transaction(() => {
-    db.exec("DROP TABLE chunks_vec");
-    db.exec(
-      `CREATE VIRTUAL TABLE chunks_vec USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[${dims}])`,
-    );
-    db.exec("UPDATE chunks SET embedded_at = NULL");
-    setMeta(db, "embedding_dimensions", String(dims));
-    setMeta(db, "embedding_model", model);
-  })();
+  resetEmbeddingIndex(db, config);
   return {
     action: "vec-recreate",
     detail: `detected embedding config change (${storedModel}/${storedDims} -> ${model}/${dims}); recreated chunks_vec. Run 'kura embed' to regenerate`,
