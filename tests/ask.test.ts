@@ -4,7 +4,7 @@ import { defaultConfig, type KuraConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
 import { createDocument, updateDocument } from "../src/core/documents";
 import type { LLMProvider, Message } from "../src/core/llm/provider";
-import { setProviderForTests } from "../src/core/llm/provider";
+import { resolveProvider, setProviderForTests } from "../src/core/llm/provider";
 import { askQuestion } from "../src/core/search/ask";
 
 /**
@@ -122,5 +122,23 @@ describe("askQuestion", () => {
     expect(outcome.answer).toBeNull();
     expect(outcome.hits).toEqual([]);
     expect(mock.askCalls).toBe(0);
+  });
+
+  test("provider detection follows a changed provider setting within the cache TTL", async () => {
+    setProviderForTests(undefined);
+    config.llm.provider = "none";
+    expect(await resolveProvider(config)).toBeNull();
+
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ models: [] }),
+    });
+    try {
+      config.llm.provider = "ollama";
+      config.llm.ollama_url = server.url.origin;
+      expect((await resolveProvider(config))?.name).toBe("ollama");
+    } finally {
+      server.stop(true);
+    }
   });
 });

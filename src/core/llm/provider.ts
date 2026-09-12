@@ -77,6 +77,7 @@ export abstract class OpenAICompatProvider implements LLMProvider {
 }
 
 interface CacheEntry {
+  key: string;
   provider: LLMProvider | null;
   expiresAt: number;
 }
@@ -90,13 +91,15 @@ export function setProviderForTests(provider: LLMProvider | null | undefined): v
   detectionCache = null;
 }
 
-async function detect(config: KuraConfig): Promise<LLMProvider | null> {
+type DetectionConfig = Pick<KuraConfig["llm"], "provider" | "ollama_url" | "lmstudio_url">;
+
+async function detect(config: DetectionConfig): Promise<LLMProvider | null> {
   const { OllamaProvider } = await import("./ollama");
   const { LMStudioProvider } = await import("./lmstudio");
-  const ollama = new OllamaProvider(config.llm.ollama_url);
-  const lmstudio = new LMStudioProvider(config.llm.lmstudio_url);
+  const ollama = new OllamaProvider(config.ollama_url);
+  const lmstudio = new LMStudioProvider(config.lmstudio_url);
 
-  switch (config.llm.provider) {
+  switch (config.provider) {
     case "none":
       return null;
     case "ollama":
@@ -114,13 +117,26 @@ async function detect(config: KuraConfig): Promise<LLMProvider | null> {
 
 const DETECTION_TTL_MS = 60_000;
 
+function detectionSnapshot(config: KuraConfig): DetectionConfig {
+  const { provider, ollama_url, lmstudio_url } = config.llm;
+  return { provider, ollama_url, lmstudio_url };
+}
+
+function detectionKey(config: DetectionConfig): string {
+  return [config.provider, config.ollama_url, config.lmstudio_url].join("\x00");
+}
+
 /** Resolve the provider (detection cached in-process for 60 seconds). null when unavailable */
 export async function resolveProvider(config: KuraConfig): Promise<LLMProvider | null> {
   if (testOverride) return testOverride.provider;
   const now = Date.now();
-  if (detectionCache && detectionCache.expiresAt > now) return detectionCache.provider;
-  const provider = await detect(config);
-  detectionCache = { provider, expiresAt: now + DETECTION_TTL_MS };
+  const snapshot = detectionSnapshot(config);
+  const key = detectionKey(snapshot);
+  if (detectionCache && detectionCache.key === key && detectionCache.expiresAt > now) {
+    return detectionCache.provider;
+  }
+  const provider = await detect(snapshot);
+  detectionCache = { key, provider, expiresAt: now + DETECTION_TTL_MS };
   return provider;
 }
 
