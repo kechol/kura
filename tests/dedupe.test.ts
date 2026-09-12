@@ -8,11 +8,7 @@ import {
   mergeDuplicate,
   nearDuplicates,
 } from "../src/core/dedupe";
-import {
-  createDocument,
-  getDocumentById,
-  getDocumentByKey,
-} from "../src/core/documents";
+import { createDocument, getDocumentById, getDocumentByKey } from "../src/core/documents";
 import { appendRelatedLinks, suggestLinksForDocument } from "../src/core/linking";
 import { outlinks } from "../src/core/links";
 import type { LLMProvider, Message } from "../src/core/llm/provider";
@@ -80,8 +76,16 @@ afterEach(() => {
 
 describe("exactDuplicates (core)", () => {
   test("finds byte-identical documents (different titles) and excludes non-duplicates", () => {
-    const a = createDocument(db, { title: "猫の飼い方", content: "猫は牛乳を飲めない。", bucket: "main" });
-    const b = createDocument(db, { title: "ネコのケア", content: "猫は牛乳を飲めない。", bucket: "main" });
+    const a = createDocument(db, {
+      title: "猫の飼い方",
+      content: "猫は牛乳を飲めない。",
+      bucket: "main",
+    });
+    const b = createDocument(db, {
+      title: "ネコのケア",
+      content: "猫は牛乳を飲めない。",
+      bucket: "main",
+    });
     createDocument(db, { title: "別の話題", content: "犬の散歩について。", bucket: "main" });
 
     const dupKeys = exactDuplicates(db, a).map((d) => d.key);
@@ -150,9 +154,21 @@ describe("judgeDuplicatePair (core)", () => {
 
 describe("mergeDuplicate (core)", () => {
   test("survivor gains the duplicate's title alias + tags (auto), duplicate is deleted, and referring links re-resolve", () => {
-    const survivor = createDocument(db, { title: "本命ノート", content: "充実した本文。", bucket: "main" });
-    const dup = createDocument(db, { title: "重複ノート", content: "簡易な本文。 #重要", bucket: "main" });
-    const third = createDocument(db, { title: "参照元", content: "[[重複ノート]] を参照。", bucket: "main" });
+    const survivor = createDocument(db, {
+      title: "本命ノート",
+      content: "充実した本文。",
+      bucket: "main",
+    });
+    const dup = createDocument(db, {
+      title: "重複ノート",
+      content: "簡易な本文。 #重要",
+      bucket: "main",
+    });
+    const third = createDocument(db, {
+      title: "参照元",
+      content: "[[重複ノート]] を参照。",
+      bucket: "main",
+    });
 
     // Before the merge the wiki link resolves to the duplicate
     expect(outlinks(db, third.id)[0]?.target?.key).toBe(dup.key);
@@ -235,7 +251,13 @@ describe("suggestLinksForDocument (core)", () => {
       content: "牛乳を猫にどう与えるか。",
       bucket: "main",
     });
-    const { suggestions, warnings } = await suggestLinksForDocument(db, "trigram", null, config, doc);
+    const { suggestions, warnings } = await suggestLinksForDocument(
+      db,
+      "trigram",
+      null,
+      config,
+      doc,
+    );
     expect(warnings.some((w) => w.includes("no LLM provider"))).toBe(true);
     // keyword neighbours are returned unjudged (source 'keyword'), self excluded
     expect(suggestions.every((s) => s.source === "keyword")).toBe(true);

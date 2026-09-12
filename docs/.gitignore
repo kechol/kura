@@ -5,8 +5,7 @@ dist/
 # dependencies
 node_modules/
 
-# lockfiles (the docs site is built with `bun install`, non-frozen)
-bun.lock
+# lockfiles
 package-lock.json
 
 # logs
