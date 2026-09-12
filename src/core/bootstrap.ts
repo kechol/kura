@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { getLoadablePath } from "sqlite-vec";
 import { embeddedVecLib, embeddedVecLibName } from "../generated/embedded";
 import { libDir } from "./paths";
@@ -126,8 +126,18 @@ export function vecLoadablePath(): string {
   if (embeddedVecLib && embeddedVecLibName !== "") {
     const dest = join(libDir(), embeddedVecLibName);
     if (!existsSync(dest)) {
-      mkdirSync(libDir(), { recursive: true });
-      writeFileSync(dest, readFileSync(embeddedVecLib));
+      mkdirSync(dirname(dest), { recursive: true });
+      const temp = `${dest}.${process.pid}.${crypto.randomUUID()}.tmp`;
+      try {
+        writeFileSync(temp, readFileSync(embeddedVecLib));
+        try {
+          renameSync(temp, dest);
+        } catch (error) {
+          if (!existsSync(dest)) throw error;
+        }
+      } finally {
+        rmSync(temp, { force: true });
+      }
     }
     return dest;
   }
