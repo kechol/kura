@@ -3,16 +3,65 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createBucket } from "../src/core/buckets";
 import { defaultConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
-import { createDocument } from "../src/core/documents";
+import { createDocument, getDocumentByKey } from "../src/core/documents";
 import { setProviderForTests } from "../src/core/llm/provider";
 import { type KuraServer, startServer } from "../src/server/http";
 
 let db: Database;
 let server: KuraServer;
 
+// biome-ignore lint/suspicious/noExplicitAny: API tests intentionally inspect heterogeneous JSON response shapes.
 async function api(path: string, init?: RequestInit): Promise<{ status: number; body: any }> {
   const res = await fetch(`${server.url}${path}`, init);
   return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+function documentState(key: string): Record<string, unknown> {
+  const doc = getDocumentByKey(db, key);
+  if (!doc) throw new Error(`fixture document not found: ${key}`);
+  return {
+    document: {
+      title: doc.title,
+      path: doc.path,
+      content: doc.content,
+      contentHash: doc.contentHash,
+      updatedAt: doc.updatedAt,
+      tags: doc.tags,
+      aliases: doc.aliases,
+    },
+    fts: db
+      .prepare("SELECT title, content, tags, aliases FROM documents_fts WHERE rowid = ?")
+      .get(doc.id),
+    chunks: db
+      .prepare(
+        "SELECT seq, text, start_offset, embedded_at FROM chunks WHERE document_id = ? ORDER BY seq",
+      )
+      .all(doc.id),
+    links: db
+      .prepare(
+        "SELECT target_title, target_id FROM links WHERE source_id = ? ORDER BY target_title",
+      )
+      .all(doc.id),
+    revisions: db
+      .prepare("SELECT * FROM document_revisions WHERE document_id = ? ORDER BY id")
+      .all(doc.id),
+  };
+}
+
+async function expectFailedPutIsAtomic(
+  body: Record<string, unknown>,
+  expectedStatus: number,
+): Promise<void> {
+  const target = db
+    .prepare("SELECT doc_key FROM documents WHERE title = ?")
+    .get("トランザクション設計") as { doc_key: string };
+  const before = documentState(target.doc_key);
+  const response = await api(`/api/docs/${target.doc_key}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  expect(response.status).toBe(expectedStatus);
+  expect(documentState(target.doc_key)).toEqual(before);
 }
 
 beforeEach(() => {
@@ -260,6 +309,64 @@ describe("REST API (docs: http-api.md)", () => {
     });
     expect(put.status).toBe(200);
     expect(put.body.aliases).toEqual(["全文検索設計"]);
+  });
+
+  test("PUT is atomic when the replacement title conflicts", async () => {
+    await expectFailedPutIsAtomic(
+      {
+        title: "SQLite の WAL モード",
+        content: "失敗時に残ってはいけない本文。",
+        tags: ["更新候補"],
+        aliases: ["更新候補の別名"],
+      },
+      409,
+    );
+  });
+
+  test("PUT is atomic when the title is empty", async () => {
+    await expectFailedPutIsAtomic(
+      {
+        title: "  ",
+        content: "失敗時に残ってはいけない本文。",
+        tags: ["更新候補"],
+        aliases: ["更新候補の別名"],
+      },
+      400,
+    );
+  });
+
+  test("PUT is atomic when a replacement tag is invalid", async () => {
+    await expectFailedPutIsAtomic(
+      {
+        content: "失敗時に残ってはいけない本文。",
+        tags: [""],
+        aliases: ["更新候補の別名"],
+      },
+      400,
+    );
+  });
+
+  test("PUT is atomic when a replacement alias is invalid", async () => {
+    await expectFailedPutIsAtomic(
+      {
+        content: "失敗時に残ってはいけない本文。",
+        tags: ["更新候補"],
+        aliases: ["不正/別名"],
+      },
+      400,
+    );
+  });
+
+  test("numeric query parameters reject non-positive and non-integer values", async () => {
+    const invalid = ["0", "-1", "1.5", "10junk", "9007199254740992"];
+    for (const value of invalid) {
+      expect((await api(`/api/docs?per=${value}`)).status).toBe(400);
+      expect((await api(`/api/docs?page=${value}`)).status).toBe(400);
+      expect((await api(`/api/stale?limit=${value}`)).status).toBe(400);
+      expect((await api(`/api/search?q=${encodeURIComponent("設計")}&limit=${value}`)).status).toBe(
+        400,
+      );
+    }
   });
 
   test("GET /api/docs/:key/related", async () => {
