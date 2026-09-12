@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
-import { VENDOR_TARGETS, vendorLibPath } from "./fetch-vendor";
+import { VEC_VERSION, VENDOR_TARGETS, vendorLibPath } from "./fetch-vendor";
 
 const root = join(import.meta.dir, "..");
 const GENERATED = join(root, "src", "generated", "embedded.ts");
@@ -70,7 +70,9 @@ function generateEmbeddedModule(bunTarget: string): void {
   lines.push("};");
   lines.push("");
   lines.push("export const embeddedVecLib: string | null = vecLib;");
-  lines.push(`export const embeddedVecLibName = ${JSON.stringify(vecLib.split("/").pop())};`);
+  lines.push(
+    `export const embeddedVecLibName = ${JSON.stringify(`sqlite-vec-${VEC_VERSION}/${vecLib.split("/").pop()}`)};`,
+  );
   lines.push("");
   writeFileSync(GENERATED, lines.join("\n"));
 }

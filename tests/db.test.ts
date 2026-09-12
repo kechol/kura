@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { verifyTarballIntegrity } from "../scripts/fetch-vendor";
 import { ensureVaporetto } from "../src/core/bootstrap";
 import { resetConfigCache } from "../src/core/config";
 import { closeDb, getDb, getMeta, openDatabase, schemaVersion, setMeta } from "../src/core/db";
@@ -117,6 +118,14 @@ describe("openDatabase", () => {
         .run(),
     ).toThrow();
     db.close();
+  });
+});
+
+describe("native artifact integrity", () => {
+  test("rejects a tarball whose bytes do not match the pinned integrity", () => {
+    expect(() =>
+      verifyTarballIntegrity(new TextEncoder().encode("corrupt"), "sha512-AAAA"),
+    ).toThrow(/integrity mismatch/);
   });
 });
 
