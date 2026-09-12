@@ -33,9 +33,20 @@ export async function run(argv: string[]): Promise<number> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // Wait until the client disconnects (stdin EOF)
-  await new Promise<void>((resolve) => {
-    server.server.onclose = () => resolve();
+  await new Promise<void>((resolve, reject) => {
+    let closing = false;
+    const finish = () => {
+      process.stdin.off("end", onEnd);
+      resolve();
+    };
+    const onEnd = () => {
+      if (closing) return;
+      closing = true;
+      server.close().then(finish, reject);
+    };
+    process.stdin.once("end", onEnd);
+    server.server.onclose = finish;
+    if (process.stdin.readableEnded) onEnd();
   });
   return EXIT.OK;
 }

@@ -1,12 +1,17 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { defaultConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
 import { createDocument } from "../src/core/documents";
 import { setProviderForTests } from "../src/core/llm/provider";
 import { createMcpServer } from "../src/server/mcp";
+import { CLI, runCli } from "./helpers";
 
 let db: Database;
 let client: Client;
@@ -213,4 +218,61 @@ describe("kura mcp server", () => {
     expect(md).toContain("# データベース設計");
     expect(md).toContain("aliases: DB設計");
   });
+
+  test("the CLI stdio transport initializes, lists, calls, errors, and shuts down cleanly", async () => {
+    const home = mkdtempSync(join(tmpdir(), "kura-mcp-stdio-"));
+    const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
+    const fixture = join(home, "標準入出力メモ.md");
+    const protocolErrors: Error[] = [];
+    let stderr = "";
+    let stdioClient: Client | null = null;
+    try {
+      const init = await runCli(["init", "--no-download"], env);
+      expect(init.code).toBe(0);
+      expect((await runCli(["config", "set", "llm.provider", "none"], env)).code).toBe(0);
+      writeFileSync(fixture, "MCP の標準入出力を確認する。 #技術/MCP\n");
+      const add = await runCli(["add", fixture], env);
+      expect(add.code).toBe(0);
+
+      const transport = new StdioClientTransport({
+        command: process.execPath,
+        args: ["run", CLI, "mcp"],
+        cwd: join(import.meta.dir, ".."),
+        env: { ...env, NO_COLOR: "1" },
+        stderr: "pipe",
+      });
+      transport.onerror = (error) => protocolErrors.push(error);
+      transport.stderr?.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      stdioClient = new Client({ name: "stdio-test-client", version: "0.0.1" });
+
+      await stdioClient.connect(transport);
+      expect(transport.pid).not.toBeNull();
+      expect((await stdioClient.listTools()).tools).toHaveLength(10);
+      const found = await stdioClient.callTool({
+        name: "kura_search",
+        arguments: { query: "標準入出力" },
+      });
+      expect(contentText(found)).toContain("標準入出力メモ");
+
+      const invalid = (await stdioClient.callTool({
+        name: "kura_search",
+        arguments: { query: "標準入出力", limit: 0 },
+      })) as { isError?: boolean };
+      expect(invalid.isError).toBe(true);
+
+      const closeStarted = performance.now();
+      await stdioClient.close();
+      const closeDurationMs = performance.now() - closeStarted;
+      stdioClient = null;
+      expect(transport.pid).toBeNull();
+      expect(closeDurationMs).toBeLessThan(1_500);
+      expect(protocolErrors).toEqual([]);
+      expect(stderr).toBe("");
+    } finally {
+      await stdioClient?.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
