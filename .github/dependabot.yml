@@ -9,16 +9,17 @@ updates:
       actions:
         patterns: ["*"]
 
-  # NOTE: the root project is managed with Bun, and Dependabot's npm updater
-  # does not maintain `bun.lock` — it bumps `package.json` only, which then
-  # fails CI's `bun install --frozen-lockfile`. Until Dependabot supports the
-  # Bun lockfile, root dependencies are updated manually (`bun update`), so the
-  # root `npm` ecosystem is intentionally not registered here.
+  # Root Bun dependencies and the committed bun.lock.
+  - package-ecosystem: bun
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      root:
+        patterns: ["*"]
 
-  # Docs site (Astro / Starlight) dependencies under docs/. Safe to automate:
-  # the docs build runs a non-frozen `bun install`, so a lone package.json bump
-  # resolves cleanly (no committed lockfile to drift).
-  - package-ecosystem: npm
+  # Docs site dependencies and docs/bun.lock.
+  - package-ecosystem: bun
     directory: "/docs"
     schedule:
       interval: weekly
