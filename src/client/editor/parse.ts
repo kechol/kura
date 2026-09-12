@@ -1,4 +1,4 @@
-import type Token from "markdown-it/lib/token.mjs";
+import type { Token } from "markdown-it";
 import { parseMarkdownTokens } from "../markdown";
 import {
   type Block,
@@ -54,7 +54,7 @@ function inlineFrom(children: Token[]): InlineNode[] {
         drop("strike");
         break;
       case "link_open":
-        links.push({ href: t.attrGet("href") ?? "", children: [] });
+        links.push({ href: String(t.attrGet("href") ?? ""), children: [] });
         break;
       case "link_close": {
         const link = links.pop();
@@ -65,7 +65,7 @@ function inlineFrom(children: Token[]): InlineNode[] {
         push({ kind: "wikilink", target: t.content });
         break;
       case "image":
-        push({ kind: "image", src: t.attrGet("src") ?? "", alt: t.content });
+        push({ kind: "image", src: String(t.attrGet("src") ?? ""), alt: t.content });
         break;
       case "hardbreak":
         push({ kind: "br" });

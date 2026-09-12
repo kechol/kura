@@ -317,7 +317,11 @@ describe("kura CRUD commands (e2e)", () => {
   test("ls --unfiled / --untagged filter the two backlog dimensions independently", async () => {
     const { env } = await makeHome();
     // filed (path db) but untagged
-    const a = await runCli(["add", "-", "--title", "整理済み下書き", "--path", "db"], env, "本文のみ。\n");
+    const a = await runCli(
+      ["add", "-", "--title", "整理済み下書き", "--path", "db"],
+      env,
+      "本文のみ。\n",
+    );
     expect(a.code).toBe(0);
     // unfiled (bucket root) but tagged
     const b = await runCli(["add", "-", "--title", "分類だけメモ"], env, "本文。 #タグ\n");

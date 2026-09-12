@@ -108,26 +108,55 @@ describe("listTriageBacklog (core)", () => {
       bucket: "main",
       updatedAt: "2026-01-01 00:00:00",
     });
-    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).toContain(doc.key);
+    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).toContain(
+      doc.key,
+    );
 
     // Triage stamps a time strictly after updated_at -> drops out of the backlog
     markTriaged(db, doc.id, "2026-01-02 00:00:00");
-    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).not.toContain(doc.key);
+    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).not.toContain(
+      doc.key,
+    );
     // redo ignores triaged_at
-    expect(listTriageBacklog(db, "main", { redo: true }).map((id) => getDocumentById(db, id).key)).toContain(doc.key);
+    expect(
+      listTriageBacklog(db, "main", { redo: true }).map((id) => getDocumentById(db, id).key),
+    ).toContain(doc.key);
 
     // A later content edit moves updated_at past triaged_at -> back in the backlog
     updateDocument(db, doc.id, { content: "改訂版。", updatedAt: "2026-01-03 00:00:00" });
-    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).toContain(doc.key);
+    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).key)).toContain(
+      doc.key,
+    );
   });
 
   test("limit caps and ordering is updated_at DESC", () => {
-    createDocument(db, { title: "A", content: "あ", bucket: "main", updatedAt: "2026-01-01 00:00:00" });
-    createDocument(db, { title: "B", content: "い", bucket: "main", updatedAt: "2026-03-01 00:00:00" });
-    createDocument(db, { title: "C", content: "う", bucket: "main", updatedAt: "2026-02-01 00:00:00" });
+    createDocument(db, {
+      title: "A",
+      content: "あ",
+      bucket: "main",
+      updatedAt: "2026-01-01 00:00:00",
+    });
+    createDocument(db, {
+      title: "B",
+      content: "い",
+      bucket: "main",
+      updatedAt: "2026-03-01 00:00:00",
+    });
+    createDocument(db, {
+      title: "C",
+      content: "う",
+      bucket: "main",
+      updatedAt: "2026-02-01 00:00:00",
+    });
 
-    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).title)).toEqual(["B", "C", "A"]);
-    expect(listTriageBacklog(db, "main", { limit: 2 }).map((id) => getDocumentById(db, id).title)).toEqual(["B", "C"]);
+    expect(listTriageBacklog(db, "main").map((id) => getDocumentById(db, id).title)).toEqual([
+      "B",
+      "C",
+      "A",
+    ]);
+    expect(
+      listTriageBacklog(db, "main", { limit: 2 }).map((id) => getDocumentById(db, id).title),
+    ).toEqual(["B", "C"]);
   });
 });
 

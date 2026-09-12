@@ -107,7 +107,7 @@ export function sanitizeHtml(content: string): string {
   return DOMPurify.sanitize(content);
 }
 
-const MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+export const MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@12.0.0/dist/mermaid.esm.min.mjs";
 
 interface MermaidModule {
   default: {
