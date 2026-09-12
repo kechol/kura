@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-12
+
 ### Added
 
 - Keyboard-only operation of the browser UI, following the Gmail / GitHub
@@ -18,7 +20,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `e` (edit), `s` (favorite), `u` (back to list) and `#` (delete). `Escape`
   now leaves the editor, cancels a title edit, and closes a raw block's text
   editor. The shortcut modal (`?`) lists all of them, grouped by screen.
-
 - Document aliases — alternate titles for a document, backed by schema v4
   (a `document_aliases` table, migrated automatically). `[[alias]]` wiki
   links resolve to the document (and self-heal when an alias is added
@@ -103,24 +104,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `link` (link relatedness judgment) — powering the triage title / dedupe /
   links steps.
 
-### Fixed
-
-- REST document replacement now updates the document, complete tag/alias sets,
-  FTS, chunks, links, and revisions in one transaction. Invalid replacements
-  and path/title conflicts leave every prior table unchanged; REST and CLI
-  integer options reject malformed, non-positive, fractional, and unsafe values.
-- Embedding writes now bind model/dimension identity across asynchronous
-  provider calls, skip concurrently edited/deleted chunks, reset atomically,
-  and resume in bounded batches. Filtered vector search constrains eligible
-  chunks inside KNN and expands candidates when repeated chunks would prevent
-  filling the requested document count. Failed reranks settle started workers
-  before database teardown.
-- `kura mcp` now closes its transport promptly on stdin EOF instead of waiting
-  for the SDK's forced-termination timeout.
-- Browser UI: `[[Title|display text]]` wiki links now render the display
-  text and resolve by the title, instead of showing the raw text with the
-  pipe.
-
 ### Changed
 
 - The supported toolchain is Bun 1.4.2. Root and docs dependency locks are
@@ -159,18 +142,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   top-level `kura audit` behavior is now `kura audit contradictions` (its
   text/JSON output unchanged, still exit 4 without a provider when invoked
   explicitly).
+  Migration: `kura audit` → `kura audit contradictions`.
 - **BREAKING**: `kura tag audit` moved to `kura audit tags`, and
   `kura link broken` moved to `kura audit links` (its `--json` is
   byte-identical to the old command's).
+  Migration: `kura tag audit` → `kura audit tags`;
+  `kura link broken` → `kura audit links`.
 
 ### Removed
 
 - **BREAKING**: `kura mv suggest` — the filing assistant is now the path step
   of `kura triage`; `kura mv` also drops the `--apply` / `--limit` flags it
   carried.
+  Migration: `kura mv suggest --apply` → `kura triage --steps path --apply`.
 - **BREAKING**: `kura tag suggest` — LLM tag suggestion is now the tags step
   of `kura triage`; `kura tag` drops the `--doc` / `--untagged` / `--apply`
   flags.
+  Migration: `kura tag suggest --untagged --apply` →
+  `kura triage --steps tags --apply`.
+
+### Fixed
+
+- REST document replacement now updates the document, complete tag/alias sets,
+  FTS, chunks, links, and revisions in one transaction. Invalid replacements
+  and path/title conflicts leave every prior table unchanged; REST and CLI
+  integer options reject malformed, non-positive, fractional, and unsafe values.
+- Embedding writes now bind model/dimension identity across asynchronous
+  provider calls, skip concurrently edited/deleted chunks, reset atomically,
+  and resume in bounded batches. Filtered vector search constrains eligible
+  chunks inside KNN and expands candidates when repeated chunks would prevent
+  filling the requested document count. Failed reranks settle started workers
+  before database teardown.
+  Migration: if the configured embedding model or dimensions no longer match
+  the database, `kura embed` stops with an identity-mismatch error; run
+  `kura doctor --fix`, then `kura embed`, to rebuild the vector index.
+- `kura mcp` now closes its transport promptly on stdin EOF instead of waiting
+  for the SDK's forced-termination timeout.
+- Browser UI: `[[Title|display text]]` wiki links now render the display
+  text and resolve by the title, instead of showing the raw text with the
+  pipe.
 
 ## [0.2.0] - 2026-07-19
 
