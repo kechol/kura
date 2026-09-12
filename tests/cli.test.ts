@@ -1,7 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CLI = join(import.meta.dir, "..", "src", "cli", "index.ts");
+const homes: string[] = [];
+
+afterAll(() => {
+  for (const home of homes) rmSync(home, { recursive: true, force: true });
+});
 
 async function runCli(
   args: string[],
@@ -53,5 +60,18 @@ describe("cli dispatch", () => {
     const r = await runCli(["config", "--bogus"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("Usage:");
+  });
+
+  test("integer options reject non-positive and non-integer values with exit 2", async () => {
+    const home = mkdtempSync(join(tmpdir(), "kura-cli-integer-test-"));
+    homes.push(home);
+    const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
+    expect((await runCli(["init", "--no-download"], env)).code).toBe(0);
+
+    for (const value of ["0", "-1", "1.5", "10junk", "9007199254740992"]) {
+      const result = await runCli(["search", "設計", `--limit=${value}`], env);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("must be a positive integer");
+    }
   });
 });

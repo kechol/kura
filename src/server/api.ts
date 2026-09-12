@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { setAliasesForDoc } from "../core/aliases";
 import { listBuckets, requireBucket } from "../core/buckets";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
@@ -10,10 +9,10 @@ import {
   docTree,
   getDocumentByKey,
   listDocuments,
+  replaceDocument,
   resolveDoc,
   setFavorite,
   touchAccess,
-  updateDocument,
 } from "../core/documents";
 import { ConflictError, NotFoundError, UsageError } from "../core/errors";
 import { docExcerpt } from "../core/excerpt";
@@ -26,7 +25,7 @@ import type { SearchHit } from "../core/search/types";
 import { ensureEmbeddings, vectorSearch } from "../core/search/vector";
 import { staleDocuments } from "../core/stale";
 import { collectStats } from "../core/stats";
-import { addTagsToDoc, buildTagTree, listTags, removeTagsFromDoc } from "../core/tags";
+import { buildTagTree, listTags } from "../core/tags";
 import { normalizeDocPath } from "../core/wiki";
 
 export interface ApiDeps {
@@ -86,6 +85,24 @@ function requireDoc(db: Database, key: string): DocumentRecord {
 
 const STALE_CUTOFF = (days: number): string => `-${days} days`;
 
+function positiveIntegerParam(
+  params: URLSearchParams,
+  name: string,
+  fallback: number,
+  cap?: number,
+): number {
+  const raw = params.get(name);
+  if (raw === null) return fallback;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new UsageError(`query parameter '${name}' must be a positive integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new UsageError(`query parameter '${name}' is too large`);
+  }
+  return cap === undefined ? value : Math.min(value, cap);
+}
+
 /** All REST API routes (docs: http-api.md). Passed to Bun.serve's routes */
 export function createApiRoutes(
   deps: ApiDeps,
@@ -123,7 +140,7 @@ export function createApiRoutes(
       const url = new URL(req.url);
       const bucket = url.searchParams.get("bucket") ?? config.general.default_bucket;
       requireBucket(db, bucket); // 404 on an unknown bucket, matching /api/insights
-      const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 50);
+      const limit = positiveIntegerParam(url.searchParams, "limit", 20, 50);
       const all = staleDocuments(db, config, { bucket });
       return json({
         count: all.length,
@@ -149,8 +166,11 @@ export function createApiRoutes(
         const stale = url.searchParams.get("stale") === "1";
         const favorite = url.searchParams.get("favorite") === "1";
         const withExcerpt = url.searchParams.get("excerpt") === "1";
-        const per = Math.min(Number.parseInt(url.searchParams.get("per") ?? "50", 10) || 50, 200);
-        const page = Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1);
+        const per = positiveIntegerParam(url.searchParams, "per", 50, 200);
+        const page = positiveIntegerParam(url.searchParams, "page", 1);
+        const offset = (page - 1) * per;
+        if (!Number.isSafeInteger(offset))
+          throw new UsageError("query parameter 'page' is too large");
 
         const filter = {
           bucket,
@@ -161,7 +181,7 @@ export function createApiRoutes(
           stale,
           staleDays: config.general.stale_days,
         };
-        const docs = listDocuments(db, { ...filter, limit: per, offset: (page - 1) * per });
+        const docs = listDocuments(db, { ...filter, limit: per, offset });
         const total = listDocumentsCount(db, filter);
         // excerpt=1 is opt-in: without it the payload is byte-identical to before
         const shaped = withExcerpt
@@ -226,21 +246,12 @@ export function createApiRoutes(
           tags?: string[];
           aliases?: string[];
         };
-        // Tags are diff-synced with the editor state as the source of truth
-        if (Array.isArray(body.tags)) {
-          const current = new Set(doc.tags);
-          const next = new Set(body.tags);
-          const toRemove = [...current].filter((t) => !next.has(t));
-          if (toRemove.length > 0) removeTagsFromDoc(db, doc.id, toRemove);
-          const toAdd = [...next].filter((t) => !current.has(t));
-          if (toAdd.length > 0) addTagsToDoc(db, doc.id, toAdd);
-        }
-        // Aliases likewise: the payload is the full set
-        if (Array.isArray(body.aliases)) setAliasesForDoc(db, doc.id, body.aliases);
-        const { record } = updateDocument(db, doc.id, {
+        const { record } = replaceDocument(db, doc.id, {
           title: body.title,
           path: body.path,
           content: body.content,
+          tags: Array.isArray(body.tags) ? body.tags : undefined,
+          aliases: Array.isArray(body.aliases) ? body.aliases : undefined,
         });
         return json(docJson(record, true));
       }),
@@ -283,7 +294,7 @@ export function createApiRoutes(
       const mode = url.searchParams.get("mode") ?? "keyword";
       const bucket = url.searchParams.get("bucket") ?? undefined;
       const tag = url.searchParams.get("tag") ?? undefined;
-      const limit = Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20;
+      const limit = positiveIntegerParam(url.searchParams, "limit", 20);
 
       if (mode === "keyword") {
         const hits = keywordSearch(db, tokenizer, q, { bucket, tag, limit });

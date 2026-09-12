@@ -61,12 +61,17 @@ export function boolOpt(parsed: Parsed, name: string): boolean {
   return parsed.values[name] === true;
 }
 
-/** Read an integer option (UsageError when unparsable) */
+/** Read a positive integer option (UsageError for zero, signs, fractions, suffixes, or overflow) */
 export function intOpt(parsed: Parsed, name: string): number | undefined {
   const v = strOpt(parsed, name);
   if (v === undefined) return undefined;
-  const n = Number.parseInt(v, 10);
-  if (Number.isNaN(n)) throw new UsageError(`--${name} must be an integer, got: ${v}`);
+  if (!/^[1-9]\d*$/.test(v)) {
+    throw new UsageError(`--${name} must be a positive integer, got: ${v}`);
+  }
+  const n = Number(v);
+  if (!Number.isSafeInteger(n)) {
+    throw new UsageError(`--${name} must be a positive integer, got: ${v}`);
+  }
   return n;
 }
 

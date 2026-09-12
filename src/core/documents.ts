@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { addAliasesToDoc, docAliases, docAliasesBatch } from "./aliases";
+import { addAliasesToDoc, docAliases, docAliasesBatch, setAliasesForDoc } from "./aliases";
 import { getOrCreateBucket, requireBucket } from "./buckets";
 import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
@@ -7,7 +7,7 @@ import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
 import { fullPathSql, resolveUnresolvedLinks, syncLinks } from "./links";
 import { snapshotRevision } from "./revisions";
-import { addTagsToDoc, docTags, docTagsBatch } from "./tags";
+import { addTagsToDoc, docTags, docTagsBatch, removeTagsFromDoc } from "./tags";
 import {
   extractWiki,
   joinDocPath,
@@ -392,6 +392,38 @@ export function updateDocument(db: Database, id: number, input: UpdateDocumentIn
       resolveIncoming: titleChanged || pathChanged || bucketChanged,
     });
     return { record: toRecord(db, updatedRow), relinked };
+  })();
+}
+
+export type ReplaceDocumentInput = Omit<UpdateDocumentInput, "tags" | "aliases"> & {
+  /** Complete REST editor tag set; body hashtags are still extracted by updateDocument */
+  tags?: string[];
+  /** Complete REST editor alias set */
+  aliases?: string[];
+};
+
+/**
+ * Replace the REST editor's document fields and metadata as one repository
+ * operation. updateDocument intentionally keeps add-only metadata semantics for
+ * CLI/MCP callers, while this wrapper preserves the REST API's full-set semantics.
+ */
+export function replaceDocument(
+  db: Database,
+  id: number,
+  input: ReplaceDocumentInput,
+): UpdateResult {
+  return db.transaction(() => {
+    const current = toRecord(db, getRowById(db, id));
+    if (input.tags !== undefined) {
+      const next = new Set(input.tags);
+      const toRemove = current.tags.filter((tag) => !next.has(tag));
+      if (toRemove.length > 0) removeTagsFromDoc(db, id, toRemove);
+      const existing = new Set(current.tags);
+      const toAdd = [...next].filter((tag) => !existing.has(tag));
+      if (toAdd.length > 0) addTagsToDoc(db, id, toAdd);
+    }
+    if (input.aliases !== undefined) setAliasesForDoc(db, id, input.aliases);
+    return updateDocument(db, id, { ...input, tags: undefined, aliases: undefined });
   })();
 }
 
