@@ -74,9 +74,10 @@ Without an LLM provider, `kura ask` simply shows the search results.
 ## Embeddings
 
 Semantic and hybrid search read from a vector index that has to be
-populated. `kura add` embeds new documents when a provider is
-available; `kura embed` (re)generates any that are missing. `kura status`
-reports embedding coverage so you can tell when a backfill is due.
+populated. Writes only mark new chunks as pending. Before a search, kura
+automatically embeds up to 100 pending chunks; use `kura embed` for a larger
+backlog or to resume interrupted work. `kura status` reports embedding
+coverage so you can tell when a backfill is due.
 
 If you change the embedding model, run `kura doctor --fix` (to detect
 the change) and then `kura embed` to regenerate vectors at the new

@@ -14,7 +14,7 @@
 | `bun run dev -- <args>` | Run the CLI from source (`src/cli/index.ts`), e.g. `bun run dev -- doctor` |
 | `bun test` | Full test suite (in-memory / temp-dir DBs via `KURA_HOME` / `KURA_DB`; never the real `~/.kura`) |
 | `KURA_TEST_DOWNLOAD=1 bun test tests/db.test.ts` | Additionally runs the real vaporetto download + load integration test |
-| `bun run check` | `tsc --noEmit` + `biome check src` — the CI gate |
+| `bun run check` | `tsc --noEmit` + `biome check src scripts tests` — the CI gate |
 | `bun run build:client` | SPA build via `scripts/build-html.ts` into `dist/` |
 | `bun run compile` | Single binary for the current platform via `scripts/compile.ts` |
 | `bun run scripts/fetch-vendor.ts [targets...]` | Prefetch sqlite-vec prebuilts into `vendor/` (all five targets when omitted) |
@@ -46,7 +46,7 @@ runs five stages:
 1. **SPA build** — invokes `scripts/build-html.ts` (above).
 2. **Vendor fetch** — invokes `scripts/fetch-vendor.ts <target>` so the
    sqlite-vec prebuilt for the *compile target* (not the host) exists under
-   `vendor/sqlite-vec/<bun-target>/`.
+   `vendor/sqlite-vec/<vec-version>/<bun-target>/`.
 3. **Codegen of `src/generated/embedded.ts`** — writes a module that imports
    every non-`.map` file in `dist/` plus the target's vec library with
    `import ... with { type: "file" }`, and exports:
@@ -72,8 +72,9 @@ In development `src/generated/embedded.ts` is a committed stub: empty
   embedded map is empty, from the embedded files otherwise.
 - `src/core/bootstrap.ts` (`vecLoadablePath()`) resolves sqlite-vec from
   `node_modules` in dev, or extracts the embedded library to
-  `~/.kura/lib/<ver>/` in a compiled binary (dlopen cannot read the embedded
-  virtual FS — see [native-extensions.md](native-extensions.md)).
+  `~/.kura/lib/<kura-version>/sqlite-vec-<vec-version>/<vec0.*>` in a
+  compiled binary (dlopen cannot read the embedded virtual FS — see
+  [native-extensions.md](native-extensions.md)).
 
 It lives in `src/generated/` — outside `core/`, `server/`, `cli/`, and
 `client/` — because it is consumed by both the core layer (vec extension) and
@@ -87,10 +88,13 @@ running platform, so cross-compiling five targets on one CI runner needs the
 other four prebuilts fetched explicitly. `fetch-vendor.ts` downloads the
 npm registry tarball for each requested target
 (`sqlite-vec-darwin-arm64`, `-darwin-x64`, `-linux-x64`, `-linux-arm64`,
-`-windows-x64`, pinned to `VEC_VERSION = 0.1.9`), extracts only the library
-file (`vec0.dylib` / `vec0.so` / `vec0.dll`) with
-`tar --strip-components=1`, and caches it under
-`vendor/sqlite-vec/<bun-target>/` (idempotent: existing files are skipped).
+`-windows-x64`). `VEC_VERSION` comes from the root manifest's required exact
+`sqlite-vec` pin, so development and release cannot silently diverge. The
+script verifies each tarball against its pinned npm SHA512 integrity, extracts
+only `vec0.dylib` / `vec0.so` / `vec0.dll`, and caches it under
+`vendor/sqlite-vec/<version>/<bun-target>/`. A sibling metadata file records
+the package, version, integrity, and library SHA256; a missing or mismatched
+file is deleted and fetched again rather than trusted.
 `VENDOR_TARGETS` is also the authoritative list of supported compile targets
 — `compile.ts` rejects anything not in it.
 
@@ -105,7 +109,7 @@ Triggered by pushing a `v[0-9]+.[0-9]+.[0-9]+*` tag (the maintainer's manual
 step after the `/release` bump PR merges); runs on `ubuntu-latest`, with the
 `release` job granted `contents: write`:
 
-1. Checkout + `setup-bun` pinned to **1.3.11** (see CI below) +
+1. Checkout + `setup-bun` pinned to **1.4.2** (see CI below) +
    `bun install --frozen-lockfile`.
 2. **Cross-compile all five targets** in a loop:
    `bun run scripts/compile.ts --target <t> --outfile release/<t>/kura`
@@ -147,41 +151,45 @@ bundled SQLite cannot do, so it needs the Homebrew keg at
 Runs on every PR and push to `main`:
 
 - **`check`** job (ubuntu): `bun install --frozen-lockfile` + `bun run check`
-  (`tsc --noEmit` + `biome check src`).
+  (`tsc --noEmit` + `biome check src scripts tests`).
 - **`test`** job, matrix `ubuntu-latest` × `macos-latest`. On Linux, `bun test`
   runs with **`KURA_TEST_DOWNLOAD=1`** so the real vaporetto download → SHA256
   → dlopen → Japanese tokenization integration test in `tests/db.test.ts`
   executes on linux-x64. On macOS the job first runs `brew install sqlite`
   (extension loading needs the Homebrew keg) and then a plain offline
-  `bun test`, exercising the macOS `setupSqlite()` path.
+  `bun test`, exercising the macOS `setupSqlite()` path. Each matrix entry
+  then compiles a host binary and runs `init --no-download` plus `status`
+  against an isolated `KURA_HOME`, covering embedded sqlite-vec extraction
+  and actual startup without touching user data.
 
-All Bun jobs pin **Bun 1.3.11**: newer/canary Bun builds hit a `dlopen`
-regression (oven-sh/bun#30717) that breaks `loadExtension()`, which would
-take down every native-extension code path. Bump the pin only after
-verifying extension loading on the new version (SPEC §2 calls this out as a
-hard requirement).
+All Bun jobs pin **Bun 1.4.2**. That version passed the real
+sqlite-vaporetto download/hash/load/Japanese-tokenization integration test
+and the compiled-host sqlite-vec smoke test. Future updates must repeat both
+native checks before changing the pin.
 
 ## Docs site (`.github/workflows/docs.yml`)
 
 The Astro Starlight site under `docs/` (English root + Japanese `ja/` mirror)
-builds on every `main` push (smoke test) and on `vX.Y.Z` tag pushes. Pages
+checks and builds on every PR, every `main` push, and `vX.Y.Z` tag pushes,
+using `docs/bun.lock` with `bun install --frozen-lockfile`. Pages
 deployment fires only for tag refs (and a manual `workflow_dispatch` with
 `publish=true`), so the published site at
 `https://kechol.github.io/kura/` tracks tagged releases, not the rolling
-`main` branch. The site is built with Bun (`bun install` + `bun run build`,
-non-frozen — no lockfile is committed for the docs site).
+`main` branch. Pull requests have read-only permissions and never satisfy the
+artifact upload or deploy conditions.
 
 ## Dependency automation
 
-`.github/dependabot.yml` watches three ecosystems (github-actions at the root,
-npm at `/` for the Bun deps, npm at `/docs` for the Astro site).
+`.github/dependabot.yml` watches three ecosystems: GitHub Actions at the root,
+plus Bun manifests and lockfiles at `/` and `/docs`.
 `.github/workflows/dependabot-auto-merge.yml` enables auto-merge (squash) for
-patch / minor and security bumps once the required CI checks pass; major bumps
-fall through to a human reviewer.
+patch / minor bumps once the required CI checks pass; major bumps fall through
+to a human reviewer.
 
 ## Binary size
 
-Measured: the compiled `darwin-arm64` binary is **~60 MB**, well under the
+Measured with Bun 1.4.2: the compiled `darwin-arm64` binary is
+**64,241,394 bytes (~64.2 MB)**, well under the
 SPEC §13 target of 100 MB. The embedded payload is the SPA `dist/` assets
 plus one sqlite-vec prebuilt; sqlite-vaporetto (extension + embedded
 morphological model) is deliberately *not* embedded and is downloaded at

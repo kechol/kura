@@ -147,7 +147,7 @@ exposure of the full `staleScore` — previously it was CLI-only.
 | Query param | Default | Notes |
 | --- | --- | --- |
 | `bucket` | `general.default_bucket` | an unknown bucket is a 404 (`requireBucket`), matching `/api/insights` |
-| `limit` | 20 | **capped at 50**; non-numeric input falls back to the default |
+| `limit` | 20 | positive safe integer; **capped at 50**; invalid values → 400 |
 
 ```
 { count,                    // total candidates in the bucket (score ≥ 1.0), before limit
@@ -183,8 +183,8 @@ Paged document listing (metadata only, no `content`).
 | `favorite` | off | `favorite=1` keeps only pinned documents — how the sidebar's favorites section is loaded |
 | `stale` | off | `stale=1` keeps only docs with `updated_at` older than `general.stale_days` |
 | `excerpt` | off | `excerpt=1` attaches a plain-text `excerpt` to every doc — how the home dashboard's cards load a body preview |
-| `page` | 1 | clamped to ≥ 1 |
-| `per` | 50 | **capped at 200**; non-numeric input falls back to the default |
+| `page` | 1 | positive safe integer; invalid values → 400 |
+| `per` | 50 | positive safe integer; **capped at 200**; invalid values → 400 |
 
 Response: `{docs: Document[], total, page, per}`. `total` is computed with
 the same filter by `listDocumentsCount()` so the UI can render pagination.
@@ -268,7 +268,9 @@ Omitting `tags` (or sending a non-array) leaves tags untouched. `aliases`
 gets the same treatment: the array is the complete desired set, diff-synced
 via `setAliasesForDoc()` (`src/core/aliases.ts`); omitting it (or sending a
 non-array) leaves aliases untouched. An invalid alias (contains
-`[ ] | /` or newlines) → 400.
+`[ ] | /` or newlines) → 400. Document fields, tags, aliases, FTS, chunks,
+links, and revision changes share one transaction, so a conflict or invalid
+replacement leaves the entire prior document state intact.
 
 Returns the updated document including `content`. Renaming or moving onto
 an existing computed full path in the same bucket → 409.
@@ -311,7 +313,7 @@ documents already directly linked.
 | `q` | **required** | trimmed; empty → 400 |
 | `mode` | `keyword` | `keyword` / `vector` / `hybrid`; anything else → 400 |
 | `bucket`, `tag` | — | same filter semantics as `/api/docs` |
-| `limit` | 20 | max hits returned |
+| `limit` | 20 | positive safe integer; invalid values → 400 |
 
 Response: `{hits: Hit[], warnings: string[]}`. The three modes map onto the
 search pipeline ([search-pipeline.md](search-pipeline.md)):

@@ -19,9 +19,11 @@ logic.
   testable in-process (see Testing below); nothing inside `mcp.ts` opens
   connections or reads files.
 - **Transport**: `kura mcp` (`src/cli/commands/mcp.ts`) connects a
-  `StdioServerTransport` and then blocks until the client disconnects
-  (`server.server.onclose`, i.e. stdin EOF). Logs must never go to stdout in
-  this mode — stdout is the protocol channel.
+  `StdioServerTransport` and then blocks until the client disconnects. SDK
+  1.30.0 does not translate stdin EOF into the server's close callback, so the
+  command also observes `process.stdin.end`, awaits `server.close()`, and
+  exits cleanly. Logs must never go to stdout in this mode — stdout is the
+  protocol channel.
 - `kura mcp --print-config` prints ready-to-paste client configuration and
   exits without starting a server (see Client setup).
 
@@ -216,12 +218,16 @@ provider.
 
 ## Testing
 
-`tests/mcp.test.ts` exercises the real protocol without processes or pipes:
+`tests/mcp.test.ts` exercises the protocol at two levels:
 
 - **`InMemoryTransport.createLinkedPair()`** from the SDK links a real
   `Client` to the server created by `createMcpServer()` with an in-memory
   database — full MCP framing, zero I/O. Connect both ends with
   `Promise.all([server.connect(st), client.connect(ct)])`.
+- **Spawned stdio** starts the actual `kura mcp` command and connects an SDK
+  client through process pipes. It covers initialize, tool listing, a
+  Japanese tool call, schema and missing-document errors, protocol-clean
+  stdout/stderr, and prompt shutdown after the client closes stdin.
 - **`setProviderForTests(null)`** (`src/core/llm/provider.ts`) pins "no LLM
   provider", making `kura_query` deterministic (degraded keyword-only mode
   with a `⚠` warning) — tests never touch a live Ollama/LM Studio. Reset

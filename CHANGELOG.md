@@ -105,12 +105,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- REST document replacement now updates the document, complete tag/alias sets,
+  FTS, chunks, links, and revisions in one transaction. Invalid replacements
+  and path/title conflicts leave every prior table unchanged; REST and CLI
+  integer options reject malformed, non-positive, fractional, and unsafe values.
+- Embedding writes now bind model/dimension identity across asynchronous
+  provider calls, skip concurrently edited/deleted chunks, reset atomically,
+  and resume in bounded batches. Filtered vector search constrains eligible
+  chunks inside KNN and expands candidates when repeated chunks would prevent
+  filling the requested document count. Failed reranks settle started workers
+  before database teardown.
+- `kura mcp` now closes its transport promptly on stdin EOF instead of waiting
+  for the SDK's forced-termination timeout.
 - Browser UI: `[[Title|display text]]` wiki links now render the display
   text and resolve by the title, instead of showing the raw text with the
   pipe.
 
 ### Changed
 
+- The supported toolchain is Bun 1.4.2. Root and docs dependency locks are
+  public-registry reproducible; direct dependencies were updated or retained
+  with compatibility evidence, including MCP SDK 1.30.0, Zod 4.6.2,
+  DOMPurify 3.4.15, markdown-it 15.0.2, Preact 10.29.8, Astro 7.3.2, and
+  exact Mermaid 12.0.0. CI checks source, scripts, and tests, validates docs on
+  pull requests with frozen installs, and smoke-tests compiled host binaries.
+- Added `scripts/benchmark.ts`, a temporary-database 10k Japanese-document
+  baseline/final runner with recorded warmups, trial medians/p90, CRUD/startup,
+  database and binary sizes, and an explicit regression exit contract.
 - Browser UI: the home screen was redesigned from a plain reading-history list
   into a multi-section dashboard — recently viewed, updated, created, favorite,
   most-viewed, and by-tag sections rendered as cards with body excerpts, plus a

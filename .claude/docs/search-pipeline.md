@@ -270,15 +270,17 @@ they only write chunks with `embedded_at = NULL`. Embeddings appear via
 (`src/core/search/vector.ts`):
 
 - **`kura embed`** (`src/cli/commands/embed.ts`): `backfillEmbeddings()`
-  processes pending chunks in batches of `EMBED_BATCH_SIZE = 16`; each batch
-  is one `provider.embed()` call plus one transaction writing `chunks_vec`
-  and stamping `embedded_at`. Because `embedded_at` is committed per batch,
-  an interrupted run **resumes where it left off** — the pending set is
-  simply `embedded_at IS NULL`. After a run the command records
-  `embedding_model` / `embedding_dimensions` in `meta` so `doctor` can
-  detect model drift (see [self-healing.md](self-healing.md)).
-- **`kura embed --all`**: clears `chunks_vec` entirely and nulls every
-  `embedded_at`, then regenerates everything (for model changes).
+  snapshots the current pending count and maximum chunk ID, then reads
+  bounded batches of `EMBED_BATCH_SIZE = 16`. The model/dimension identity
+  and chunk text are immutable operation inputs. After each provider call, a
+  transaction rechecks the stored identity and every chunk's unchanged text
+  before writing `chunks_vec` and stamping `embedded_at`; edits, deletes, or
+  identity drift during `await` are skipped or rejected instead of committing
+  stale vectors. Committed batches resume normally after interruption, and
+  chunks inserted after the snapshot stay pending for the next run.
+- **`kura embed --all`**: atomically clears `chunks_vec` and nulls every
+  `embedded_at`, then uses the same bounded backfill. It does not redefine an
+  identity that drifted; run `doctor --fix` first after model changes.
 - **Automatic pre-search backfill**: `ensureEmbeddings()` runs before every
   vector or hybrid search. Zero pending → proceed. Pending
   ≤ `AUTO_BACKFILL_LIMIT = 100` → silent full backfill. Pending > 100 →
@@ -286,7 +288,9 @@ they only write chunks with `embedded_at = NULL`. Embeddings appear via
   and search anyway with the embeddings that exist. Callers: the `vsearch`
   command, `hybridQuery`, `/api/search?mode=vector`, `kura audit`
   (`contradictions` / `dupes`), and `kura triage`.
-- **Dimension mismatch**: if the provider returns vectors whose length
+- **Identity/dimension mismatch**: the stored `embedding_model` and
+  `embedding_dimensions` are read together and must match the operation
+  snapshot. If the provider returns vectors whose length
   differs from `llm.models.embedding_dimensions`, the batch transaction
   aborts with an error pointing at `kura embed --all`. The `chunks_vec`
   table's dimension is fixed at creation; an actual model/dimension change
@@ -297,12 +301,15 @@ they only write chunks with `embedded_at = NULL`. Embeddings appear via
 
 `vectorSearchDetailed()` (`src/core/search/vector.ts`):
 
-1. Embed the query (single-text `provider.embed()` call).
-2. KNN over `chunks_vec`: `WHERE embedding MATCH ? AND k = ?` with
-   **`k = max(limit × 4, 40)`**. The headroom exists because multiple chunks
-   of one document collapse into a single hit and because bucket/tag filters
-   are applied *after* the KNN (so heavy filtering can return fewer than
-   `limit` documents).
+1. Snapshot and validate the configured/stored model identity, then embed the
+   query (single-text `provider.embed()` call).
+2. In one transaction after that `await`, revalidate the same identity and
+   run KNN with bucket/tag-eligible chunk IDs inside the sqlite-vec clause:
+   `WHERE embedding MATCH ? AND k = ? AND chunk_id IN (...)`. Candidate `k`
+   starts at **`min(max(limit × 4, 40), eligible total)`** and doubles only
+   when multiple chunks from the same documents leave fewer than `limit`
+   unique documents, stopping at the eligible total. Filters therefore
+   cannot starve a distant matching bucket/tag, while expansion stays bounded.
 3. Aggregate per document: rows arrive distance-ascending, so the first row
    seen per `documents.id` is its **minimum-distance chunk**; aggregation
    stops once `limit` documents are collected.
