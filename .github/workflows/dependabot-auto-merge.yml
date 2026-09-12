@@ -1,8 +1,7 @@
 name: Dependabot auto-merge
 
 # Auto-merge low-risk Dependabot PRs once required status checks pass.
-# Major-version bumps still require manual review (often breaking). Security
-# updates always auto-merge regardless of the semver bump.
+# Major-version bumps still require manual review (often breaking).
 #
 # Prerequisites:
 #   - Settings -> General -> Pull Requests -> "Allow auto-merge" enabled.
@@ -27,13 +26,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enable auto-merge for safe updates
-        # Auto-merge when the bump is patch or minor, or when the update was
-        # raised by Dependabot security updates. Major bumps fall through to a
-        # human reviewer.
+        # Patch and minor bumps still wait for the repository's required checks.
+        # Major bumps fall through to a human reviewer.
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch'
           || steps.metadata.outputs.update-type == 'version-update:semver-minor'
-          || steps.metadata.outputs.alert-state == 'AUTO_DISMISSED'
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
