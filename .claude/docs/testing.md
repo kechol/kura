@@ -5,9 +5,11 @@
 > (`resetConfigCache`), `src/core/db.ts` (`closeDb`, `openDatabase`),
 > `.github/workflows/ci.yml`.
 
-`bun test` runs everything; CI (`.github/workflows/ci.yml`) runs
-`bun run check` + `bun test` with `KURA_TEST_DOWNLOAD=1` on a pinned Bun
-version. Tests must **never** touch the real `~/.kura` — every test either
+`bun test` runs everything; CI (`.github/workflows/ci.yml`) uses Bun 1.4.2,
+runs `bun run check` across source/scripts/tests, and runs `bun test` with
+`KURA_TEST_DOWNLOAD=1` on Linux. Each Linux/macOS matrix entry also compiles
+and starts a host binary against an isolated home. Tests must **never** touch
+the real `~/.kura` — every test either
 opens `:memory:` directly or fabricates a `KURA_HOME` under a temp dir.
 
 ## Test map
@@ -31,7 +33,7 @@ opens `:memory:` directly or fabricates a `KURA_HOME` under a temp dir.
 | `tests/chunker.test.ts` | unit | Chunk sizing around the 1600-char target, breakpoint scoring (headings, fences never split), overlap, `startOffset` consistency, context headers mapping to real headings. |
 | `tests/render.test.ts` | unit | ANSI renderer: `color: false` purity, per-element decoration, no wrapping inside code blocks, fullwidth-aware wrapping, hanging indents; `isColorEnabled` × `NO_COLOR` × TTY matrix. |
 | `tests/excerpt.test.ts` | unit | `docExcerpt` plaintext reduction: strips headings/emphasis/list markers, drops fenced code (incl. an unclosed trailing fence), flattens wiki + markdown links, removes images / inline #tags / frontmatter / HTML, ellipsis truncation, empty input, first-2000-char scan. |
-| `tests/search.test.ts` | unit (mock provider) | Trigram keyword search (BM25 title weighting, `--all` AND, filters, <3-char LIKE fallback, query escaping), embedding backfill + KNN + per-doc aggregation, dimension-mismatch guidance, hybrid fusion/rerank/expand with `llm_cache` hit counting, degraded mode, `parseYesNo`, `blendScores` weights. |
+| `tests/search.test.ts` | unit (mock provider) | Trigram keyword search (BM25 title weighting, `--all` AND, filters, <3-char LIKE fallback, query escaping); immutable embedding identity, bounded/resumable backfill, edit/delete/config races across provider awaits, atomic reset, KNN prefilter + adaptive unique-document expansion; hybrid fusion/rerank/expand, provider-setting cache invalidation, worker settlement on failure, degraded mode, `parseYesNo`, `blendScores`. |
 | `tests/ask.test.ts` | unit (mock provider) | `askQuestion`: numbered-source answer from hybrid hits (`<think>` stripping), answer caching + invalidation when a source changes, degrade-to-hits with no provider or on generation failure, no-hits → no answer and no LLM call. |
 | `tests/audit.test.ts` | unit (mock provider) + e2e | `findContradictions` flags only the contradictory pair, verdict cache across runs, `limit` cap; `kura audit` CLI: explicit `contradictions` requires a provider (exit 4), bare `audit` with no provider exits 0, prints the sections, and skips contradictions. |
 | `tests/regression-search.test.ts` | regression (fixtures) | The 30-document Japanese corpus: load + FTS sync, BM25 ranking cases, `**` snippets and `…` elision, hierarchical tag filtering, AND-vs-OR cardinality, fixture cross-link backlinks, hybrid degraded mode, latency smoke (<300 ms). |
@@ -40,8 +42,8 @@ opens `:memory:` directly or fabricates a `KURA_HOME` under a temp dir.
 | `tests/commands-io.test.ts` | e2e | `import`/`export` round-trip across two homes (kura_key stability), filename sanitizing, `--tag` filtered export, path-to-directory export + frontmatter/dir-derived path import, invalid-frontmatter skip + all-skipped exit 1, `bucket` add/ls/mv/rm semantics. |
 | `tests/commands-taglink.test.ts` | e2e | `tag ls/--tree/--json`, `tag add/rm/mv/gc` exact outputs, `link ls` three sections + JSON shape, `kura audit links` + auto-resolution on target creation. |
 | `tests/skills.test.ts` | e2e | `kura skills`: `install` writes `~/.agents/skills/kura-cli/SKILL.md`, idempotent reinstall (reports unchanged), `show` to stdout, `--dir` override, `uninstall` (+ exit 3 on a second run), missing subcommand → usage error. |
-| `tests/api.test.ts` | integration | REST endpoints (SPEC §8.2) against `startServer` on port 0: stats, buckets, docs CRUD + pagination, `PUT` path moves (incl. the 409 on a collision) and `PUT /api/docs/:key/favorite` (pins without bumping `updated_at`, `?favorite=1` filter, 400 on a non-boolean body), related, three search modes + error cases, tags, graph, SPA fallback, 404 JSON. |
-| `tests/mcp.test.ts` | integration | MCP server over `InMemoryTransport`: 10 tools with guidance text, search→get flow (access_count), degraded `kura_query`, add/update/list_tags, related, status, `isError` for unknown keys. |
+| `tests/api.test.ts` | integration | REST endpoints (SPEC §8.2) against `startServer` on port 0: stats, buckets, docs CRUD + pagination, strict positive-integer boundaries, whole-state rollback for failed `PUT`, path conflicts, favorite semantics, related, three search modes + errors, tags, graph, SPA fallback, 404 JSON. |
+| `tests/mcp.test.ts` | integration | MCP server over `InMemoryTransport` plus a spawned real stdio client/server: 10 tools with guidance/schema, Japanese call flow, degraded `kura_query`, schema/tool errors, protocol-clean stderr/stdout, and prompt EOF shutdown without the SDK force-termination timeout. |
 | `tests/editor.test.ts` | unit | Inline block editor: Markdown ⇄ block-model round-trip is a fixed point on Japanese fixtures (parse → serialize). |
 | `tests/shortcuts.test.ts` | unit | `resolveShortcut` (browser keymap): Ctrl combos (incl. over a pending `g` prefix), Cmd left to the browser, single + shifted keys, unbound no-ops, `g` prefix sequences and fall-through. |
 | `tests/client-build.test.ts` | build | `bun run build:client` produces `dist/`, and `startServer` serves it with SPA fallback. |

@@ -447,8 +447,9 @@ synchronously and silently; more than 100 prints a stderr warning and
 searches anyway** with existing embeddings (run `kura embed` to catch up).
 Results are aggregated per document keeping the best chunk; score is
 `1/(1+distance)`; snippets are the chunk body with the context header
-stripped. KNN fetches `max(limit*4, 40)` chunks so post-filtering by
-bucket/tag still fills the limit.
+stripped. Bucket/tag-eligible chunk IDs are supplied inside the KNN query.
+It starts at `max(limit*4, 40)` candidates and doubles up to the eligible
+total only when duplicate chunks leave too few unique documents.
 
 ### `kura query`
 
@@ -502,18 +503,24 @@ hit list (exit 0). All hybrid warnings pass through unchanged.
 kura embed [--all]
 ```
 
-Backfills all pending chunks in batches of 16 (`backfillEmbeddings`),
-resumable because `embedded_at` is set per chunk inside a per-batch
-transaction. Progress goes to stderr: an in-place `\rembedding done/total`
-line on a TTY, one line every 160 chunks otherwise. `--all` wipes
-`chunks_vec` and re-embeds everything (the recovery step after changing the
-embedding model/dimensions). When there is nothing to do and `--all` was not
-given, prints "all chunks are already embedded" **without touching the
+Backfills a bounded snapshot of pending chunks in batches of 16
+(`backfillEmbeddings`), resumable because `embedded_at` is set per chunk
+inside a per-batch transaction. The model/dimension identity is captured
+before the provider call and rechecked with the chunk's unchanged text inside
+the write transaction; edits, deletes, or identity drift during `await` cannot
+commit stale vectors and leave those chunks pending. Progress goes to stderr:
+an in-place `\rembedding done/total` line on a TTY, one line every 160
+processed chunks otherwise. `--all` atomically wipes `chunks_vec` and clears
+every `embedded_at` before rebuilding with the already-matching identity. A
+model/dimension change first requires `kura doctor --fix`. When there is
+nothing to do and `--all` was not given, prints "all chunks are already
+embedded" **without touching the
 provider** (exit 0 even offline); otherwise a missing provider exits 4. A
 returned vector whose length differs from `embedding_dimensions` aborts
-with guidance. On success the meta keys `embedding_model` /
-`embedding_dimensions` are updated to match config — this is what `doctor`
-later compares (see [configuration.md](configuration.md#config-vs-meta)).
+with guidance. The meta keys `embedding_model` / `embedding_dimensions` are
+the identity guard that `doctor` compares (see
+[configuration.md](configuration.md#config-vs-meta)); ordinary backfill does
+not redefine them.
 
 ---
 
@@ -878,7 +885,8 @@ kura mcp [--print-config]
 ```
 
 Runs the MCP server on stdio (`src/server/mcp.ts`) until the client
-disconnects. `--print-config` prints ready-to-paste `claude mcp add` and
+disconnects; stdin EOF closes the server transport and exits cleanly.
+`--print-config` prints ready-to-paste `claude mcp add` and
 `.mcp.json` snippets instead of starting. Tool inventory in
 [mcp-server.md](mcp-server.md).
 

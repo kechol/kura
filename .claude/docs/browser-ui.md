@@ -395,8 +395,8 @@ markdown-it (html: true, linkify)
   interpolate server data into HTML by any other route.
 - **Mermaid**: `DocContent` watches `code.language-mermaid` blocks with an
   `IntersectionObserver` and upgrades each block only when it scrolls into
-  view. `loadMermaid()` imports `mermaid@11` from the jsdelivr CDN — the
-  dynamic import goes through `new Function("u", "return import(u)")` so
+  view. `loadMermaid()` imports exact `mermaid@12.0.0` from the jsdelivr CDN —
+  the dynamic import goes through `new Function("u", "return import(u)")` so
   Bun's bundler does not try to resolve the URL. This CDN fetch is **the
   only external network resource in the entire UI** (and it is initiated by
   the user's own browser, on demand); everything else is bundled. On load

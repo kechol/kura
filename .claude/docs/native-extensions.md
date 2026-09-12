@@ -54,11 +54,16 @@ modes, keyed off the generated module `src/generated/embedded.ts`
   the platform's prebuilt (`vec0.dylib` / `vec0.so` / `vec0.dll`) via
   `import ... with { type: "file" }`. Because dlopen cannot read from the
   embedded virtual filesystem, `vecLoadablePath()` copies the asset out to
-  `~/.kura/lib/<ver>/<name>` on first use (idempotent: skipped when the file
-  already exists) and returns that real path.
+  `~/.kura/lib/<kura-version>/sqlite-vec-<vec-version>/<name>` on first use
+  and returns that real path. Concurrent first opens use unique temporary
+  files and an atomic rename, preserving the original `vec0.*` basename that
+  SQLite uses to derive the extension entry point.
 
-The prebuilt version is pinned in `scripts/fetch-vendor.ts` (`VEC_VERSION`);
-dev builds use whatever `sqlite-vec` version `package.json` resolves.
+The exact root `package.json` `sqlite-vec` dependency is the single version
+source for both development and `scripts/fetch-vendor.ts`. Cross-target
+tarballs have pinned npm SHA512 integrity values. The extracted cache has
+metadata containing the package/version/integrity and library SHA256; a
+missing or corrupt library/metadata pair is rejected and downloaded again.
 
 ## sqlite-vaporetto (optional)
 
