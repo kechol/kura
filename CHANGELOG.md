@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-13
+
+### Changed
+
+- Reissue the 0.3.0 functionality under a new release version after withdrawing
+  releases 0.3.0 and 0.3.1. The package version and CLI version now match 0.3.2.
+  See the 0.3.0 section below for features, fixes, and migration instructions.
+  No additional runtime behavior changes are included.
+
 ## [0.3.0] - 2026-09-12
 
 ### Added
