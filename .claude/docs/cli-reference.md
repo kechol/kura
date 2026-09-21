@@ -185,7 +185,8 @@ kura config list [--json] | get <key> | set <key> <value>
 
 Dot-notation access to `~/.kura/config.toml`; the subcommand defaults to
 `list`. Unknown keys are `NotFoundError` (exit 3); `set` preserves the
-existing value's type. Full semantics in
+existing value's type, accepts leaf keys only, and rejects invalid enum,
+range, or integer values without rewriting the file. Full semantics in
 [configuration.md](configuration.md).
 
 ---
@@ -328,6 +329,9 @@ headers embed the title).
 (`moveDocumentsByPrefix`, mirroring `kura tag mv`), scoped to `--bucket` or
 `general.default_bucket`. Unlike tag renames there is **no merge**: a
 destination conflict throws `ConflictError` and rolls back the whole move.
+Prefix matching is literal exact-or-`/`-descendant matching, so `%`, `_`, and
+backslashes in a path have no wildcard meaning.
+
 Guards: an empty old prefix is a usage error; identical prefixes or moving a
 prefix under its own descendant are conflicts; no documents under the prefix
 is `NotFoundError` (exit 3). Prints one `moved #key  from -> to` line per
@@ -349,7 +353,8 @@ kura ls [--bucket b] [--tag t] [--prefix p] [--sort updated|created|accessed|tit
 `listDocuments` with filters; `--tag` includes descendant tags
 (`t` matches `t` and `t/…`); `--prefix` filters by document path,
 descendants included (`p` matches path `p` and `p/…`, case-insensitively) —
-the value is normalized and must not be empty (usage error). `--unfiled`
+the value is normalized and must not be empty (usage error). Both hierarchy
+filters treat `%`, `_`, and backslashes literally. `--unfiled`
 keeps only bucket-root documents (`path = ''`) and `--untagged` only
 documents with no tags — the two components of the triage backlog, and
 composable with the other filters. Default sort is
@@ -379,7 +384,15 @@ real subdirectories; each segment and the title are sanitized independently
 (`/ \ : * ? " < > |` and control chars → `-`) — a literal `/` in a *title*
 becomes `-`, it never nests. Empty results use the key, and case-insensitive
 collisions on the full nested relative path (`bucket/path…/name`) get a
-`-<key>` suffix. Doubles as a backup; `--dir` is required. `--json` →
+`-<key>` suffix, followed by a numeric suffix if that name is also occupied.
+Collision checks also normalize Unicode spellings for filesystems that do so.
+The special names `.` and `..` become `-`; every created
+component is checked beneath the resolved export root, directory symlinks are
+refused, and the file open does not follow a leaf symlink. The opened file must
+be a regular file with a single hard link before it can be truncated, preventing
+an export from changing another path through a shared inode. These checks never
+change the original logical `path` stored in frontmatter. Doubles as a backup;
+`--dir` is required. `--json` →
 `{exported, dir}`.
 
 ### `kura import`
@@ -547,10 +560,12 @@ slashes trimmed/collapsed — `src/core/wiki.ts::normalizeTagPath`).
   (`{segment, path, count, total, children}`) with `--tree`.
 - `add` / `rm`: report exactly what changed (`added: …` / `no tags added`,
   `removed N tags`); attaching is idempotent, `rm` only counts tags that
-  were present. `tag add` records `source='manual'`.
+  were present. `tag add` records `source='manual'`. Each invocation is
+  all-or-nothing with its FTS refresh.
 - `mv`: renames a tag **and all descendants**; when the target path already
   exists the documents are merged onto it (`moved N tags (merged into
-  existing)`).
+  existing)`). The whole rename/merge is atomic, and descendant matching is
+  literal: `%`, `_`, and backslashes are ordinary path characters.
 - `gc`: deletes tags attached to zero documents and lists them.
 
 The tag-gardening subcommands moved into the [`kura audit`](#kura-audit)

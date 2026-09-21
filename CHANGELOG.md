@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Read browser graph data through a dedicated core query that omits document
+  bodies and aliases, scopes both link endpoints in SQL, and keeps bind counts
+  constant as the selected graph grows.
+
+### Fixed
+
+- Keep Markdown exports inside their requested directory even when document
+  paths contain traversal-like segments or existing symlinks, without silently
+  dropping documents whose sanitized names or collision suffixes collide.
+  Reject existing hard links and non-regular output files before truncation.
+- Make public tag add, remove, and hierarchical rename operations atomic with
+  their FTS refreshes, and treat `%`, `_`, and backslashes literally in all
+  document-path and tag hierarchy filters.
+- Preserve the browser editor's latest text across navigation, metadata
+  refreshes, overlapping autosaves, and failed saves, with an explicit retry.
+  Retain the editor when a metadata refresh fails and distinguish body-save
+  retries from metadata failures.
+- Reject invalid configuration leaves and malformed REST document bodies at
+  their boundaries without rewriting configuration or partially mutating the
+  database.
+- Reject inherited object properties as configuration keys and avoid graph
+  date overflow for large valid stale-day settings.
+
 ## [0.3.2] - 2026-09-13
 
 ### Changed

@@ -12,6 +12,11 @@ kura config get llm.provider
 kura config set general.stale_days 90
 ```
 
+`config set` で変更できるのは既存の末端キーだけです。型、プロバイダ名、
+数値範囲が不正な値や、セクション全体の置換は、ファイルを書き換えずに
+拒否します。手作業で編集した値の型や範囲が不正な場合、そのキーには
+既定値を使い、未知のキーは無視します。
+
 ## `config.toml`
 
 ```toml

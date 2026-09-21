@@ -214,6 +214,28 @@ describe("keywordSearch (trigram)", () => {
     expect(keywordSearch(db, "trigram", "データベース", { tag: "ペット" }).length).toBe(0);
   });
 
+  test("tag filters treat SQL wildcard characters literally", () => {
+    const literal = createDocument(db, {
+      title: "リテラル分類の検索",
+      content: "データベース検索の本文。",
+      bucket: "main",
+      tags: ["分類_甲/子", "進捗%完了/子"],
+    });
+    createDocument(db, {
+      title: "類似分類の検索",
+      content: "データベース検索の本文。",
+      bucket: "main",
+      tags: ["分類乙甲/子", "進捗済完了/子"],
+    });
+
+    expect(
+      keywordSearch(db, "trigram", "データベース", { tag: "分類_甲" }).map((hit) => hit.key),
+    ).toEqual([literal.key]);
+    expect(
+      keywordSearch(db, "trigram", "データベース", { tag: "進捗%完了" }).map((hit) => hit.key),
+    ).toEqual([literal.key]);
+  });
+
   test("queries shorter than 3 characters hit via the LIKE fallback", () => {
     seedDocs();
     const hits = keywordSearch(db, "trigram", "猫", {});
@@ -466,6 +488,31 @@ describe("vector search + backfill", () => {
 
     const hits = await vectorSearch(db, mock, config, "検索対象", { tag: "技術", limit: 1 });
     expect(hits.map((hit) => hit.title)).toEqual(["子タグの対象候補"]);
+  });
+
+  test("vector tag filters treat SQL wildcard characters literally", async () => {
+    const target = createDocument(db, {
+      title: "リテラルタグ対象",
+      content: "検索対象の本文。",
+      bucket: "main",
+      tags: ["技術_検索/子"],
+    });
+    const lookalike = createDocument(db, {
+      title: "類似タグ対象外",
+      content: "検索対象の本文。",
+      bucket: "main",
+      tags: ["技術甲検索/子"],
+    });
+    replaceChunksWithManualVectors([
+      { docId: lookalike.id, seq: 0, text: "# 類似タグ対象外\n\n近い候補。", value: 1 },
+      { docId: target.id, seq: 0, text: "# リテラルタグ対象\n\n遠い候補。", value: 10 },
+    ]);
+
+    const hits = await vectorSearch(db, mock, config, "検索対象", {
+      tag: "技術_検索",
+      limit: 1,
+    });
+    expect(hits.map((hit) => hit.key)).toEqual([target.key]);
   });
 
   test("expands KNN candidates when many chunks from one document consume the first window", async () => {

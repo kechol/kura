@@ -197,7 +197,9 @@ whose MATCH expression depends on the tokenizer recorded in `meta`
 - **Snippets**: `snippet(documents_fts, 1, '**', '**', '…', 20)` — column 1
   (content), `**` highlight markers, `…` ellipsis, 20 tokens.
 - **Filters**: bucket by name; tag matches the path or any descendant
-  (`path = ? OR path LIKE ? || '/%'`).
+  through the shared literal exact-or-`/`-descendant predicate
+  (`src/core/hierarchy.ts`). `%`, `_`, and backslashes in a tag are ordinary
+  characters, not `LIKE` syntax. Keyword and vector paths use the same rule.
 
 ### LIKE fallback for short trigram queries (not in SPEC)
 

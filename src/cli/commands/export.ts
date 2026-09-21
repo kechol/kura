@@ -1,5 +1,15 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  ftruncateSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { join, relative, sep } from "node:path";
 import { getDb } from "../../core/db";
 import { listDocuments } from "../../core/documents";
 import { serializeFrontmatter } from "../../core/frontmatter";
@@ -23,7 +33,56 @@ function sanitizeFilename(title: string): string {
     const code = ch.codePointAt(0) ?? 0;
     out += INVALID_CHARS.has(ch) || code < 0x20 || code === 0x7f ? "-" : ch;
   }
-  return out.trim();
+  const trimmed = out.trim();
+  return trimmed === "." || trimmed === ".." ? "-" : trimmed;
+}
+
+function ensureContained(root: string, candidate: string): void {
+  const rel = relative(root, candidate);
+  if (rel === ".." || rel.startsWith(`..${sep}`)) {
+    throw new UsageError(`refusing to export outside the output directory: ${candidate}`);
+  }
+}
+
+/** Create an export directory without following document-controlled symlinks. */
+function ensureExportDirectory(root: string, segments: string[]): string {
+  let current = root;
+  for (const segment of segments) {
+    current = join(current, segment);
+    ensureContained(root, current);
+    try {
+      const stat = lstatSync(current);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new UsageError(`unsafe export path component: ${current}`);
+      }
+    } catch (e) {
+      if (e && typeof e === "object" && "code" in e && e.code === "ENOENT") {
+        mkdirSync(current);
+        continue;
+      }
+      throw e;
+    }
+  }
+  return current;
+}
+
+/** Validate the opened inode before truncation; links must not modify another path. */
+function writeExportFile(path: string, content: string): void {
+  const fd = openSync(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    0o666,
+  );
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new UsageError(`unsafe export file: ${path}`);
+    }
+    ftruncateSync(fd, 0);
+    writeFileSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export async function run(argv: string[]): Promise<number> {
@@ -37,19 +96,25 @@ export async function run(argv: string[]): Promise<number> {
 
   const { db } = getDb();
   const docs = listDocuments(db, { bucket: strOpt(parsed, "bucket"), tag: strOpt(parsed, "tag") });
+  mkdirSync(dir, { recursive: true });
+  const exportRoot = realpathSync(dir);
 
   const used = new Set<string>();
   for (const doc of docs) {
     // Document path segments become real subdirectories; the title stays a
     // single file name (a literal '/' in a title is sanitized, not nested)
     const segments = doc.path === "" ? [] : doc.path.split("/").map(sanitizeFilename);
-    const outDir = join(dir, doc.bucket, ...segments);
-    mkdirSync(outDir, { recursive: true });
+    const outDir = ensureExportDirectory(exportRoot, [sanitizeFilename(doc.bucket), ...segments]);
 
     let name = sanitizeFilename(doc.title);
     if (name === "") name = doc.key;
-    const usedKey = (n: string) => [doc.bucket, ...segments, n].join("/").toLowerCase();
-    if (used.has(usedKey(name))) name = `${name}-${doc.key}`;
+    const usedKey = (n: string) => join(outDir, `${n}.md`).normalize("NFD").toLowerCase();
+    const base = name;
+    let suffix = 0;
+    while (used.has(usedKey(name))) {
+      name = `${base}-${doc.key}${suffix === 0 ? "" : `-${suffix}`}`;
+      suffix++;
+    }
     used.add(usedKey(name));
 
     const fm = serializeFrontmatter({
@@ -66,7 +131,9 @@ export async function run(argv: string[]): Promise<number> {
       updated_at: doc.updatedAt,
     });
     const content = doc.content.endsWith("\n") ? doc.content : `${doc.content}\n`;
-    writeFileSync(join(outDir, `${name}.md`), `${fm}\n\n${content}`);
+    const outputPath = join(outDir, `${name}.md`);
+    ensureContained(exportRoot, outputPath);
+    writeExportFile(outputPath, `${fm}\n\n${content}`);
   }
 
   if (boolOpt(parsed, "json")) {

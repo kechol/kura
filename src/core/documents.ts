@@ -5,6 +5,7 @@ import { chunkDocument } from "./chunker";
 import { ConflictError, NotFoundError, UsageError } from "./errors";
 import type { Frontmatter } from "./frontmatter";
 import { ftsDelete, ftsUpsert } from "./fts";
+import { hierarchyParameters, hierarchyPredicate } from "./hierarchy";
 import { fullPathSql, resolveUnresolvedLinks, syncLinks } from "./links";
 import { snapshotRevision } from "./revisions";
 import { addTagsToDoc, docTags, docTagsBatch, removeTagsFromDoc } from "./tags";
@@ -467,10 +468,10 @@ export function moveDocumentsByPrefix(
     const rows = db
       .prepare(
         `SELECT id, doc_key, path, title FROM documents
-         WHERE bucket_id = ? AND (lower(path) = lower(?) OR lower(path) LIKE lower(?) || '/%')
+         WHERE bucket_id = ? AND ${hierarchyPredicate("path", true)}
          ORDER BY path, title`,
       )
-      .all(bucketId, oldPrefix, oldPrefix) as Array<{
+      .all(bucketId, ...hierarchyParameters(oldPrefix)) as Array<{
       id: number;
       doc_key: string;
       path: string;
@@ -668,15 +669,13 @@ export interface ListFilter {
   offset?: number;
 }
 
-const SORT_SQL: Record<NonNullable<ListFilter["sort"]>, string> = {
-  updated: "d.updated_at DESC",
-  created: "d.created_at DESC",
-  accessed: "d.last_accessed_at IS NULL, d.last_accessed_at DESC",
-  title: "d.title COLLATE NOCASE ASC",
-  views: "d.access_count DESC, d.last_accessed_at IS NULL, d.last_accessed_at DESC",
-};
+interface DocumentFilterSql {
+  where: string;
+  params: Array<string | number>;
+}
 
-export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRecord[] {
+/** Shared by paged listings and their count query so filters cannot drift. */
+function documentFilterSql(filter: ListFilter): DocumentFilterSql {
   const where: string[] = [];
   const params: Array<string | number> = [];
   if (filter.bucket) {
@@ -686,29 +685,36 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
   if (filter.tag) {
     where.push(
       `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
-        WHERE dt.document_id = d.id AND (t.path = ? OR t.path LIKE ? || '/%'))`,
+        WHERE dt.document_id = d.id AND ${hierarchyPredicate("t.path")})`,
     );
-    params.push(filter.tag, filter.tag);
+    params.push(...hierarchyParameters(filter.tag));
   }
   if (filter.prefix) {
-    where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
-    params.push(filter.prefix, filter.prefix);
+    where.push(hierarchyPredicate("d.path", true));
+    params.push(...hierarchyParameters(filter.prefix));
   }
-  if (filter.favorite) {
-    where.push("d.favorite = 1");
-  }
-  if (filter.unfiled) {
-    where.push(UNFILED_WHERE);
-  }
-  if (filter.untagged) {
-    where.push(UNTAGGED_WHERE);
-  }
+  if (filter.favorite) where.push("d.favorite = 1");
+  if (filter.unfiled) where.push(UNFILED_WHERE);
+  if (filter.untagged) where.push(UNTAGGED_WHERE);
   if (filter.stale) {
     where.push("d.updated_at < datetime('now', ?)");
     params.push(`-${filter.staleDays ?? 180} days`);
   }
+  return { where: where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "", params };
+}
+
+const SORT_SQL: Record<NonNullable<ListFilter["sort"]>, string> = {
+  updated: "d.updated_at DESC",
+  created: "d.created_at DESC",
+  accessed: "d.last_accessed_at IS NULL, d.last_accessed_at DESC",
+  title: "d.title COLLATE NOCASE ASC",
+  views: "d.access_count DESC, d.last_accessed_at IS NULL, d.last_accessed_at DESC",
+};
+
+export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRecord[] {
+  const { where, params } = documentFilterSql(filter);
   const sort = filter.stale ? "d.updated_at ASC" : SORT_SQL[filter.sort ?? "updated"];
-  let sql = `${SELECT_DOC}${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY ${sort}`;
+  let sql = `${SELECT_DOC}${where} ORDER BY ${sort}`;
   if (filter.limit !== undefined) {
     sql += " LIMIT ?";
     params.push(filter.limit);
@@ -724,6 +730,15 @@ export function listDocuments(db: Database, filter: ListFilter = {}): DocumentRe
   return rows.map((r) =>
     toRecord(db, r, { tags: tags.get(r.id) ?? [], aliases: aliases.get(r.id) ?? [] }),
   );
+}
+
+/** Count with exactly the same predicates as listDocuments (without paging/sort). */
+export function countDocuments(db: Database, filter: ListFilter = {}): number {
+  const { where, params } = documentFilterSql(filter);
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM documents d JOIN buckets b ON b.id = d.bucket_id${where}`)
+    .get(...params) as { n: number };
+  return row.n;
 }
 
 function sqliteNow(d: Date): string {

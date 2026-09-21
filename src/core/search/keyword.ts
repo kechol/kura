@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { FtsTokenizer } from "../db";
+import { hierarchyParameters, hierarchyPredicate } from "../hierarchy";
 import type { SearchHit } from "./types";
 
 export interface KeywordOptions {
@@ -43,7 +44,7 @@ function toHit(row: HitRow): SearchHit {
 }
 
 const TAG_FILTER = `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
-  WHERE dt.document_id = d.id AND (t.path = ? OR t.path LIKE ? || '/%'))`;
+  WHERE dt.document_id = d.id AND ${hierarchyPredicate("t.path")})`;
 
 const TAGS_SELECT = `(SELECT group_concat(t.path, ' ') FROM document_tags dt
   JOIN tags t ON t.id = dt.tag_id WHERE dt.document_id = d.id)`;
@@ -76,7 +77,7 @@ export function keywordSearch(
   }
   if (opts.tag) {
     where.push(TAG_FILTER);
-    params.push(opts.tag, opts.tag);
+    params.push(...hierarchyParameters(opts.tag));
   }
   params.push(limit);
 
@@ -131,7 +132,7 @@ function likeFallback(
   }
   if (opts.tag) {
     where.push(TAG_FILTER);
-    params.push(opts.tag, opts.tag);
+    params.push(...hierarchyParameters(opts.tag));
   }
   params.push(limit);
 

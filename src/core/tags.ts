@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { ConflictError, UsageError } from "./errors";
 import { ftsRefreshTags } from "./fts";
+import { hierarchyParameters, hierarchyPredicate } from "./hierarchy";
 import { normalizeTagPath } from "./wiki";
 
 export type TagSource = "manual" | "auto";
@@ -90,36 +91,40 @@ export function addTagsToDoc(
   rawPaths: string[],
   source: TagSource = "manual",
 ): string[] {
-  const added: string[] = [];
-  for (const raw of rawPaths) {
-    const path = requireNormalized(raw);
-    const tagId = getOrCreateTag(db, path);
-    const result = db
-      .prepare(
-        "INSERT INTO document_tags (document_id, tag_id, source) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-      )
-      .run(docId, tagId, source);
-    if (result.changes > 0) added.push(path);
-  }
-  if (added.length > 0) ftsRefreshTags(db, docId);
-  return added;
+  return db.transaction(() => {
+    const added: string[] = [];
+    for (const raw of rawPaths) {
+      const path = requireNormalized(raw);
+      const tagId = getOrCreateTag(db, path);
+      const result = db
+        .prepare(
+          "INSERT INTO document_tags (document_id, tag_id, source) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+        )
+        .run(docId, tagId, source);
+      if (result.changes > 0) added.push(path);
+    }
+    if (added.length > 0) ftsRefreshTags(db, docId);
+    return added;
+  })();
 }
 
 /** Remove tags and refresh FTS. Returns the number actually removed */
 export function removeTagsFromDoc(db: Database, docId: number, rawPaths: string[]): number {
-  let removed = 0;
-  for (const raw of rawPaths) {
-    const path = requireNormalized(raw);
-    const result = db
-      .prepare(
-        `DELETE FROM document_tags WHERE document_id = ?
-         AND tag_id = (SELECT id FROM tags WHERE path = ?)`,
-      )
-      .run(docId, path);
-    removed += result.changes;
-  }
-  if (removed > 0) ftsRefreshTags(db, docId);
-  return removed;
+  return db.transaction(() => {
+    let removed = 0;
+    for (const raw of rawPaths) {
+      const path = requireNormalized(raw);
+      const result = db
+        .prepare(
+          `DELETE FROM document_tags WHERE document_id = ?
+           AND tag_id = (SELECT id FROM tags WHERE path = ?)`,
+        )
+        .run(docId, path);
+      removed += result.changes;
+    }
+    if (removed > 0) ftsRefreshTags(db, docId);
+    return removed;
+  })();
 }
 
 export interface RenameTagResult {
@@ -143,46 +148,48 @@ export function renameTag(db: Database, oldRaw: string, newRaw: string): RenameT
     throw new ConflictError(`cannot move tag under its own descendant: ${oldPath} -> ${newPath}`);
   }
 
-  const targets = db
-    .prepare("SELECT id, path FROM tags WHERE path = ? OR path LIKE ? || '/%' ORDER BY path")
-    .all(oldPath, oldPath) as Array<{ id: number; path: string }>;
-  if (targets.length === 0) {
-    throw new ConflictError(`tag not found: ${oldPath}`);
-  }
-
-  const moved: string[] = [];
-  let merged = false;
-  const affected = new Set<number>();
-
-  for (const tag of targets) {
-    const suffix = tag.path.slice(oldPath.length);
-    const destPath = `${newPath}${suffix}`;
-    const existing = db.prepare("SELECT id FROM tags WHERE path = ?").get(destPath) as {
-      id: number;
-    } | null;
-
-    const docRows = db
-      .prepare("SELECT document_id FROM document_tags WHERE tag_id = ?")
-      .all(tag.id) as Array<{ document_id: number }>;
-    for (const r of docRows) affected.add(r.document_id);
-
-    if (existing && existing.id !== tag.id) {
-      // Merge: re-point to the existing tag (ignoring duplicates) and delete the old tag
-      merged = true;
-      db.prepare("UPDATE OR IGNORE document_tags SET tag_id = ? WHERE tag_id = ?").run(
-        existing.id,
-        tag.id,
-      );
-      db.prepare("DELETE FROM document_tags WHERE tag_id = ?").run(tag.id);
-      db.prepare("DELETE FROM tags WHERE id = ?").run(tag.id);
-    } else {
-      db.prepare("UPDATE tags SET path = ? WHERE id = ?").run(destPath, tag.id);
+  return db.transaction(() => {
+    const targets = db
+      .prepare(`SELECT id, path FROM tags WHERE ${hierarchyPredicate("path")} ORDER BY path`)
+      .all(...hierarchyParameters(oldPath)) as Array<{ id: number; path: string }>;
+    if (targets.length === 0) {
+      throw new ConflictError(`tag not found: ${oldPath}`);
     }
-    moved.push(tag.path);
-  }
 
-  for (const docId of affected) ftsRefreshTags(db, docId);
-  return { moved, merged, affectedDocs: [...affected] };
+    const moved: string[] = [];
+    let merged = false;
+    const affected = new Set<number>();
+
+    for (const tag of targets) {
+      const suffix = tag.path.slice(oldPath.length);
+      const destPath = `${newPath}${suffix}`;
+      const existing = db.prepare("SELECT id FROM tags WHERE path = ?").get(destPath) as {
+        id: number;
+      } | null;
+
+      const docRows = db
+        .prepare("SELECT document_id FROM document_tags WHERE tag_id = ?")
+        .all(tag.id) as Array<{ document_id: number }>;
+      for (const r of docRows) affected.add(r.document_id);
+
+      if (existing && existing.id !== tag.id) {
+        // Merge: re-point to the existing tag (ignoring duplicates) and delete the old tag
+        merged = true;
+        db.prepare("UPDATE OR IGNORE document_tags SET tag_id = ? WHERE tag_id = ?").run(
+          existing.id,
+          tag.id,
+        );
+        db.prepare("DELETE FROM document_tags WHERE tag_id = ?").run(tag.id);
+        db.prepare("DELETE FROM tags WHERE id = ?").run(tag.id);
+      } else {
+        db.prepare("UPDATE tags SET path = ? WHERE id = ?").run(destPath, tag.id);
+      }
+      moved.push(tag.path);
+    }
+
+    for (const docId of affected) ftsRefreshTags(db, docId);
+    return { moved, merged, affectedDocs: [...affected] };
+  })();
 }
 
 /** Delete tags not attached to any document */

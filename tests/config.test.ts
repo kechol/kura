@@ -63,6 +63,36 @@ describe("config", () => {
     resetConfigCache();
   });
 
+  test("loaded enum and numeric range violations keep their defaults", () => {
+    const path = tempConfigPath();
+    writeFileSync(
+      path,
+      [
+        "[general]",
+        "stale_days = 0",
+        "[llm]",
+        'provider = "remote"',
+        "[llm.models]",
+        "embedding_dimensions = -4",
+        "[search]",
+        'rrf_k = "broken"',
+        "rerank_top_k = 1.5",
+        "[browser]",
+        "port = 70000",
+        "",
+      ].join("\n"),
+    );
+    resetConfigCache();
+    const c = loadConfig(path);
+    expect(c.general.stale_days).toBe(180);
+    expect(c.llm.provider).toBe("auto");
+    expect(c.llm.models.embedding_dimensions).toBe(1024);
+    expect(c.search.rrf_k).toBe(60);
+    expect(c.search.rerank_top_k).toBe(20);
+    expect(c.browser.port).toBe(7578);
+    resetConfigCache();
+  });
+
   test("saveConfig writes to a file", () => {
     const path = tempConfigPath();
     const c = defaultConfig();
@@ -82,6 +112,57 @@ describe("config", () => {
     expect(setConfigValue(c, "general.editor", "nvim")).toBe(true);
     expect(c.general.editor).toBe("nvim");
     expect(setConfigValue(c, "unknown.key", "v")).toBe(false);
+  });
+
+  test("inherited object properties are not config keys", () => {
+    const c = defaultConfig();
+    for (const key of ["constructor", "toString", "valueOf", "__proto__", "general.toString"]) {
+      expect(setConfigValue(c, key, "変更禁止")).toBe(false);
+      expect(getConfigValue(c, key)).toBeUndefined();
+    }
+    expect(Object.hasOwn(c, "constructor")).toBe(false);
+  });
+
+  test("setConfigValue accepts valid boundaries and rejects sections and invalid scalars atomically", () => {
+    const c = defaultConfig();
+    const original = serializeConfig(c);
+    for (const [key, value] of [
+      ["search", "broken"],
+      ["llm.models", "broken"],
+      ["general.stale_days", ""],
+      ["general.stale_days", "1.5"],
+      ["general.stale_days", "Infinity"],
+      ["general.stale_days", "NaN"],
+      ["general.default_bucket", "Main"],
+      ["llm.provider", "remote"],
+      ["llm.ollama_url", "   "],
+      ["llm.models.embedding", ""],
+      ["llm.models.embedding_dimensions", "0"],
+      ["search.rrf_k", ""],
+      ["search.keyword_weight", "   "],
+      ["search.keyword_weight", "Infinity"],
+      ["search.vector_weight", "NaN"],
+      ["search.rrf_k", "-1"],
+      ["search.keyword_weight", "-0.1"],
+      ["search.rerank_top_k", "2.5"],
+      ["search.default_limit", "0"],
+      ["browser.port", "0"],
+      ["browser.port", "65536"],
+    ] as const) {
+      expect(setConfigValue(c, key, value)).toBe(false);
+      expect(serializeConfig(c)).toBe(original);
+    }
+
+    expect(setConfigValue(c, "general.stale_days", "1")).toBe(true);
+    expect(setConfigValue(c, "llm.models.embedding_dimensions", "1")).toBe(true);
+    expect(setConfigValue(c, "search.rrf_k", "0")).toBe(true);
+    expect(setConfigValue(c, "search.keyword_weight", "0")).toBe(true);
+    expect(setConfigValue(c, "search.vector_weight", "0.5")).toBe(true);
+    expect(setConfigValue(c, "search.rerank_top_k", "1")).toBe(true);
+    expect(setConfigValue(c, "search.default_limit", "1")).toBe(true);
+    expect(setConfigValue(c, "browser.port", "65535")).toBe(true);
+    expect(setConfigValue(c, "llm.provider", "none")).toBe(true);
+    expect(setConfigValue(c, "clip.path", "")).toBe(true);
   });
 
   test("listConfigEntries returns a flat key list", () => {

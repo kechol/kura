@@ -50,14 +50,22 @@ export function Editor({
   onSave,
   editable = true,
   onStatus,
+  retryToken = 0,
+  autosaveMs = AUTOSAVE_MS,
 }: {
   initial: string;
   resolve: WikiResolver;
   onSave: (markdown: string) => Promise<void>;
   editable?: boolean;
   onStatus?: (status: SaveStatus) => void;
+  /** Increment to retry the latest failed save without requiring another edit. */
+  retryToken?: number;
+  /** Test seam; product callers use the 1500 ms default. */
+  autosaveMs?: number;
 }) {
   const [blocks, setBlocks] = useState<Block[]>(() => parseMarkdown(initial));
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
   // Bumped only when the model changed behind the DOM's back — typing must not re-render
   const [nonce, setNonce] = useState(0);
   const [toolbar, setToolbar] = useState<ToolbarPos | null>(null);
@@ -76,9 +84,24 @@ export function Editor({
   const saved = useRef<string | null>(null);
   if (saved.current === null) saved.current = markdown;
 
+  // Saving outlives the rendered editor: SPA navigation and metadata reloads can unmount it
+  // before the debounce fires. Refs keep the latest body and callbacks available to cleanup,
+  // while one drain loop serializes PUTs so an older response can never land after a newer one.
+  const latest = useRef(markdown);
+  latest.current = markdown;
+  const saveCallback = useRef(onSave);
+  saveCallback.current = onSave;
+  const statusCallback = useRef(onStatus);
+  statusCallback.current = onStatus;
+  const mounted = useRef(true);
+  const saveDrain = useRef<Promise<void> | null>(null);
+  const retryRequested = useRef(false);
+
   // Status is the parent's to render, not ours — keeping a copy here would re-render the
   // whole editor on every save transition
-  const setStatus = useCallback((status: SaveStatus) => onStatus?.(status), [onStatus]);
+  const setStatus = useCallback((status: SaveStatus) => {
+    if (mounted.current) statusCallback.current?.(status);
+  }, []);
 
   // ---- model updates -------------------------------------------------------
 
@@ -98,15 +121,17 @@ export function Editor({
         redoStack.current = [];
         lastUndoPush.current = now;
       }
-      // The snapshot is taken from the state the update is applied to, never from a closure
-      // — during fast typing a captured `blocks` can already be a version nobody saw
-      setBlocks((prev) => {
-        if (push) {
-          undoStack.current.push(prev);
-          if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
-        }
-        return typeof update === "function" ? update(prev) : update;
-      });
+      // Apply through the ref immediately. Besides avoiding captured state during fast typing,
+      // this makes the latest serialized body available to an unmount in the same event turn.
+      const previous = blocksRef.current;
+      if (push) {
+        undoStack.current.push(previous);
+        if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
+      }
+      const next = typeof update === "function" ? update(previous) : update;
+      blocksRef.current = next;
+      latest.current = serializeMarkdown(next);
+      setBlocks(next);
       if (opts.rerender !== false) setNonce((n) => n + 1);
       if (opts.focus) pendingFocus.current = opts.focus;
       setStatus("dirty");
@@ -333,26 +358,47 @@ export function Editor({
   const timeTravel = (from: typeof undoStack, to: typeof redoStack) => {
     const snapshot = from.current.pop();
     if (!snapshot) return;
-    setBlocks((prev) => {
-      to.current.push(prev);
-      return snapshot;
-    });
+    to.current.push(blocksRef.current);
+    blocksRef.current = snapshot;
+    latest.current = serializeMarkdown(snapshot);
+    setBlocks(snapshot);
     setNonce((n) => n + 1);
     setStatus("dirty");
   };
 
-  const save = useCallback(async () => {
-    if (markdown === saved.current) return;
-    const pending = markdown;
-    setStatus("saving");
-    try {
-      await onSave(pending);
-      saved.current = pending;
-      setStatus("saved");
-    } catch {
-      setStatus("error");
+  const save = useCallback((): Promise<void> => {
+    const active = saveDrain.current;
+    if (active) {
+      // If the active request fails, a caller that arrived meanwhile authorizes one retry.
+      // Successful requests always continue draining until the latest body is persisted.
+      retryRequested.current = true;
+      return active;
     }
-  }, [markdown, onSave, setStatus]);
+
+    const drain = (async () => {
+      for (;;) {
+        const pending = latest.current;
+        if (pending === saved.current) {
+          setStatus("saved");
+          return;
+        }
+        retryRequested.current = false;
+        setStatus("saving");
+        try {
+          await saveCallback.current(pending);
+          saved.current = pending;
+        } catch {
+          setStatus("error");
+          if (!retryRequested.current) return;
+        }
+        // New edits made during the request are saved in the next serial iteration.
+      }
+    })().finally(() => {
+      saveDrain.current = null;
+    });
+    saveDrain.current = drain;
+    return drain;
+  }, [setStatus]);
 
   // ---- keyboard ------------------------------------------------------------
 
@@ -492,23 +538,36 @@ export function Editor({
 
   useEffect(() => {
     if (!editable || markdown === saved.current) return;
-    const timer = setTimeout(() => void save(), AUTOSAVE_MS);
+    const timer = setTimeout(() => void save(), autosaveMs);
     return () => clearTimeout(timer);
-  }, [markdown, editable, save]);
+  }, [markdown, editable, save, autosaveMs]);
+
+  useEffect(() => {
+    if (retryToken > 0) void save();
+  }, [retryToken, save]);
+
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      // Cleanup cannot await, but the promise and fetch continue after Preact removes the DOM.
+      void save();
+    },
+    [save],
+  );
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (markdown !== saved.current) e.preventDefault();
+      if (latest.current !== saved.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [markdown]);
+  }, []);
 
   // ---- render --------------------------------------------------------------
 
   const handlersFor = (key: EditKey): RichHandlers => ({
-    onInput: (el) => {
-      if (composing.current) return;
+    onInput: (event, el) => {
+      if (composing.current || event.isComposing) return;
       syncFromDom(key, el);
     },
     onKeyDown: (e, el) => onKeyDown(key, e, el),

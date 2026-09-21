@@ -49,21 +49,32 @@ file), addressed by dotted keys:
 - `get <key>` prints the value (`--json` for JSON encoding; whole sections
   print as JSON objects). Unknown keys are `NotFoundError` → **exit 3**.
 - `set <key> <value>` mutates the merged config and rewrites the file.
-  `setConfigValue` only accepts **existing** keys and **preserves the
-  current value's type**: numeric keys reject non-numeric input, boolean
-  keys accept only `true`/`false`, everything else is stored as a string.
-  Unknown keys or type-invalid values are `NotFoundError` → exit 3.
+  `setConfigValue` only accepts existing **leaf** keys (a whole section such
+  as `search` cannot be replaced) and preserves the current value's type.
+  It validates the candidate before mutating the in-memory object, so a
+  rejected set leaves the file byte-for-byte unchanged. Unknown, section,
+  type-invalid, and value-invalid inputs are `NotFoundError` → exit 3.
 - Because `set` re-serializes the merged config (`serializeConfig`), the
   file is normalized on every write: **comments and unknown keys in a
   hand-edited config.toml are dropped** the first time `kura config set`
   runs. The serializer emits nested sections (`[llm.models]`) and only knows
   the schema.
 
-Parsing is deliberately forgiving (`mergeInto`): unknown keys are ignored,
-and a value whose TOML type doesn't match the default's type is discarded in
-favor of the default (e.g. `stale_days = "not-a-number"` silently stays
-180). A config file that fails to parse at all is reported by `doctor` as a
-failed check; other commands surface the parse error.
+Load and set share one leaf-validator table. Inherited object properties are
+not configuration keys for either `get` or `set`. `default_bucket` must match
+`[a-z0-9][a-z0-9-]*`; `llm.provider` is one of `auto`, `ollama`, `lmstudio`,
+or `none`; provider URLs and model names are nonblank. `stale_days`, embedding
+dimensions, rerank count, and default result limit are positive safe integers;
+RRF and search weights are finite and nonnegative; the browser port is a
+positive integer at most 65535. `general.editor` and `clip.path` may be any
+string, including empty.
+
+Parsing remains deliberately forgiving (`mergeInto`): unknown keys are
+ignored, and a value whose TOML type or legal range is invalid is discarded in
+favor of the default (e.g. `stale_days = "not-a-number"`, `stale_days = 0`,
+or a non-finite weight silently keeps its default). A config file that fails
+to parse at all is reported by `doctor` as a failed check; other commands
+surface the parse error.
 
 ## Environment variables
 
