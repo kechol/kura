@@ -16,7 +16,14 @@ import {
 } from "../src/core/documents";
 import { parseFrontmatter, serializeFrontmatter } from "../src/core/frontmatter";
 import { backlinks, brokenLinks, outlinks, twoHopLinks } from "../src/core/links";
-import { buildTagTree, gcTags, listTags, removeTagsFromDoc, renameTag } from "../src/core/tags";
+import {
+  addTagsToDoc,
+  buildTagTree,
+  gcTags,
+  listTags,
+  removeTagsFromDoc,
+  renameTag,
+} from "../src/core/tags";
 
 let db: Database;
 
@@ -369,6 +376,24 @@ describe("favorites", () => {
 });
 
 describe("tags", () => {
+  test("add/remove reject an invalid batch atomically and keep FTS in sync", () => {
+    const doc = createDocument(db, {
+      title: "原子性の検証",
+      content: "検索対象の本文。",
+      bucket: "main",
+      tags: ["保持分類", "削除候補"],
+    });
+
+    expect(() => addTagsToDoc(db, doc.id, ["検証分類", ""])).toThrow("invalid tag");
+    expect(listDocuments(db, { tag: "検証分類" })).toEqual([]);
+    expect(listTags(db).map((tag) => tag.path)).not.toContain("検証分類");
+    expect(ftsRow(doc.id)?.tags ?? "").not.toContain("検証分類");
+
+    expect(() => removeTagsFromDoc(db, doc.id, ["削除候補", ""])).toThrow("invalid tag");
+    expect(listDocuments(db, { tag: "削除候補" }).map((item) => item.key)).toEqual([doc.key]);
+    expect(ftsRow(doc.id)?.tags ?? "").toContain("削除候補");
+  });
+
   test("renameTag moves descendants and merges into existing tags", () => {
     const a = createDocument(db, {
       title: "A",
@@ -388,6 +413,49 @@ describe("tags", () => {
 
     // FTS tags column is refreshed too
     expect(ftsRow(a.id)?.tags).toContain("dev/db/sqlite");
+  });
+
+  test("renameTag rolls back earlier descendants when a later update fails", () => {
+    const doc = createDocument(db, {
+      title: "分類変更の検証",
+      content: "#旧分類 #旧分類/子 を保持する。",
+      bucket: "main",
+    });
+    db.exec(`CREATE TEMP TRIGGER fail_second_tag_rename
+      BEFORE UPDATE OF path ON tags
+      WHEN OLD.path = '旧分類/子'
+      BEGIN SELECT RAISE(ABORT, 'forced rename failure'); END`);
+
+    expect(() => renameTag(db, "旧分類", "新分類")).toThrow("forced rename failure");
+    const paths = listTags(db).map((tag) => tag.path);
+    expect(paths).toContain("旧分類");
+    expect(paths).toContain("旧分類/子");
+    expect(paths).not.toContain("新分類");
+    expect(ftsRow(doc.id)?.tags ?? "").toContain("旧分類/子");
+  });
+
+  test("tag hierarchy filters and renames treat SQL wildcard characters literally", () => {
+    const literal = createDocument(db, {
+      title: "リテラル分類",
+      content: "本文",
+      bucket: "main",
+      tags: ["分類_甲/子", "進捗%完了/子", "記録\\保管/子"],
+    });
+    const lookalike = createDocument(db, {
+      title: "類似分類",
+      content: "本文",
+      bucket: "main",
+      tags: ["分類乙甲/子", "進捗済完了/子"],
+    });
+
+    expect(listDocuments(db, { tag: "分類_甲" }).map((doc) => doc.key)).toEqual([literal.key]);
+    expect(listDocuments(db, { tag: "進捗%完了" }).map((doc) => doc.key)).toEqual([literal.key]);
+    expect(listDocuments(db, { tag: "記録\\保管" }).map((doc) => doc.key)).toEqual([literal.key]);
+
+    const renamed = renameTag(db, "分類_甲", "分類_新");
+    expect(renamed.moved).toEqual(["分類_甲/子"]);
+    expect(listDocuments(db, { tag: "分類_新" }).map((doc) => doc.key)).toEqual([literal.key]);
+    expect(listDocuments(db, { tag: "分類乙甲" }).map((doc) => doc.key)).toEqual([lookalike.key]);
   });
 
   test("removeTagsFromDoc / gcTags", () => {

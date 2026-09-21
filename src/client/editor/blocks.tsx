@@ -7,7 +7,7 @@ import { type Block, type InlineNode, rawText } from "./model";
 import { serializeMarkdown } from "./serialize";
 
 export interface RichHandlers {
-  onInput: (el: HTMLElement) => void;
+  onInput: (e: InputEvent, el: HTMLElement) => void;
   onKeyDown: (e: KeyboardEvent, el: HTMLElement) => void;
   onCompositionStart: () => void;
   onCompositionEnd: (el: HTMLElement) => void;
@@ -85,7 +85,7 @@ export function RichBlock({
       tabIndex={editable ? 0 : undefined}
       contentEditable={editable}
       ref={setRef}
-      onInput={(e) => handlers.onInput(e.currentTarget as HTMLElement)}
+      onInput={(e) => handlers.onInput(e as unknown as InputEvent, e.currentTarget as HTMLElement)}
       onKeyDown={(e) => handlers.onKeyDown(e as unknown as KeyboardEvent, e.currentTarget)}
       onCompositionStart={handlers.onCompositionStart}
       onCompositionEnd={(e) => handlers.onCompositionEnd(e.currentTarget as HTMLElement)}

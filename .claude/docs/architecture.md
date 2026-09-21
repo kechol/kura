@@ -56,6 +56,8 @@ database goes through core; the CLI and both servers are thin adapters.
 | `src/core/documents.ts` | Document repository: CRUD + single-transaction sync of all derived data |
 | `src/core/buckets.ts` | Bucket CRUD and name validation |
 | `src/core/tags.ts` | Tag normalization, doc-tag assignment, rename/merge, GC, tree building |
+| `src/core/hierarchy.ts` | Literal exact-or-descendant SQL predicates shared by document, tag, search, and graph filters |
+| `src/core/graph.ts` | Graph-only projected reads: nodes, tags, and SQL-scoped resolved edges without document bodies |
 | `src/core/links.ts` | Link sync, unresolved-link resolution, outlinks/backlinks/2-hop, broken links |
 | `src/core/fts.ts` | `documents_fts` upsert/delete/tags-refresh helpers (no SQL triggers) |
 | `src/core/frontmatter.ts` | YAML frontmatter parse/serialize, timestamp conversion (see [document-notation.md](document-notation.md)) |
@@ -94,7 +96,9 @@ state into `document_revisions` on content / title / path changes
 FTS `tags` column is synthesized at write time and `chunks_vec` (vec0) is
 not covered by foreign keys. Consequently: **never UPDATE/DELETE
 `documents` directly** — always go through the repository functions.
-Tag-only operations refresh FTS via `ftsRefreshTags` (`src/core/fts.ts`).
+Public tag-only add/remove/rename operations wrap the tag rows and
+`ftsRefreshTags` calls in one transaction; they also nest safely inside a
+document transaction.
 
 Two repository functions write `documents` without `syncDerived`:
 `touchAccess` (`access_count` / `last_accessed_at`) and `setFavorite`

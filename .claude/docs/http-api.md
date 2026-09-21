@@ -88,6 +88,11 @@ Note that `LLMUnavailableError` intentionally has no dedicated status: the UI
 treats "no provider" as a server-side degradation message, and hybrid mode
 never throws it (it degrades with warnings instead).
 
+Handlers with JSON bodies parse through `parseJsonBody()` and endpoint-specific
+Zod schemas before calling core. Malformed JSON, `null`, arrays in place of an
+object, wrong scalar types, and mixed-type string arrays all return the same
+400 `{"error": "<message>"}` shape and perform no mutation.
+
 ## Common JSON shapes
 
 - **Document** (`docJson()`): `key`, `path` (slash-separated document path,
@@ -177,7 +182,7 @@ Paged document listing (metadata only, no `content`).
 | Query param | Default | Notes |
 | --- | --- | --- |
 | `bucket` | all buckets | exact bucket name |
-| `tag` | — | hierarchical: matches the tag itself **and descendants** (`t.path = ? OR t.path LIKE ? || '/%'`) |
+| `tag` | — | hierarchical: literal exact-or-`/`-descendant matching; `%`, `_`, and backslashes are ordinary characters |
 | `prefix` | — | document-path filter: matches the path itself **and descendants**, case-insensitively. Normalized (`normalizeDocPath`); a value that normalizes to `""` → 400 |
 | `sort` | `updated` | one of `updated` / `created` / `accessed` / `title` / `views`; anything else → 400. `views` orders by `access_count` descending, ties broken by most-recently accessed |
 | `favorite` | off | `favorite=1` keeps only pinned documents — how the sidebar's favorites section is loaded |
@@ -186,8 +191,9 @@ Paged document listing (metadata only, no `content`).
 | `page` | 1 | positive safe integer; invalid values → 400 |
 | `per` | 50 | positive safe integer; **capped at 200**; invalid values → 400 |
 
-Response: `{docs: Document[], total, page, per}`. `total` is computed with
-the same filter by `listDocumentsCount()` so the UI can render pagination.
+Response: `{docs: Document[], total, page, per}`. `total` is computed by core
+`countDocuments()` from the same filter builder as `listDocuments()`, so every
+bucket/tag/prefix/favorite/stale combination matches pagination exactly.
 Each doc carries an `excerpt` field **only when `excerpt=1` was requested** —
 without it the payload is byte-identical to before. The excerpt is produced by
 `docExcerpt()` (`src/core/excerpt.ts`), which strips Markdown or HTML to plain
@@ -198,8 +204,9 @@ already loaded by `listDocuments`, so this adds no query.
 
 Create a document (the browser's `Ctrl + N`). Body:
 `{title, bucket?, content?, path?, tags?}` — `title` is required and must not
-be blank (400); `bucket` defaults to `general.default_bucket` and an unknown
-one is a 404. Returns the created document **with `content`**, status **201**.
+be blank and `tags` must be a string array when present (400); `bucket`
+defaults to `general.default_bucket` and an unknown one is a 404. Returns the
+created document **with `content`**, status **201**.
 
 Backed by `createDocumentWithRetry()`, so a title already taken in that
 (bucket, path) retries as `title (2)`, `title (3)`, … rather than failing with
@@ -264,10 +271,10 @@ the source of truth. It removes tags present on the document but absent from
 the array, then adds the new ones, then calls `updateDocument()`. Caveat:
 hashtags still written inline in the body are re-extracted on save, so a tag
 cannot be removed via the array while `#tag` remains in the content.
-Omitting `tags` (or sending a non-array) leaves tags untouched. `aliases`
-gets the same treatment: the array is the complete desired set, diff-synced
-via `setAliasesForDoc()` (`src/core/aliases.ts`); omitting it (or sending a
-non-array) leaves aliases untouched. An invalid alias (contains
+Omitting `tags` leaves tags untouched; a non-array or mixed array is a 400.
+`aliases` gets the same treatment: the array is the complete desired set, diff-synced
+via `setAliasesForDoc()` (`src/core/aliases.ts`); omitting it leaves aliases
+untouched, while a non-array or mixed array is a 400. An invalid alias (contains
 `[ ] | /` or newlines) → 400. Document fields, tags, aliases, FTS, chunks,
 links, and revision changes share one transaction, so a conflict or invalid
 replacement leaves the entire prior document state intact.
@@ -352,14 +359,18 @@ filters (same semantics as `/api/docs`). Response:
 { nodes: [{key, title, tags, degree, stale}], edges: [{source, target}] }
 ```
 
-Built by `buildGraph()` in `src/server/api.ts`:
+Built by `readGraph()` in `src/core/graph.ts`:
 
 - `edges` are **resolved** links only (`target_id IS NOT NULL`), expressed as
   doc-key pairs, and only when *both* endpoints survive the filter.
 - `degree` counts both incoming and outgoing surviving edges per node
   (isolated nodes have `degree: 0`; the UI can hide them).
-- `stale` compares `updated_at` against a cutoff computed from
-  `general.stale_days` (UTC, formatted to match SQLite's timestamp format).
+- `stale` compares `updated_at` against a UTC epoch cutoff computed from
+  `general.stale_days`, rounded to whole seconds to match SQLite timestamps.
+  Numeric comparison avoids date-formatting overflow for large valid settings.
+- The node projection reads only `id`, key, title, and timestamp — never body
+  or aliases. Tags are one set query, and a selected CTE scopes both link
+  endpoints in SQL; no selected-document ID list is expanded into bind slots.
 
 ### `GET /api/llm`
 
@@ -374,10 +385,9 @@ detection, 60 s TTL). Lets the UI say whether vector/hybrid modes will work.
    object.
 2. **Reuse `src/core/`** — if the logic doesn't exist there yet, add it to
    core first, then call it. No SQL or domain rules in `api.ts` beyond
-   response shaping (`buildGraph`/`listDocumentsCount` are the current
-   tolerated exceptions because they are purely presentational aggregation).
-3. Validate params with `UsageError` for 400s; let core's `NotFoundError` /
-   `ConflictError` surface naturally.
+   response shaping.
+3. Validate params with `UsageError` and JSON bodies with Zod for 400s; let
+   core's `NotFoundError` / `ConflictError` surface naturally.
 4. Add a test to `tests/api.test.ts` (in-memory DB, `setProviderForTests(null)`,
    `startServer({port: 0})`, real `fetch`).
 5. Mirror the response type in `src/client/api.ts` if the UI consumes it,

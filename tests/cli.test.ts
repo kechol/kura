@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -73,5 +73,31 @@ describe("cli dispatch", () => {
       expect(result.code).toBe(2);
       expect(result.stderr).toContain("must be a positive integer");
     }
+  });
+
+  test("config set rejects sections and invalid numbers without changing the file", async () => {
+    const home = mkdtempSync(join(tmpdir(), "kura-cli-config-test-"));
+    homes.push(home);
+    const env = { KURA_HOME: home, KURA_DB: join(home, "kura.db") };
+    expect((await runCli(["init", "--no-download"], env)).code).toBe(0);
+    const path = join(home, "config.toml");
+    const before = readFileSync(path, "utf-8");
+
+    for (const [key, value] of [
+      ["search", "broken"],
+      ["llm.models", "broken"],
+      ["general.stale_days", ""],
+      ["general.stale_days", "Infinity"],
+      ["search.rrf_k", ""],
+      ["browser.port", "65536"],
+    ] as const) {
+      const result = await runCli(["config", "set", key, value], env);
+      expect(result.code).toBe(3);
+      expect(result.stderr).toContain("unknown config key or invalid value");
+      expect(readFileSync(path, "utf-8")).toBe(before);
+    }
+
+    expect((await runCli(["config", "set", "general.stale_days", "90"], env)).code).toBe(0);
+    expect(readFileSync(path, "utf-8")).toContain("stale_days = 90");
   });
 });

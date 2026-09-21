@@ -1,8 +1,10 @@
 import type { Database } from "bun:sqlite";
+import { z } from "zod";
 import { listBuckets, requireBucket } from "../core/buckets";
 import type { KuraConfig } from "../core/config";
 import type { FtsTokenizer } from "../core/db";
 import {
+  countDocuments,
   createDocumentWithRetry,
   type DocumentRecord,
   deleteDocument,
@@ -16,6 +18,7 @@ import {
 } from "../core/documents";
 import { ConflictError, NotFoundError, UsageError } from "../core/errors";
 import { docExcerpt } from "../core/excerpt";
+import { readGraph } from "../core/graph";
 import { collectInsights } from "../core/insights";
 import { backlinks, outlinks, twoHopLinks } from "../core/links";
 import { requireProvider, resolveProvider } from "../core/llm/provider";
@@ -43,6 +46,40 @@ function errorResponse(e: unknown): Response {
   if (e instanceof UsageError) return json({ error: e.message }, 400);
   if (e instanceof ConflictError) return json({ error: e.message }, 409);
   return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+}
+
+const createDocBody = z.object({
+  title: z.string(),
+  content: z.string().optional(),
+  bucket: z.string().optional(),
+  path: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const updateDocBody = z.object({
+  title: z.string().optional(),
+  path: z.string().optional(),
+  content: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  aliases: z.array(z.string()).optional(),
+});
+
+const favoriteBody = z.object({ favorite: z.boolean() });
+
+async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
+  let value: unknown;
+  try {
+    value = await req.json();
+  } catch {
+    throw new UsageError("request body must be valid JSON");
+  }
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const field = issue?.path.length ? ` field '${issue.path.join(".")}'` : "";
+    throw new UsageError(`invalid request body${field}: ${issue?.message ?? "schema mismatch"}`);
+  }
+  return parsed.data;
 }
 
 function docJson(doc: DocumentRecord, content = false): Record<string, unknown> {
@@ -82,8 +119,6 @@ function requireDoc(db: Database, key: string): DocumentRecord {
   if (!doc) throw new NotFoundError(`document not found: ${key}`);
   return doc;
 }
-
-const STALE_CUTOFF = (days: number): string => `-${days} days`;
 
 function positiveIntegerParam(
   params: URLSearchParams,
@@ -182,7 +217,7 @@ export function createApiRoutes(
           staleDays: config.general.stale_days,
         };
         const docs = listDocuments(db, { ...filter, limit: per, offset });
-        const total = listDocumentsCount(db, filter);
+        const total = countDocuments(db, filter);
         // excerpt=1 is opt-in: without it the payload is byte-identical to before
         const shaped = withExcerpt
           ? docs.map((d) => ({ ...docJson(d), excerpt: docExcerpt(d.content, d.contentType) }))
@@ -191,24 +226,18 @@ export function createApiRoutes(
       }),
 
       POST: wrap(async (req) => {
-        const body = (await req.json().catch(() => null)) as {
-          title?: unknown;
-          content?: unknown;
-          bucket?: unknown;
-          path?: unknown;
-          tags?: unknown;
-        } | null;
-        const title = typeof body?.title === "string" ? body.title.trim() : "";
+        const body = await parseJsonBody(req, createDocBody);
+        const title = body.title.trim();
         if (title === "") throw new UsageError("title must not be empty");
 
         // The title retries as "無題 (2)" on a collision, so creating a document from the
         // browser never fails just because the last untitled one is still called that
         const doc = createDocumentWithRetry(db, {
           title,
-          content: typeof body?.content === "string" ? body.content : "",
-          bucket: typeof body?.bucket === "string" ? body.bucket : config.general.default_bucket,
-          path: typeof body?.path === "string" ? body.path : undefined,
-          tags: Array.isArray(body?.tags) ? (body.tags as string[]) : undefined,
+          content: body.content ?? "",
+          bucket: body.bucket ?? config.general.default_bucket,
+          path: body.path,
+          tags: body.tags,
         });
         return json(docJson(doc, true), 201);
       }),
@@ -239,19 +268,13 @@ export function createApiRoutes(
       }),
       PUT: wrap(async (req) => {
         const doc = requireDoc(db, req.params.key ?? "");
-        const body = (await req.json()) as {
-          title?: string;
-          path?: string;
-          content?: string;
-          tags?: string[];
-          aliases?: string[];
-        };
+        const body = await parseJsonBody(req, updateDocBody);
         const { record } = replaceDocument(db, doc.id, {
           title: body.title,
           path: body.path,
           content: body.content,
-          tags: Array.isArray(body.tags) ? body.tags : undefined,
-          aliases: Array.isArray(body.aliases) ? body.aliases : undefined,
+          tags: body.tags,
+          aliases: body.aliases,
         });
         return json(docJson(record, true));
       }),
@@ -267,10 +290,7 @@ export function createApiRoutes(
       // edit, so it must not bump updated_at the way the document PUT does
       PUT: wrap(async (req) => {
         const doc = requireDoc(db, req.params.key ?? "");
-        const body = (await req.json().catch(() => null)) as { favorite?: unknown } | null;
-        if (typeof body?.favorite !== "boolean") {
-          throw new UsageError("body field 'favorite' must be a boolean");
-        }
+        const body = await parseJsonBody(req, favoriteBody);
         return json(docJson(setFavorite(db, doc.id, body.favorite)));
       }),
     },
@@ -325,7 +345,7 @@ export function createApiRoutes(
     "/api/graph": wrap((req) => {
       const url = new URL(req.url);
       return json(
-        buildGraph(db, config, {
+        readGraph(db, config.general.stale_days, {
           bucket: url.searchParams.get("bucket") ?? undefined,
           tag: url.searchParams.get("tag") ?? undefined,
         }),
@@ -339,98 +359,4 @@ export function createApiRoutes(
   };
 
   return routes as ReturnType<typeof createApiRoutes>;
-}
-
-function listDocumentsCount(
-  db: Database,
-  filter: {
-    bucket?: string;
-    tag?: string;
-    prefix?: string;
-    favorite?: boolean;
-    stale?: boolean;
-    staleDays: number;
-  },
-): number {
-  const where: string[] = [];
-  const params: Array<string | number> = [];
-  if (filter.bucket) {
-    where.push("b.name = ?");
-    params.push(filter.bucket);
-  }
-  if (filter.tag) {
-    where.push(
-      `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
-        WHERE dt.document_id = d.id AND (t.path = ? OR t.path LIKE ? || '/%'))`,
-    );
-    params.push(filter.tag, filter.tag);
-  }
-  if (filter.prefix) {
-    where.push("(lower(d.path) = lower(?) OR lower(d.path) LIKE lower(?) || '/%')");
-    params.push(filter.prefix, filter.prefix);
-  }
-  if (filter.favorite) {
-    where.push("d.favorite = 1");
-  }
-  if (filter.stale) {
-    where.push("d.updated_at < datetime('now', ?)");
-    params.push(STALE_CUTOFF(filter.staleDays));
-  }
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM documents d JOIN buckets b ON b.id = d.bucket_id
-       ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}`,
-    )
-    .get(...params) as { n: number };
-  return row.n;
-}
-
-interface GraphNode {
-  key: string;
-  title: string;
-  tags: string[];
-  degree: number;
-  stale: boolean;
-}
-
-interface GraphEdge {
-  source: string;
-  target: string;
-}
-
-/** Knowledge graph: nodes = documents, edges = resolved links (docs: http-api.md) */
-function buildGraph(
-  db: Database,
-  config: KuraConfig,
-  filter: { bucket?: string; tag?: string },
-): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  const docs = listDocuments(db, { bucket: filter.bucket, tag: filter.tag });
-  const byId = new Map(docs.map((d) => [d.id, d]));
-  const cutoff = new Date(Date.now() - config.general.stale_days * 86_400_000)
-    .toISOString()
-    .slice(0, 19)
-    .replace("T", " ");
-
-  const edges: GraphEdge[] = [];
-  const degree = new Map<number, number>();
-  const rows = db
-    .prepare("SELECT source_id, target_id FROM links WHERE target_id IS NOT NULL")
-    .all() as Array<{ source_id: number; target_id: number }>;
-  for (const r of rows) {
-    const source = byId.get(r.source_id);
-    const target = byId.get(r.target_id);
-    if (!source || !target) continue;
-    edges.push({ source: source.key, target: target.key });
-    degree.set(r.source_id, (degree.get(r.source_id) ?? 0) + 1);
-    degree.set(r.target_id, (degree.get(r.target_id) ?? 0) + 1);
-  }
-
-  const nodes = docs.map((d) => ({
-    key: d.key,
-    title: d.title,
-    tags: d.tags,
-    degree: degree.get(d.id) ?? 0,
-    stale: d.updatedAt < cutoff,
-  }));
-  return { nodes, edges };
 }

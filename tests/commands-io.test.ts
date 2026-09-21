@@ -1,5 +1,14 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -179,6 +188,106 @@ describe("kura export / import / bucket (e2e)", () => {
     const docs = JSON.parse(ls.stdout) as Array<{ path: string; title: string }>;
     expect(docs.length).toBe(1);
     expect(docs[0]?.path).toBe("クリップ/技術");
+  }, 30_000);
+
+  test("export contains hostile paths, preserves collisions, and refuses symlink traversal", async () => {
+    const isolatedHome = mkdtempSync(join(tmpdir(), "kura-export-safety-home-"));
+    const isolatedEnv = { KURA_HOME: isolatedHome };
+    expect((await runCli(["init", "--no-download"], isolatedEnv)).code).toBe(0);
+
+    const add = async (title: string, path: string): Promise<string> => {
+      const result = await runCli(
+        ["add", "-", "--title", title, "--path", path, "--json"],
+        isolatedEnv,
+        `安全な出力先を検証する本文: ${title}\n`,
+      );
+      expect(result.code).toBe(0);
+      return (JSON.parse(result.stdout) as Array<{ key: string }>)[0]?.key ?? "";
+    };
+
+    await add("親参照", "../../escaped");
+    await add("現在地", ".");
+    await add("特殊文字", "分類:危険?*");
+    await add("衝突:文書", "通常/階層");
+    await add("衝突?文書", "通常/階層");
+
+    const safeRoot = join(work, "export-hostile");
+    const outsideSentinel = join(work, "outside-sentinel.md");
+    writeFileSync(outsideSentinel, "変更禁止\n");
+    const exported = await runCli(["export", "--dir", safeRoot], isolatedEnv);
+    expect(exported.code).toBe(0);
+    expect(readFileSync(outsideSentinel, "utf-8")).toBe("変更禁止\n");
+    expect(existsSync(join(work, "escaped", "親参照.md"))).toBe(false);
+    const hostileExport = join(safeRoot, "main", "-", "-", "escaped", "親参照.md");
+    expect(existsSync(hostileExport)).toBe(true);
+    expect(readFileSync(hostileExport, "utf-8")).toContain('path: "../../escaped"');
+    expect(existsSync(join(safeRoot, "main", "-", "現在地.md"))).toBe(true);
+    expect(existsSync(join(safeRoot, "main", "分類-危険--", "特殊文字.md"))).toBe(true);
+    const collisionFiles = readdirSync(join(safeRoot, "main", "通常", "階層")).filter((name) =>
+      name.startsWith("衝突-文書"),
+    );
+    expect(collisionFiles).toHaveLength(2);
+    expect(collisionFiles).toContain("衝突-文書.md");
+    expect(collisionFiles.some((name) => /^衝突-文書-[0-9a-f]{8}\.md$/.test(name))).toBe(true);
+
+    const symlinkRoot = join(work, "export-symlink");
+    const outside = join(work, "symlink-outside");
+    mkdirSync(join(symlinkRoot, "main"), { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    const sentinel = join(outside, "sentinel.md");
+    writeFileSync(sentinel, "変更禁止\n");
+    symlinkSync(outside, join(symlinkRoot, "main", "trap"), "dir");
+    await add("シンボリックリンク逸脱", "trap");
+
+    const refused = await runCli(["export", "--dir", symlinkRoot], isolatedEnv);
+    expect(refused.code).toBe(2);
+    expect(refused.stderr).toContain("unsafe export path component");
+    expect(readFileSync(sentinel, "utf-8")).toBe("変更禁止\n");
+    expect(existsSync(join(outside, "シンボリックリンク逸脱.md"))).toBe(false);
+  }, 60_000);
+
+  test("export preserves documents when the key suffix also collides", async () => {
+    const isolatedEnv = { KURA_HOME: mkdtempSync(join(tmpdir(), "kura-export-collision-")) };
+    expect((await runCli(["init", "--no-download"], isolatedEnv)).code).toBe(0);
+    const fixtures = mkdtempSync(join(tmpdir(), "kura-export-collision-files-"));
+    const titles = ["衝突-文書-bbbbbbbb", "衝突:文書", "衝突?文書"];
+    const keys = ["cccccccc", "aaaaaaaa", "bbbbbbbb"];
+    for (let i = 0; i < titles.length; i++) {
+      writeFileSync(
+        join(fixtures, `${i}.md`),
+        `---\nkura_key: "${keys[i]}"\ntitle: "${titles[i]}"\nupdated_at: "2026-09-${23 - i} 00:00:00"\n---\n\n保持する本文${i}\n`,
+      );
+    }
+    expect((await runCli(["import", fixtures], isolatedEnv)).code).toBe(0);
+    const output = join(fixtures, "output");
+    expect((await runCli(["export", "--dir", output], isolatedEnv)).code).toBe(0);
+    const files = readdirSync(join(output, "main"));
+    expect(files).toHaveLength(3);
+    const bodies = files.map((name) => readFileSync(join(output, "main", name), "utf8"));
+    for (const key of keys)
+      expect(bodies.filter((body) => body.includes(`kura_key: "${key}"`))).toHaveLength(1);
+  }, 30_000);
+
+  test("export never modifies an outside file through a pre-existing hard link", async () => {
+    const isolatedEnv = { KURA_HOME: mkdtempSync(join(tmpdir(), "kura-export-hardlink-")) };
+    expect((await runCli(["init", "--no-download"], isolatedEnv)).code).toBe(0);
+    expect(
+      (await runCli(["add", "-", "--title", "出力本文"], isolatedEnv, "新しい本文\n")).code,
+    ).toBe(0);
+    const fixture = mkdtempSync(join(tmpdir(), "kura-export-hardlink-files-"));
+    const output = join(fixture, "output");
+    mkdirSync(join(output, "main"), { recursive: true });
+    const sentinel = join(fixture, "sentinel.md");
+    writeFileSync(sentinel, "変更禁止\n");
+    linkSync(sentinel, join(output, "main", "出力本文.md"));
+    const result = await runCli(["export", "--dir", output], isolatedEnv);
+    expect(result.code).toBe(2);
+    expect(readFileSync(sentinel, "utf8")).toBe("変更禁止\n");
+    const symlinkOutput = join(fixture, "symlink-output");
+    mkdirSync(join(symlinkOutput, "main"), { recursive: true });
+    symlinkSync(sentinel, join(symlinkOutput, "main", "出力本文.md"));
+    expect((await runCli(["export", "--dir", symlinkOutput], isolatedEnv)).code).not.toBe(0);
+    expect(readFileSync(sentinel, "utf8")).toBe("変更禁止\n");
   }, 30_000);
 
   test("import derives paths from subdirectories when frontmatter has none", async () => {

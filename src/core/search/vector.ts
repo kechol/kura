@@ -1,6 +1,7 @@
 import type { Database, Statement } from "bun:sqlite";
 import type { KuraConfig } from "../config";
 import { setMeta } from "../db";
+import { hierarchyParameters, hierarchyPredicate } from "../hierarchy";
 import type { LLMProvider } from "../llm/provider";
 import type { SearchHit } from "./types";
 
@@ -271,9 +272,9 @@ export async function vectorSearchDetailed(
   if (opts.tag) {
     where.push(
       `EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
-        WHERE dt.document_id = d.id AND (t.path = ? OR t.path LIKE ? || '/%'))`,
+        WHERE dt.document_id = d.id AND ${hierarchyPredicate("t.path")})`,
     );
-    params.push(opts.tag, opts.tag);
+    params.push(...hierarchyParameters(opts.tag));
   }
 
   const rows = db.transaction(() => {

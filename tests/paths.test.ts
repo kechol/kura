@@ -279,6 +279,48 @@ describe("moveDocumentsByPrefix (kura mv --prefix)", () => {
     expect(() => moveDocumentsByPrefix(db, bucketId, "a", "a/b")).toThrow(/descendant/);
     expect(() => moveDocumentsByPrefix(db, bucketId, "存在しない", "x")).toThrow(/no documents/);
   });
+
+  test("treats SQL wildcard characters in a prefix literally", () => {
+    const literalUnderscore = createDocument(db, {
+      title: "対象A",
+      content: "x",
+      bucket: "main",
+      path: "資料_甲/子",
+    });
+    const wildcardLookalike = createDocument(db, {
+      title: "対象外A",
+      content: "x",
+      bucket: "main",
+      path: "資料乙甲/子",
+    });
+    const literalPercent = createDocument(db, {
+      title: "対象B",
+      content: "x",
+      bucket: "main",
+      path: "進捗%完了/子",
+    });
+    const literalBackslash = createDocument(db, {
+      title: "対象C",
+      content: "x",
+      bucket: "main",
+      path: "記録\\保管/子",
+    });
+    const bucketId = literalUnderscore.bucketId;
+
+    expect(listDocuments(db, { prefix: "資料_甲" }).map((doc) => doc.key)).toEqual([
+      literalUnderscore.key,
+    ]);
+    expect(listDocuments(db, { prefix: "進捗%完了" }).map((doc) => doc.key)).toEqual([
+      literalPercent.key,
+    ]);
+    expect(listDocuments(db, { prefix: "記録\\保管" }).map((doc) => doc.key)).toEqual([
+      literalBackslash.key,
+    ]);
+
+    const { moved } = moveDocumentsByPrefix(db, bucketId, "資料_甲", "保管_甲");
+    expect(moved.map((entry) => entry.key)).toEqual([literalUnderscore.key]);
+    expect(getDocumentByKey(db, wildcardLookalike.key)?.path).toBe("資料乙甲/子");
+  });
 });
 
 describe("createDocumentWithRetry (kura clip collisions)", () => {

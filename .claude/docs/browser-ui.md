@@ -299,8 +299,9 @@ rather than navigating away. Vector and hybrid search stay on `/search`.
 There is no separate editor screen: a Markdown document is rendered as editable
 blocks, and typing into one is the edit. `PUT /api/docs/:key` is issued 1.5 s
 after the last change (Ctrl+S saves at once); the status is shown next to the
-title, and a dirty document warns on unload. `Escape` blurs the current block,
-handing the keyboard back to the page-scope shortcuts above.
+title, and a dirty document warns on page unload. A failed save keeps the
+latest text and turns the failure status into a retry button. `Escape` blurs
+the current block, handing the keyboard back to the page-scope shortcuts above.
 
 ```
 markdown ──parse.ts──► Block[] ──dom.ts──► contenteditable DOM
@@ -330,6 +331,22 @@ Load-bearing decisions, each of which was a bug first:
   `compositionend` resumes it; every key handler ignores `isComposing`
   (and `keyCode === 229`). Enter during a conversion confirms it — it must not
   split the block.
+- **The latest serialized body is updated synchronously.** It does not wait for
+  a Preact render, so navigation or unmount during the 1.5 s debounce can flush
+  exactly what is visible. The unmount cleanup starts that save rather than
+  cancelling it.
+- **Saves are serialized and drained.** Only one PUT is in flight. Input that
+  arrives during it remains dirty and starts the next PUT afterwards; an older
+  response can never mark newer text saved. A failure retains the dirty body
+  for an explicit retry.
+- **Document identity owns the queue.** Same-document metadata refreshes (for
+  example, toggling favorite or changing path/title) do not unmount the editor.
+  A failed refresh displays its error alongside the retained editor, so a
+  simultaneous save failure cannot discard the only copy of the dirty body.
+  Body and metadata save statuses are separate: the body retry button is shown
+  only for a failed body save, never for a failed title/path/alias operation.
+  Changing from document A to B does reset the editor by key, so A's body can
+  never enter B's save request.
 - **A trailing space in a contenteditable arrives as U+00A0**, so the autoformat
   prefixes (`# `, `- `, `1. `, `> `, ```` ``` ````) normalize it before matching.
 - **Inline marks go through `execCommand`** (bold / italic / strike / link): the

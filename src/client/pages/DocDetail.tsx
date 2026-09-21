@@ -63,14 +63,29 @@ export function DocDetail({ docKey }: { docKey: string }) {
     }
   }, [docKey]);
   const related = useAsync(() => fetchRelated(docKey), [docKey]);
-  const [status, setStatus] = useState<SaveStatus>("idle");
+  const [metadataStatus, setStatus] = useState<SaveStatus>("idle");
+  const [bodyStatus, setBodyStatus] = useState<SaveStatus>("idle");
+  const status =
+    (bodyStatus === "idle" || bodyStatus === "saved") && metadataStatus !== "idle"
+      ? metadataStatus
+      : bodyStatus;
+  const [saveRetry, setSaveRetry] = useState(0);
   const [pathError, setPathError] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
+  useEffect(() => {
+    setStatus("idle");
+    setBodyStatus("idle");
+    setSaveRetry(0);
+    setPathError(null);
+    setAliasError(null);
+  }, [docKey]);
   const tree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
     [bucket, docKey],
   );
-  const d = doc.data;
+  // useAsync retains the previous data during a reload. A same-document metadata refresh
+  // should keep the editor mounted; a route to another key must never render the old body.
+  const d = doc.data?.key === docKey ? doc.data : null;
 
   useDocumentTitle(d?.title ?? null);
 
@@ -130,8 +145,8 @@ export function DocDetail({ docKey }: { docKey: string }) {
   });
 
   docKeys.current = null;
-  if (doc.loading || related.loading) return <p class="empty">読み込み中…</p>;
-  if (doc.error) return <p class="error">{doc.error}</p>;
+  if ((doc.loading && d === null) || related.loading) return <p class="empty">読み込み中…</p>;
+  if (doc.error && d === null) return <p class="error">{doc.error}</p>;
   if (!d) return null;
 
   const markdown = d.content_type !== "html";
@@ -218,6 +233,11 @@ export function DocDetail({ docKey }: { docKey: string }) {
   return (
     <div class="doc-detail">
       <article class="doc-main">
+        {doc.error && (
+          <p class="error" role="alert">
+            {doc.error}
+          </p>
+        )}
         {d.path !== "" && (
           <nav class="doc-breadcrumb" aria-label="ドキュメントパス">
             {d.path.split("/").map((seg, i, segs) => {
@@ -253,7 +273,18 @@ export function DocDetail({ docKey }: { docKey: string }) {
             {d.title}
           </h1>
           <div class="doc-actions">
-            <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
+            {bodyStatus === "error" ? (
+              <button
+                type="button"
+                class={`save-status ${status}`}
+                title="クリックして保存を再試行"
+                onClick={() => setSaveRetry((value) => value + 1)}
+              >
+                {SAVE_LABEL[status]}
+              </button>
+            ) : (
+              <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
+            )}
             <button
               type="button"
               class={`icon-btn favorite-toggle${d.favorite ? " on" : ""}`}
@@ -271,7 +302,8 @@ export function DocDetail({ docKey }: { docKey: string }) {
             key={d.key}
             initial={d.content}
             resolve={resolve}
-            onStatus={setStatus}
+            onStatus={setBodyStatus}
+            retryToken={saveRetry}
             onSave={(content) => updateDoc(d.key, { content }).then(() => undefined)}
           />
         ) : (

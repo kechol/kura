@@ -61,7 +61,9 @@ Indexes: `idx_documents_bucket`, `idx_documents_updated`,
 `tags.path` is UNIQUE and always stored normalized (lowercased, slashes
 trimmed/collapsed — `normalizeTagPath` in `src/core/wiki.ts`). Hierarchy is
 purely lexical (`tech/db/sqlite`); there is no parent row requirement, and
-tag filters match descendants via `path = ? OR path LIKE ? || '/%'`.
+tag filters use the shared literal exact-or-`/`-descendant predicate from
+`src/core/hierarchy.ts`. Consequently `%`, `_`, and backslashes in stored
+paths are data, never SQL wildcard or escape syntax.
 
 `document_tags(document_id, tag_id)` is the composite PK, both FKs `ON
 DELETE CASCADE`. `source` is `'manual'` (default; body hashtags, frontmatter,
@@ -319,6 +321,10 @@ existing DBs will not re-run it.
   bump, because starring a document is not editing it. They still belong to
   the repository layer (`invariants.md` R1); nothing outside it writes
   `documents`.
+- Public tag add/remove/rename operations run in transactions in
+  `src/core/tags.ts`, so `tags`, `document_tags`, and every affected FTS tag
+  column either all change or all roll back. These transactions nest safely
+  when document create/update calls tag synchronization.
 - **Re-chunking**: `updateDocument` compares `sha256(new content)` with the
   stored `content_hash` and rebuilds chunks only on change (deleting the
   matching `chunks_vec` rows; new chunks start with `embedded_at = NULL` for

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createBucket } from "../src/core/buckets";
 import { defaultConfig } from "../src/core/config";
 import { openDatabase } from "../src/core/db";
-import { createDocument, getDocumentByKey } from "../src/core/documents";
+import { createDocument, getDocumentByKey, setFavorite } from "../src/core/documents";
+import { readGraph } from "../src/core/graph";
 import { setProviderForTests } from "../src/core/llm/provider";
 import { type KuraServer, startServer } from "../src/server/http";
 
@@ -61,6 +62,17 @@ async function expectFailedPutIsAtomic(
     body: JSON.stringify(body),
   });
   expect(response.status).toBe(expectedStatus);
+  expect(documentState(target.doc_key)).toEqual(before);
+}
+
+async function expectFailedRawPutIsAtomic(body: string): Promise<void> {
+  const target = db
+    .prepare("SELECT doc_key FROM documents WHERE title = ?")
+    .get("トランザクション設計") as { doc_key: string };
+  const before = documentState(target.doc_key);
+  const response = await api(`/api/docs/${target.doc_key}`, { method: "PUT", body });
+  expect(response.status).toBe(400);
+  expect(response.body.error).toBeTruthy();
   expect(documentState(target.doc_key)).toEqual(before);
 }
 
@@ -165,6 +177,59 @@ describe("REST API (docs: http-api.md)", () => {
     expect(badSort.status).toBe(400);
   });
 
+  test("GET /api/docs keeps composite filter totals equal to the paged predicate", async () => {
+    const matching = ["一致A", "一致B"].map((title) =>
+      createDocument(db, {
+        title,
+        content: "複合条件の本文。",
+        bucket: "main",
+        path: "資料_甲/子",
+        tags: ["分類%完了/子"],
+        updatedAt: "2020-01-01 00:00:00",
+      }),
+    );
+    for (const doc of matching) setFavorite(db, doc.id, true);
+    setFavorite(
+      db,
+      createDocument(db, {
+        title: "パス類似",
+        content: "対象外。",
+        bucket: "main",
+        path: "資料乙甲/子",
+        tags: ["分類%完了/子"],
+        updatedAt: "2020-01-01 00:00:00",
+      }).id,
+      true,
+    );
+    setFavorite(
+      db,
+      createDocument(db, {
+        title: "タグ類似",
+        content: "対象外。",
+        bucket: "main",
+        path: "資料_甲/子",
+        tags: ["分類済完了/子"],
+        updatedAt: "2020-01-01 00:00:00",
+      }).id,
+      true,
+    );
+
+    const query = new URLSearchParams({
+      bucket: "main",
+      tag: "分類%完了",
+      prefix: "資料_甲",
+      favorite: "1",
+      stale: "1",
+      per: "1",
+      page: "2",
+    });
+    const response = await api(`/api/docs?${query}`);
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(2);
+    expect(response.body.docs).toHaveLength(1);
+    expect(matching.map((doc) => doc.key)).toContain(response.body.docs[0].key);
+  });
+
   test("GET /api/docs?excerpt=1 adds stripped plaintext; absent without the param", async () => {
     const plain = await api("/api/docs");
     expect(plain.body.docs[0].excerpt).toBeUndefined();
@@ -256,6 +321,25 @@ describe("REST API (docs: http-api.md)", () => {
       body: JSON.stringify({ title: "メモ", bucket: "nope" }),
     });
     expect(missing.status).toBe(404);
+  });
+
+  test("POST /api/docs rejects malformed and mistyped bodies without mutation", async () => {
+    const before = (await api("/api/docs")).body.total;
+    const invalidBodies = [
+      "{",
+      "null",
+      "[]",
+      JSON.stringify({ title: 42 }),
+      JSON.stringify({ title: "不正本文", content: 42 }),
+      JSON.stringify({ title: "不正パス", path: 42 }),
+      JSON.stringify({ title: "不正タグ", tags: ["正常", 42] }),
+    ];
+    for (const body of invalidBodies) {
+      const response = await api("/api/docs", { method: "POST", body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeTruthy();
+      expect((await api("/api/docs")).body.total).toBe(before);
+    }
   });
 
   test("GET/PUT/DELETE /api/docs/:key", async () => {
@@ -357,6 +441,21 @@ describe("REST API (docs: http-api.md)", () => {
     );
   });
 
+  test("PUT rejects malformed, non-object, and mistyped fields without mutation", async () => {
+    for (const body of [
+      "{",
+      "null",
+      "[]",
+      JSON.stringify({ title: 42 }),
+      JSON.stringify({ content: 42 }),
+      JSON.stringify({ path: 42 }),
+      JSON.stringify({ tags: ["tech/db", 42] }),
+      JSON.stringify({ aliases: ["別名", false] }),
+    ]) {
+      await expectFailedRawPutIsAtomic(body);
+    }
+  });
+
   test("numeric query parameters reject non-positive and non-integer values", async () => {
     const invalid = ["0", "-1", "1.5", "10junk", "9007199254740992"];
     for (const value of invalid) {
@@ -427,6 +526,65 @@ describe("REST API (docs: http-api.md)", () => {
     const linked = body.nodes.find((n: { degree: number }) => n.degree > 0);
     expect(linked).toBeTruthy();
     expect(typeof body.nodes[0].stale).toBe("boolean");
+  });
+
+  test("graph handles the largest accepted stale-days integer without date overflow", () => {
+    const graph = readGraph(db, Number.MAX_SAFE_INTEGER);
+    expect(graph.nodes.length).toBeGreaterThan(0);
+    expect(graph.nodes.every((node) => !node.stale)).toBe(true);
+  });
+
+  test("GET /api/graph scopes nodes, tags, and edges without exposing large bodies", async () => {
+    const old = "2020-01-01 00:00:00";
+    const target = createDocument(db, {
+      title: "グラフ対象先",
+      content: "大きな本文".repeat(2_000),
+      bucket: "main",
+      tags: ["対象_集合/子"],
+      updatedAt: old,
+    });
+    const source = createDocument(db, {
+      title: "グラフ対象元",
+      content: `[[グラフ対象先]]\n${"接続本文".repeat(2_000)}`,
+      bucket: "main",
+      tags: ["対象_集合/別"],
+      updatedAt: old,
+    });
+    createDocument(db, {
+      title: "類似タグ対象外",
+      content: "[[グラフ対象先]]",
+      bucket: "main",
+      tags: ["対象甲集合/子"],
+    });
+    createBucket(db, "work");
+    const workTarget = createDocument(db, {
+      title: "別 bucket 先",
+      content: "本文",
+      bucket: "work",
+      tags: ["対象_集合/子"],
+    });
+    createDocument(db, {
+      title: "別 bucket 元",
+      content: `[[${workTarget.title}]]`,
+      bucket: "work",
+      tags: ["対象_集合/子"],
+    });
+
+    const { status, body } = await api(
+      `/api/graph?bucket=main&tag=${encodeURIComponent("対象_集合")}`,
+    );
+    expect(status).toBe(200);
+    expect(body.nodes.map((node: { key: string }) => node.key).sort()).toEqual(
+      [source.key, target.key].sort(),
+    );
+    expect(body.edges).toEqual([{ source: source.key, target: target.key }]);
+    expect(body.nodes.every((node: { degree: number }) => node.degree === 1)).toBe(true);
+    expect(body.nodes.every((node: { stale: boolean }) => node.stale)).toBe(true);
+    expect(body.nodes.flatMap((node: { tags: string[] }) => node.tags)).toEqual([
+      "対象_集合/子",
+      "対象_集合/別",
+    ]);
+    expect(body.nodes.every((node: Record<string, unknown>) => !("content" in node))).toBe(true);
   });
 
   test("SPA fallback (placeholder when dist is absent)", async () => {
@@ -546,10 +704,11 @@ describe("REST API (docs: http-api.md)", () => {
     expect(unpinned.body.favorite).toBe(false);
     expect((await api("/api/docs?favorite=1")).body.total).toBe(0);
 
-    const invalid = await api(`/api/docs/${doc.key}/favorite`, {
-      method: "PUT",
-      body: JSON.stringify({ favorite: "yes" }),
-    });
-    expect(invalid.status).toBe(400);
+    for (const body of ["{", "null", "[]", "{}", JSON.stringify({ favorite: "yes" })]) {
+      const invalid = await api(`/api/docs/${doc.key}/favorite`, { method: "PUT", body });
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.error).toBeTruthy();
+      expect(getDocumentByKey(db, doc.key)?.favorite).toBe(false);
+    }
   });
 });

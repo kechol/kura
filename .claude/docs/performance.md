@@ -37,6 +37,26 @@ gate treats scalar metrics at +10% as regressions and latency distributions as
 regressions only when both median and p90 reproduce +10%; every individual
 +10% statistic still remains in the JSON observations.
 
+### Browser graph read audit
+
+Measured **2026-09-21** on Bun 1.4.2 / darwin-arm64 with one disposable
+in-memory database. The legacy handler and `src/core/graph.ts::readGraph`
+used the same Japanese fixture (two buckets, selected and excluded links,
+16 KiB per body), three warmups, and ten timed runs; canonical nodes, edges,
+tags, degree, and stale flags matched exactly before timing.
+
+| Total docs | Selected nodes / edges | Legacy → projected median | Body bytes read | Link rows read |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 60 / 40 | 0.498 → 0.209 ms | 983,040 → 0 | 98 → 40 |
+| 2,000 | 1,200 / 800 | 33.448 → 3.718 ms | 19,660,800 → 0 | 1,998 → 800 |
+
+The legacy path fetched 16 document columns (including `content`) and used
+one bind per selected document for batching (1,200 at the larger size). The
+projected path fetches four node columns, gets tags and already-scoped edges
+with set queries, and uses at most three filter binds regardless of graph size.
+The disposable reproducer and raw samples are recorded under
+`.output/quality-fixes/graph-benchmark.{ts,md}` for this audit.
+
 ## Not yet measured
 
 - **`kura vsearch` (< 500 ms)** and **`kura query` (< 5 s)** require a real

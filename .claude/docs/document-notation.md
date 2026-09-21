@@ -200,7 +200,14 @@ first byte (`---` … `---` or `...`); files without one import as body-only.
   sanitized to `-` (never nested) — quoting all string scalars, emitting
   `path` only when non-root, `tags` only when non-empty, `favorite` only when
   pinned, `content_type` only when not `markdown`, and timestamps as ISO 8601
-  (`toIsoDatetime`).
+  (`toIsoDatetime`). The `.` / `..` names are sanitized too, while the
+  original logical path remains in frontmatter. Case-insensitive sanitized
+  collisions (including Unicode-normalized spellings) gain a `-<doc_key>`
+  suffix, then a numeric suffix if needed, rather than dropping a document.
+  Directory components are containment-checked under the resolved output root;
+  export refuses existing directory symlinks and opens leaf files without
+  following symlinks. Before truncation, the opened leaf must be a regular
+  file with a single hard link, so shared inodes and special files are refused.
 - **`favorite` is never written as `false`.** That is what makes "key absent ⇒
   leave the flag alone" safe: an export of an unpinned document carries no
   `favorite` key, so re-importing it cannot unstar the document it lands on.

@@ -12,6 +12,12 @@ kura config get llm.provider
 kura config set general.stale_days 90
 ```
 
+`config set` changes existing leaf keys only. It rejects invalid types,
+provider names, numeric ranges, and whole-section replacements without
+rewriting the file. When a hand-edited value has the wrong type or falls
+outside its legal range, kura keeps that key's default value; unknown keys are
+ignored.
+
 ## `config.toml`
 
 ```toml

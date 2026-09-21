@@ -72,18 +72,55 @@ export function defaultConfig(): KuraConfig {
 
 type PlainObject = Record<string, unknown>;
 
+type ConfigScalar = string | number | boolean;
+type ConfigValidator = (value: ConfigScalar) => boolean;
+
+const finite = (value: ConfigScalar): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+const positiveInteger = (value: ConfigScalar): value is number =>
+  finite(value) && Number.isSafeInteger(value) && value > 0;
+const nonNegative = (value: ConfigScalar): value is number => finite(value) && value >= 0;
+const nonBlank = (value: ConfigScalar): value is string =>
+  typeof value === "string" && value.trim() !== "";
+
+const CONFIG_VALIDATORS: Record<string, ConfigValidator> = {
+  "general.default_bucket": (value) =>
+    typeof value === "string" && /^[a-z0-9][a-z0-9-]*$/.test(value),
+  "general.editor": (value) => typeof value === "string",
+  "general.stale_days": positiveInteger,
+  "llm.provider": (value) =>
+    typeof value === "string" && ["auto", "ollama", "lmstudio", "none"].includes(value),
+  "llm.ollama_url": nonBlank,
+  "llm.lmstudio_url": nonBlank,
+  "llm.models.embedding": nonBlank,
+  "llm.models.embedding_dimensions": positiveInteger,
+  "llm.models.reranker": nonBlank,
+  "llm.models.generation": nonBlank,
+  "search.rrf_k": nonNegative,
+  "search.keyword_weight": nonNegative,
+  "search.vector_weight": nonNegative,
+  "search.rerank_top_k": positiveInteger,
+  "search.default_limit": positiveInteger,
+  "clip.path": (value) => typeof value === "string",
+  "browser.port": (value) => positiveInteger(value) && value <= 65_535,
+};
+
 function isPlainObject(v: unknown): v is PlainObject {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** Recursively merge loaded values onto the defaults (unknown keys ignored, type mismatches keep defaults) */
-function mergeInto(target: PlainObject, source: PlainObject): void {
+/** Recursively merge valid loaded leaves onto defaults (unknown/invalid values keep defaults). */
+function mergeInto(target: PlainObject, source: PlainObject, prefix = ""): void {
   for (const [key, defVal] of Object.entries(target)) {
     if (!(key in source)) continue;
     const srcVal = source[key];
+    const path = prefix === "" ? key : `${prefix}.${key}`;
     if (isPlainObject(defVal)) {
-      if (isPlainObject(srcVal)) mergeInto(defVal, srcVal);
-    } else if (typeof srcVal === typeof defVal) {
+      if (isPlainObject(srcVal)) mergeInto(defVal, srcVal, path);
+    } else if (
+      typeof srcVal === typeof defVal &&
+      CONFIG_VALIDATORS[path]?.(srcVal as ConfigScalar) === true
+    ) {
       target[key] = srcVal;
     }
   }
@@ -144,14 +181,15 @@ export function saveConfig(config: KuraConfig, path: string = configPath()): voi
 export function getConfigValue(config: KuraConfig, key: string): unknown {
   let cur: unknown = config;
   for (const part of key.split(".")) {
-    if (!isPlainObject(cur) || !(part in cur)) return undefined;
+    if (!isPlainObject(cur) || !Object.hasOwn(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;
 }
 
-/** Set a config value by dotted key (for `kura config set`). Existing keys only, type preserved */
+/** Set a config leaf by dotted key. Existing sections cannot be replaced wholesale. */
 export function setConfigValue(config: KuraConfig, key: string, raw: string): boolean {
+  if (!Object.hasOwn(CONFIG_VALIDATORS, key)) return false;
   const parts = key.split(".");
   const last = parts.pop();
   if (!last) return false;
@@ -162,16 +200,22 @@ export function setConfigValue(config: KuraConfig, key: string, raw: string): bo
   }
   if (!isPlainObject(cur) || !(last in cur)) return false;
   const prev = cur[last];
+  if (isPlainObject(prev)) return false;
+  let next: ConfigScalar;
   if (typeof prev === "number") {
+    if (raw.trim() === "") return false;
     const n = Number(raw);
-    if (Number.isNaN(n)) return false;
-    cur[last] = n;
+    if (!Number.isFinite(n)) return false;
+    next = n;
   } else if (typeof prev === "boolean") {
     if (raw !== "true" && raw !== "false") return false;
-    cur[last] = raw === "true";
+    next = raw === "true";
   } else {
-    cur[last] = raw;
+    next = raw;
   }
+  const validate = CONFIG_VALIDATORS[key];
+  if (!validate?.(next)) return false;
+  cur[last] = next;
   return true;
 }
 
