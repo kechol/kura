@@ -1,7 +1,10 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
+import { focusOnMount } from "../hooks";
 
 interface Props {
+  /** What the field holds, for the accessible name of the trigger and the input */
+  label: string;
   /** Trigger content while not editing (JSX allows a muted placeholder) */
   display: ComponentChildren;
   /** Initial input text when editing starts */
@@ -27,6 +30,7 @@ interface Props {
  * blur-save becomes a no-op for callers that skip unchanged values.
  */
 export function InlineEditField({
+  label,
   display,
   value,
   placeholder,
@@ -51,6 +55,7 @@ export function InlineEditField({
           title={title}
           onClick={() => setEdit(value)}
         >
+          <span class="sr-only">{label}: </span>
           {display}
         </button>
       ) : (
@@ -63,11 +68,11 @@ export function InlineEditField({
         >
           <input
             type="text"
+            aria-label={label}
             list={list}
             placeholder={placeholder}
             value={edit}
-            // biome-ignore lint/a11y/noAutofocus: the field only exists once the user asks for it
-            autoFocus
+            ref={focusOnMount}
             onInput={(e) => setEdit((e.target as HTMLInputElement).value)}
             onBlur={(e) => save((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => {
@@ -81,7 +86,11 @@ export function InlineEditField({
           {children}
         </form>
       )}
-      {error != null && <p class="error">{error}</p>}
+      {error != null && (
+        <p class="error" role="alert">
+          {error}
+        </p>
+      )}
     </>
   );
 }

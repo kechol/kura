@@ -188,6 +188,18 @@ export function inlineText(nodes: InlineNode[]): string {
   return out;
 }
 
+export interface OutlineItem {
+  level: HeadingLevel;
+  text: string;
+}
+
+/** The document's headings, in order */
+export function outlineOf(blocks: Block[]): OutlineItem[] {
+  return blocks.flatMap((b) =>
+    b.type === "heading" ? [{ level: b.level, text: inlineText(b.inline).trim() }] : [],
+  );
+}
+
 export function listItem(inline: InlineNode[] = [], depth = 0, ordered = false): ListItem {
   return { inline, depth, ordered };
 }

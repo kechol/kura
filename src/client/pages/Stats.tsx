@@ -65,10 +65,15 @@ function InsightCard({
         class="insight-head"
         onClick={() => setOpen((o) => !o)}
         disabled={count === 0}
+        aria-expanded={count > 0 ? open : undefined}
       >
         <span class="insight-title">{title}</span>
         <span class={`insight-count${count === 0 ? " zero" : ""}`}>{count}</span>
-        {count > 0 && <span class="insight-toggle">{open ? "▾" : "▸"}</span>}
+        {count > 0 && (
+          <span class="insight-toggle" aria-hidden="true">
+            {open ? "▾" : "▸"}
+          </span>
+        )}
       </button>
       <p class="insight-hint">{count === 0 ? empty : hint}</p>
       {open && count > 0 && <div class="insight-body">{children}</div>}
@@ -87,7 +92,11 @@ export function StatsPage() {
   return (
     <div class="page">
       <h1>統計</h1>
-      {stats.error && <p class="error">{stats.error}</p>}
+      {stats.error && (
+        <p class="error" role="alert">
+          {stats.error}
+        </p>
+      )}
       {s && (
         <div class="stat-cards">
           <StatCard label="ドキュメント" value={s.documents} />
@@ -123,7 +132,11 @@ export function StatsPage() {
           修正は CLI で行います。ここは選択中の Bucket
           を対象に、放置されがちな箇所を数えるだけです。
         </p>
-        {insights.error && <p class="error">{insights.error}</p>}
+        {insights.error && (
+          <p class="error" role="alert">
+            {insights.error}
+          </p>
+        )}
         {insights.loading && <p class="empty">集計中…</p>}
         {i && (
           <div class="insight-cards">

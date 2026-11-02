@@ -82,6 +82,7 @@ export function RichBlock({
       role="textbox"
       aria-multiline="true"
       aria-label={label}
+      aria-placeholder={placeholder}
       tabIndex={editable ? 0 : undefined}
       contentEditable={editable}
       ref={setRef}

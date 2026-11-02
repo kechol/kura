@@ -29,7 +29,11 @@ export function RecentModal({ onClose }: { onClose: () => void }) {
         <span class="search-modal-bucket">{bucket}</span>
       </div>
       <div class="modal-results">
-        {recent.error && <p class="error">{recent.error}</p>}
+        {recent.error && (
+          <p class="error" role="alert">
+            {recent.error}
+          </p>
+        )}
         {recent.loading && <p class="empty">読み込み中…</p>}
         {!recent.loading && docs.length === 0 && <p class="empty">履歴がありません</p>}
         <ul class="result-list">
@@ -39,6 +43,7 @@ export function RecentModal({ onClose }: { onClose: () => void }) {
                 type="button"
                 class={`result-row${i === nav.index ? " active" : ""}`}
                 onMouseEnter={() => nav.setIndex(i)}
+                onFocus={() => nav.setIndex(i)}
                 onClick={() => open(d)}
               >
                 <span class="result-title">

@@ -3,6 +3,8 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from "d3-force";
@@ -10,6 +12,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
 import { fetchGraph, type GraphData } from "../api";
 import { useBucket } from "../bucket";
+import { DocLinkList } from "../components/DocLink";
 import { useAsync, useDocumentTitle } from "../hooks";
 
 interface SimNode extends SimulationNodeDatum {
@@ -135,9 +138,12 @@ function setupGraph(
         .distance(70),
     )
     .force("charge", forceManyBody().strength(-160))
-    .force("center", forceCenter(width / 2, height / 2));
+    .force("center", forceCenter(width / 2, height / 2))
+    // Without a pull toward the middle, repulsion alone pushes unlinked nodes off the canvas
+    .force("x", forceX(width / 2).strength(0.08))
+    .force("y", forceY(height / 2).strength(0.08));
 
-  sim.on("tick", () => {
+  const draw = () => {
     links.forEach((l, i) => {
       const el = lineEls[i];
       const s = l.source as SimNode;
@@ -151,7 +157,14 @@ function setupGraph(
     nodes.forEach((n, i) => {
       nodeEls[i]?.setAttribute("transform", `translate(${n.x ?? 0},${n.y ?? 0})`);
     });
-  });
+  };
+  sim.on("tick", draw);
+  // Settle the layout up front instead of animating it
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    sim.stop();
+    sim.tick(300);
+    draw();
+  }
 
   // Minimal implementation of zoom (wheel), pan (background drag), and node drag
   let scale = 1;
@@ -274,6 +287,7 @@ export function GraphPage() {
   const graph = useAsync(() => fetchGraph({ bucket }), [bucket]);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const listed = (graph.data?.nodes ?? []).filter((n) => showIsolated || n.degree > 0);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -299,9 +313,18 @@ export function GraphPage() {
           </span>
         )}
       </div>
-      {graph.error && <p class="error">{graph.error}</p>}
+      {graph.error && (
+        <p class="error" role="alert">
+          {graph.error}
+        </p>
+      )}
       <div class="graph-wrap">
-        <svg class="graph-svg" ref={svgRef} />
+        <svg
+          class="graph-svg"
+          ref={svgRef}
+          role="img"
+          aria-label={`ドキュメント ${listed.length} 件のリンク関係の図。内容は下のノード一覧でも確認できます。`}
+        />
         {legend.length > 0 && (
           <div class="graph-legend">
             {legend.map((l) => (
@@ -314,8 +337,16 @@ export function GraphPage() {
         )}
       </div>
       <p class="muted">
-        ドラッグで移動、ホイールでズーム、ノードクリックで詳細へ。薄いノードは陳腐化候補です。
+        ドラッグで移動、ホイールでズーム、ノードクリックで詳細へ。薄く点線で囲まれたノードは陳腐化候補です。
       </p>
+      {/* The canvas answers only to a pointer; this is the same data for everyone else */}
+      <details class="graph-list">
+        <summary>ノード一覧（{listed.length} 件）</summary>
+        <DocLinkList
+          docs={listed}
+          meta={(n) => `リンク ${n.degree}${n.stale ? " · 陳腐化候補" : ""}`}
+        />
+      </details>
     </div>
   );
 }

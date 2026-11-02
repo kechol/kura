@@ -70,6 +70,7 @@ export function SearchPage() {
         <input
           type="search"
           class="search-page-input"
+          aria-label="検索クエリ"
           placeholder="検索クエリ…"
           value={input}
           onInput={(e) => setInput((e.target as HTMLInputElement).value)}
@@ -80,12 +81,14 @@ export function SearchPage() {
       </form>
 
       <div class="filter-bar">
-        <div class="mode-switch">
+        {/* biome-ignore lint/a11y/useSemanticElements: a <fieldset> would need a visible legend */}
+        <div class="mode-switch" role="group" aria-label="検索モード">
           {MODES.map(([value, label]) => (
             <button
               key={value}
               type="button"
               class={`mode-btn${mode === value ? " active" : ""}`}
+              aria-pressed={mode === value}
               onClick={() => update({ mode: value })}
             >
               {label}
@@ -106,7 +109,11 @@ export function SearchPage() {
 
       {q.trim() === "" && <p class="empty">クエリを入力してください</p>}
       {result.loading && q.trim() !== "" && <p class="empty">検索中…</p>}
-      {result.error && <p class="error">{result.error}</p>}
+      {result.error && (
+        <p class="error" role="alert">
+          {result.error}
+        </p>
+      )}
       {result.data?.warnings.map((w) => (
         <p class="warning" key={w}>
           {w}

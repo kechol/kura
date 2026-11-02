@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { Link } from "wouter-preact";
+import { Link, useLocation } from "wouter-preact";
 import type { DocTreeNode } from "../api";
 
 interface Props {
@@ -27,8 +27,11 @@ export function DocTreeList({ nodes }: Props) {
 }
 
 function DocTreeItem({ node }: { node: DocTreeNode }) {
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const hasChildren = node.children.length > 0;
+  const href = node.key === undefined ? null : `/docs/${encodeURIComponent(node.key)}`;
+  const toggleLabel = `${node.segment} を${open ? "折りたたむ" : "展開する"}`;
   return (
     <li>
       <div class="doc-tree-row">
@@ -37,7 +40,9 @@ function DocTreeItem({ node }: { node: DocTreeNode }) {
             type="button"
             class="doc-tree-toggle"
             aria-expanded={open}
-            aria-label={open ? "折りたたむ" : "展開する"}
+            aria-label={toggleLabel}
+            // A branch without a document is toggled by its whole row: one tab stop is enough
+            tabIndex={href === null ? -1 : undefined}
             onClick={() => setOpen(!open)}
           >
             {open ? "▾" : "▸"}
@@ -45,8 +50,12 @@ function DocTreeItem({ node }: { node: DocTreeNode }) {
         ) : (
           <span class="doc-tree-toggle" aria-hidden="true" />
         )}
-        {node.key !== undefined ? (
-          <Link href={`/docs/${encodeURIComponent(node.key)}`} class="tag-tree-link">
+        {href !== null ? (
+          <Link
+            href={href}
+            class="tag-tree-link"
+            aria-current={location === href ? "page" : undefined}
+          >
             <span class="tag-segment">{node.segment}</span>
             {hasChildren && <span class="count">{node.total}</span>}
           </Link>
@@ -54,6 +63,7 @@ function DocTreeItem({ node }: { node: DocTreeNode }) {
           <button
             type="button"
             class="tag-tree-link doc-tree-branch"
+            aria-expanded={open}
             onClick={() => setOpen(!open)}
           >
             <span class="tag-segment">{node.segment}</span>

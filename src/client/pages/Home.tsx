@@ -17,7 +17,7 @@ import { formatDate, formatDateTime } from "../format";
 import { type AsyncState, useAsync, useDocumentTitle, usePageListNavigation } from "../hooks";
 import { useModal } from "../modal";
 
-/** How many stale candidates the "放置気味" section lists (the nudge bar shows the full count) */
+/** How many stale candidates the "陳腐化候補" section lists (the nudge bar shows the full count) */
 const STALE_LIMIT = 5;
 
 /** How many cards each dashboard section shows */
@@ -64,7 +64,11 @@ function HomeSection({
           </Link>
         )}
       </div>
-      {state.error && <p class="error">{state.error}</p>}
+      {state.error && (
+        <p class="error" role="alert">
+          {state.error}
+        </p>
+      )}
       {state.loading && <p class="empty">読み込み中…</p>}
       {!state.loading && !state.error && isEmpty && <p class="empty">{empty}</p>}
       {!state.loading && !state.error && !isEmpty && children}
@@ -84,7 +88,7 @@ function NudgeBar({
   const s = stale.data;
   if (i === null || s === null) return null;
   const chips = [
-    { label: "放置気味", count: s.count, href: "/docs?stale=1" },
+    { label: "陳腐化候補", count: s.count, href: "/docs?stale=1" },
     { label: "未整理", count: i.unfiled.count, href: "/stats" },
     { label: "タグなし", count: i.untagged.count, href: "/stats" },
     { label: "孤立", count: i.orphans.count, href: "/stats" },
@@ -145,7 +149,7 @@ function TagPickup({
 
 /** Home = a multi-section dashboard. Statistics live on /stats; the reading history on Ctrl+R. */
 export function Home() {
-  useDocumentTitle(null);
+  useDocumentTitle("ホーム");
   const [, navigate] = useLocation();
   const { bucket } = useBucket();
   const modal = useModal();
@@ -278,12 +282,15 @@ export function Home() {
 
   return (
     <div class="page">
+      <h1 class="sr-only">ホーム</h1>
       <NudgeBar insights={insights} stale={stale} />
 
       {bucketEmpty ? (
         <p class="empty">
-          このバケットにはまだドキュメントがありません。
-          <Link href="/docs">ドキュメント一覧</Link>から始めてみてください。
+          この Bucket にはまだドキュメントがありません。{" "}
+          <button type="button" class="btn btn-primary" onClick={modal.createUntitled}>
+            新しいドキュメントを作成
+          </button>
         </p>
       ) : (
         <>
@@ -310,7 +317,7 @@ export function Home() {
           {stale.data !== null && stale.data.count > 0 && (
             <section class="home-section">
               <div class="home-section-head">
-                <h2>放置気味</h2>
+                <h2>陳腐化候補</h2>
               </div>
               <p class="insight-hint">
                 しばらく更新されていないドキュメントです。kura ls --stale で一覧を確認できます。

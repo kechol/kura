@@ -14,6 +14,8 @@ import {
   type ListItem,
   listItem,
   normalizeInline,
+  type OutlineItem,
+  outlineOf,
   withInline,
   withRawText,
 } from "./model";
@@ -50,6 +52,7 @@ export function Editor({
   onSave,
   editable = true,
   onStatus,
+  onOutline,
   retryToken = 0,
   autosaveMs = AUTOSAVE_MS,
 }: {
@@ -58,6 +61,8 @@ export function Editor({
   onSave: (markdown: string) => Promise<void>;
   editable?: boolean;
   onStatus?: (status: SaveStatus) => void;
+  /** Called with the headings whenever they change, including on mount */
+  onOutline?: (headings: OutlineItem[]) => void;
   /** Increment to retry the latest failed save without requiring another edit. */
   retryToken?: number;
   /** Test seam; product callers use the 1500 ms default. */
@@ -79,6 +84,14 @@ export function Editor({
   const lastUndoPush = useRef(0);
 
   const markdown = useMemo(() => serializeMarkdown(blocks), [blocks]);
+  // Compared as text: the block array changes identity on every keystroke
+  const outline = outlineOf(blocks);
+  const outlineKey = JSON.stringify(outline);
+  const outlineCallback = useRef(onOutline);
+  outlineCallback.current = onOutline;
+  useEffect(() => {
+    outlineCallback.current?.(outline);
+  }, [outlineKey]);
   // Lazily, once: useRef evaluates its argument on every render, and re-parsing the whole
   // document per keystroke is the most expensive thing this component could do
   const saved = useRef<string | null>(null);

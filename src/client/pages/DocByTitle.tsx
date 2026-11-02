@@ -39,7 +39,11 @@ export function DocByTitle({ title }: { title: string }) {
       <p>
         「<strong>{title}</strong>」というドキュメントはまだ存在しません。
       </p>
-      {state.error && <p class="error">{state.error}</p>}
+      {state.error && (
+        <p class="error" role="alert">
+          {state.error}
+        </p>
+      )}
       {state.data && state.data.hits.length > 0 && (
         <section>
           <h2>近いドキュメント</h2>

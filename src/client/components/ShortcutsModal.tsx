@@ -21,7 +21,8 @@ export function ShortcutsModal({ onClose }: { onClose: () => void }) {
       <div class="modal-head">
         <h2>ショートカット</h2>
       </div>
-      <div class="modal-results">
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a list with no controls must still scroll by keyboard */}
+      <div class="modal-results" tabIndex={0}>
         <dl class="shortcut-list">
           {SHORTCUTS.map((s) => (
             <Row key={s.action} combos={s.bindings.map((b) => b.combo)} label={s.label} />

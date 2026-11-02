@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-preact";
 import { useMemo, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
-import { fetchRecentDocs, fetchTags, searchDocs } from "../api";
+import { fetchRecentDocs, fetchTags, qs, searchDocs } from "../api";
 import { useBucket } from "../bucket";
 import { snippetHtml } from "../format";
 import { useAsync, useDebounced, useListNavigation } from "../hooks";
@@ -73,16 +73,22 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
     navigate(docHref(d.key));
     onClose();
   };
+  // Vector and hybrid need the full page; carry over what has been typed so far
+  const openSearchPage = () => {
+    navigate(`/search${qs({ mode: "hybrid", q: q.trim(), tag: tagFilter })}`);
+    onClose();
+  };
   const filterByTag = (t: TagItem) => {
     setTagFilter(t.path);
     setTab("docs");
   };
 
   // One navigator over whichever tab is showing — a second one would keep an index nobody reads
-  const nav = useListNavigation<DocItem | TagItem>(
-    tab === "docs" ? (docs.data ?? []) : tags,
-    (item) => ("key" in item ? openDoc(item) : filterByTag(item)),
+  const items: Array<DocItem | TagItem> = tab === "docs" ? (docs.data ?? []) : tags;
+  const nav = useListNavigation<DocItem | TagItem>(items, (item) =>
+    "key" in item ? openDoc(item) : filterByTag(item),
   );
+  const activeItem = items[nav.index];
 
   return (
     <Modal label="検索" onClose={onClose}>
@@ -91,6 +97,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
         <input
           type="text"
           class="search-modal-input"
+          aria-label={tab === "docs" ? "ドキュメントを検索" : "タグを絞り込む"}
           placeholder={tab === "docs" ? "ドキュメントを検索…" : "タグを絞り込む…"}
           value={q}
           onInput={(e) => setQ((e.target as HTMLInputElement).value)}
@@ -99,10 +106,12 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div class="search-modal-bar">
-        <div class="modal-tabs">
+        {/* biome-ignore lint/a11y/useSemanticElements: a <fieldset> would need a visible legend */}
+        <div class="modal-tabs" role="group" aria-label="検索対象">
           <button
             type="button"
             class={`modal-tab${tab === "docs" ? " active" : ""}`}
+            aria-pressed={tab === "docs"}
             onClick={() => setTab("docs")}
           >
             ドキュメント
@@ -110,13 +119,19 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             class={`modal-tab${tab === "tags" ? " active" : ""}`}
+            aria-pressed={tab === "tags"}
             onClick={() => setTab("tags")}
           >
             タグ
           </button>
         </div>
         {tagFilter !== "" && (
-          <button type="button" class="filter-chip" onClick={() => setTagFilter("")}>
+          <button
+            type="button"
+            class="filter-chip"
+            aria-label={`タグの絞り込み #${tagFilter} を解除`}
+            onClick={() => setTagFilter("")}
+          >
             #{tagFilter}
             <X size={12} />
           </button>
@@ -124,10 +139,21 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
         <span class="search-modal-bucket">{bucket}</span>
       </div>
 
+      {/* Focus stays in the input while the arrows move, so the cursor is announced here */}
+      <span class="sr-only" role="status">
+        {`${items.length} 件`}
+        {activeItem !== undefined &&
+          `、選択中: ${"key" in activeItem ? activeItem.title : `#${activeItem.path}`}`}
+      </span>
+
       <div class="modal-results">
         {tab === "docs" && (
           <>
-            {docs.error && <p class="error">{docs.error}</p>}
+            {docs.error && (
+              <p class="error" role="alert">
+                {docs.error}
+              </p>
+            )}
             {!docs.loading && (docs.data ?? []).length === 0 && (
               <p class="empty">{term === "" ? "履歴がありません" : "ヒットなし"}</p>
             )}
@@ -138,6 +164,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
                     type="button"
                     class={`result-row${i === nav.index ? " active" : ""}`}
                     onMouseEnter={() => nav.setIndex(i)}
+                    onFocus={() => nav.setIndex(i)}
                     onClick={() => openDoc(d)}
                   >
                     <span class="result-title">
@@ -159,7 +186,11 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
 
         {tab === "tags" && (
           <>
-            {allTags.error && <p class="error">{allTags.error}</p>}
+            {allTags.error && (
+              <p class="error" role="alert">
+                {allTags.error}
+              </p>
+            )}
             {!allTags.loading && tags.length === 0 && <p class="empty">該当するタグなし</p>}
             <ul class="result-list">
               {tags.map((t, i) => (
@@ -168,6 +199,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
                     type="button"
                     class={`result-row${i === nav.index ? " active" : ""}`}
                     onMouseEnter={() => nav.setIndex(i)}
+                    onFocus={() => nav.setIndex(i)}
                     onClick={() => filterByTag(t)}
                   >
                     <span class="result-title">#{t.path}</span>
@@ -179,6 +211,10 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
           </>
         )}
       </div>
+
+      <button type="button" class="search-modal-more" onClick={openSearchPage}>
+        検索画面でハイブリッド検索 →
+      </button>
 
       <ModalHints
         hints={[

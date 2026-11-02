@@ -8,6 +8,9 @@ export interface AsyncState<T> {
   reload: () => void;
 }
 
+/** Unlike autoFocus, this also works while another element holds focus. A stable ref runs once. */
+export const focusOnMount = (el: HTMLInputElement | null) => el?.focus();
+
 /** Generic fetch hook that re-runs fn whenever deps change */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
@@ -45,6 +48,8 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T
 export function useDocumentTitle(title: string | null): void {
   useEffect(() => {
     document.title = title === null || title === "" ? "kura" : `${title} — kura`;
+    const announcer = document.getElementById("route-announcer");
+    if (announcer !== null && title !== null) announcer.textContent = title;
   }, [title]);
 }
 

@@ -1,6 +1,7 @@
-import { useState } from "preact/hooks";
+import { X } from "lucide-preact";
+import { useEffect, useState } from "preact/hooks";
 import { Link, useLocation, useSearch } from "wouter-preact";
-import { fetchDocs } from "../api";
+import { type DocTreeNode, fetchDocs, fetchDocTree, fetchTags } from "../api";
 import { useBucket } from "../bucket";
 import { docHref } from "../components/DocLink";
 import { formatDate } from "../format";
@@ -17,6 +18,11 @@ const SORT_LABELS: Array<[string, string]> = [
   ["title", "タイトル順"],
 ];
 
+/** The paths that hold documents, as completions for the path filter */
+function branchPaths(nodes: DocTreeNode[]): string[] {
+  return nodes.flatMap((n) => (n.children.length > 0 ? [n.path, ...branchPaths(n.children)] : []));
+}
+
 export function DocList() {
   useDocumentTitle("ドキュメント");
   const search = useSearch();
@@ -31,6 +37,11 @@ export function DocList() {
   const page = Math.max(Number.parseInt(params.get("page") ?? "1", 10) || 1, 1);
   const [tagInput, setTagInput] = useState(tag);
   const [prefixInput, setPrefixInput] = useState(prefix);
+  // A tag chip in the table or a sidebar link changes the filter without touching these fields
+  useEffect(() => setTagInput(tag), [tag]);
+  useEffect(() => setPrefixInput(prefix), [prefix]);
+  const tagOptions = useAsync(() => fetchTags(bucket), [bucket]);
+  const pathOptions = useAsync(() => fetchDocTree(bucket), [bucket]);
 
   const result = useAsync(
     () =>
@@ -61,6 +72,15 @@ export function DocList() {
   const total = result.data?.total ?? 0;
   const totalPages = Math.max(Math.ceil(total / PER), 1);
 
+  const clearFilters = () => update({ tag: "", prefix: "", stale: "", favorite: "" });
+  const activeFilters: Array<{ label: string; param: string }> = [
+    ...(tag !== "" ? [{ label: `#${tag}`, param: "tag" }] : []),
+    ...(prefix !== "" ? [{ label: `パス: ${prefix}`, param: "prefix" }] : []),
+    ...(stale ? [{ label: "陳腐化候補", param: "stale" }] : []),
+    ...(favorite ? [{ label: "お気に入り", param: "favorite" }] : []),
+  ];
+  const filtered = activeFilters.length > 0;
+
   const modal = useModal();
   const cursor = usePageListNavigation(result.data?.docs, (d) => navigate(docHref(d.key)), {
     disabled: modal.isOpen,
@@ -78,65 +98,42 @@ export function DocList() {
           class="tag-filter"
           onSubmit={(e) => {
             e.preventDefault();
-            update({ tag: tagInput.trim() });
+            update({ tag: tagInput.trim(), prefix: prefixInput.trim() });
           }}
         >
           <label>
             タグ:
             <input
               type="text"
+              list="kura-filter-tags"
               placeholder="tech/db など"
               value={tagInput}
               onInput={(e) => setTagInput((e.target as HTMLInputElement).value)}
             />
           </label>
-          <button type="submit" class="btn">
-            絞り込む
-          </button>
-          {tag !== "" && (
-            <button
-              type="button"
-              class="btn"
-              onClick={() => {
-                setTagInput("");
-                update({ tag: "" });
-              }}
-            >
-              解除
-            </button>
-          )}
-        </form>
-        <form
-          class="tag-filter"
-          onSubmit={(e) => {
-            e.preventDefault();
-            update({ prefix: prefixInput.trim() });
-          }}
-        >
+          <datalist id="kura-filter-tags">
+            {(tagOptions.data ?? []).map((t) => (
+              <option key={t.path} value={t.path} />
+            ))}
+          </datalist>
           <label>
             パス:
             <input
               type="text"
+              list="kura-filter-paths"
               placeholder="clips/技術 など"
               value={prefixInput}
               onInput={(e) => setPrefixInput((e.target as HTMLInputElement).value)}
             />
           </label>
+          <datalist id="kura-filter-paths">
+            {branchPaths(pathOptions.data ?? []).map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
           <button type="submit" class="btn">
             絞り込む
           </button>
-          {prefix !== "" && (
-            <button
-              type="button"
-              class="btn"
-              onClick={() => {
-                setPrefixInput("");
-                update({ prefix: "" });
-              }}
-            >
-              解除
-            </button>
-          )}
         </form>
         <label>
           ソート:
@@ -171,20 +168,58 @@ export function DocList() {
         </label>
       </div>
 
-      {result.error && <p class="error">{result.error}</p>}
+      <div class="list-summary">
+        <span class="count" role="status">
+          {result.data ? `全 ${total} 件` : ""}
+        </span>
+        {activeFilters.map((f) => (
+          <button
+            key={f.param}
+            type="button"
+            class="filter-chip"
+            aria-label={`${f.label} の絞り込みを解除`}
+            onClick={() => update({ [f.param]: "" })}
+          >
+            {f.label}
+            <X size={12} />
+          </button>
+        ))}
+        {activeFilters.length > 1 && (
+          <button type="button" class="list-summary-clear" onClick={clearFilters}>
+            すべて解除
+          </button>
+        )}
+      </div>
+
+      {result.error && (
+        <p class="error" role="alert">
+          {result.error}
+        </p>
+      )}
       {result.loading && <p class="empty">読み込み中…</p>}
       {result.data && result.data.docs.length === 0 && (
-        <p class="empty">該当するドキュメントはありません</p>
+        <p class="empty">
+          {filtered ? "該当するドキュメントはありません。" : "まだドキュメントがありません。"}{" "}
+          {filtered ? (
+            <button type="button" class="btn" onClick={clearFilters}>
+              絞り込みを解除
+            </button>
+          ) : (
+            <button type="button" class="btn btn-primary" onClick={modal.createUntitled}>
+              新しいドキュメントを作成
+            </button>
+          )}
+        </p>
       )}
       {result.data && result.data.docs.length > 0 && (
         <div class="table-wrap">
           <table class="doc-table">
             <thead>
               <tr>
-                <th>タイトル</th>
-                <th>タグ</th>
-                <th>更新日</th>
-                <th>参照数</th>
+                <th scope="col">タイトル</th>
+                <th scope="col">タグ</th>
+                <th scope="col">更新日</th>
+                <th scope="col">参照数</th>
               </tr>
             </thead>
             <tbody>
@@ -215,7 +250,7 @@ export function DocList() {
       )}
 
       {total > PER && (
-        <div class="pagination">
+        <nav class="pagination" aria-label="ページ">
           <button
             type="button"
             class="btn"
@@ -235,7 +270,7 @@ export function DocList() {
           >
             次へ
           </button>
-        </div>
+        </nav>
       )}
     </div>
   );

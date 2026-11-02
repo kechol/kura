@@ -61,8 +61,8 @@ async function settle(): Promise<void> {
   await Bun.sleep(0);
 }
 
-async function waitFor(assertion: () => void): Promise<void> {
-  const deadline = Date.now() + 500;
+async function waitFor(assertion: () => void, timeoutMs = 500): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
       assertion();
@@ -87,6 +87,7 @@ describe("Editor save lifecycle", () => {
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       if (url.endsWith("/related"))
         return Response.json({ outlinks: [], backlinks: [], twoHop: [] });
+      if (url.includes("/api/tags")) return Response.json([]);
       if (url.endsWith("/favorite")) return Response.json({ favorite: true });
       if (init?.method === "PUT") throw new Error("保存できません");
       if (++reads > 1) throw new Error("再読込できません");
@@ -124,6 +125,54 @@ describe("Editor save lifecycle", () => {
     await settle();
     expect(container.querySelector(".editor-block")?.textContent).toBe("失敗しても失わない本文");
     expect(container.textContent).toContain("再読込できません");
+  });
+
+  test("a saved body refetches the links without taking the editor off screen", async () => {
+    let relatedReads = 0;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/related")) {
+        relatedReads += 1;
+        return Response.json({
+          outlinks: relatedReads > 1 ? [{ target_title: "追加した文書", target: null }] : [],
+          backlinks: [],
+          twoHop: [],
+        });
+      }
+      if (url.includes("/api/tags")) return Response.json([]);
+      const body = {
+        key: "bbbbbbbb",
+        title: "検証文書",
+        path: "",
+        bucket: "main",
+        tags: [],
+        aliases: [],
+        content_type: "markdown",
+        content: "初期本文\n",
+        created_at: "2026-09-21 00:00:00",
+        updated_at: "2026-09-21 00:00:00",
+        favorite: false,
+      };
+      return Response.json(init?.method === "PUT" ? { ...body, content: init.body } : body);
+    }) as typeof fetch;
+    const location = memoryLocation({ path: "/docs/bbbbbbbb" });
+    render(
+      <Router hook={location.hook}>
+        <DocDetail docKey="bbbbbbbb" />
+      </Router>,
+      container,
+    );
+    await waitFor(() => expect(container.querySelector(".editor-block")).not.toBeNull());
+    const editor = container.querySelector(".editor-block");
+
+    editBody("[[追加した文書]] への参照");
+    await waitFor(() =>
+      expect(container.querySelector(".save-status")?.textContent).toBe("未保存"),
+    );
+    await waitFor(() => expect(relatedReads).toBe(2), 3000);
+    await waitFor(() => expect(container.textContent).toContain("未解決"));
+
+    expect(container.querySelector(".editor-block")).toBe(editor);
+    expect(container.querySelector(".editor-block")?.textContent).toContain("への参照");
   });
 
   test("unmount before the debounce persists the latest body", async () => {
