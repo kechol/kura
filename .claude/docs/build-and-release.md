@@ -188,8 +188,8 @@ to a human reviewer.
 
 ## Binary size
 
-Measured with Bun 1.4.2: the compiled `darwin-arm64` binary is
-**64,241,394 bytes (~64.2 MB)**, well under the
+Measured with Bun 1.4.4: the compiled `darwin-arm64` binary is
+**91,422,050 bytes (~91.4 MB)**, under the
 SPEC §13 target of 100 MB. The embedded payload is the SPA `dist/` assets
 plus one sqlite-vec prebuilt; sqlite-vaporetto (extension + embedded
 morphological model) is deliberately *not* embedded and is downloaded at
