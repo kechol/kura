@@ -333,8 +333,9 @@ Load-bearing decisions, each of which was a bug first:
   split the block.
 - **The latest serialized body is updated synchronously.** It does not wait for
   a Preact render, so navigation or unmount during the 1.5 s debounce can flush
-  exactly what is visible. The unmount cleanup starts that save rather than
-  cancelling it.
+  exactly what is visible. A layout-effect cleanup starts that save synchronously
+  on unmount rather than cancelling it, because Preact defers passive unmount
+  cleanups until after paint.
 - **Saves are serialized and drained.** Only one PUT is in flight. Input that
   arrives during it remains dirty and starts the next PUT afterwards; an older
   response can never mark newer text saved. A failure retains the dirty body

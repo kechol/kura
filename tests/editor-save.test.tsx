@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { parseHTML } from "linkedom";
-import { render } from "preact";
+import { options, render } from "preact";
 import { Router } from "wouter-preact";
 import { memoryLocation } from "wouter-preact/memory-location";
 import { Editor } from "../src/client/editor/Editor";
@@ -23,6 +23,8 @@ const originalFetch = globalThis.fetch;
 const originalStorage = globalThis.localStorage;
 
 beforeEach(() => {
+  // Preact's default 35 ms after-paint timer would outlive the DOM globals restored in afterEach
+  options.requestAnimationFrame = (flush) => setTimeout(flush, 0);
   const { window, document } = parseHTML(
     '<!doctype html><html><body><div id="root"></div></body></html>',
   );
@@ -41,8 +43,12 @@ beforeEach(() => {
   container = document.getElementById("root") as HTMLElement;
 });
 
-afterEach(() => {
+afterEach(async () => {
   render(null, container);
+  // Passive unmount cleanups touch the DOM globals restored below. Equal-delay timers fire in
+  // registration order, so this one resolves after the flush scheduled by requestAnimationFrame.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  options.requestAnimationFrame = undefined;
   globalThis.fetch = originalFetch;
   globalThis.localStorage = originalStorage;
   const globals = globalThis as unknown as Record<string, unknown>;

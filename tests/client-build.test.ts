@@ -18,7 +18,7 @@ describe("browser UI build pipeline (docs: browser-ui.md)", () => {
     expect(existsSync(join(dist, "index.js"))).toBe(true);
     expect(existsSync(join(dist, "index.css"))).toBe(true);
     expect(MERMAID_URL).toBe(
-      "https://cdn.jsdelivr.net/npm/mermaid@12.0.0/dist/mermaid.esm.min.mjs",
+      "https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.esm.min.mjs",
     );
     expect(readFileSync(join(dist, "index.js"), "utf8")).toContain(MERMAID_URL);
   });
