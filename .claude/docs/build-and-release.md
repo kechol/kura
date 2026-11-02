@@ -109,7 +109,7 @@ Triggered by pushing a `v[0-9]+.[0-9]+.[0-9]+*` tag (the maintainer's manual
 step after the `/release` bump PR merges); runs on `ubuntu-latest`, with the
 `release` job granted `contents: write`:
 
-1. Checkout + `setup-bun` pinned to **1.4.2** (see CI below) +
+1. Checkout + `setup-bun` pinned to **1.4.4** (see CI below) +
    `bun install --frozen-lockfile`.
 2. **Cross-compile all five targets** in a loop:
    `bun run scripts/compile.ts --target <t> --outfile release/<t>/kura`
@@ -162,7 +162,7 @@ Runs on every PR and push to `main`:
   against an isolated `KURA_HOME`, covering embedded sqlite-vec extraction
   and actual startup without touching user data.
 
-All Bun jobs pin **Bun 1.4.2**. That version passed the real
+All Bun jobs pin **Bun 1.4.4**. That version passed the real
 sqlite-vaporetto download/hash/load/Japanese-tokenization integration test
 and the compiled-host sqlite-vec smoke test. Future updates must repeat both
 native checks before changing the pin.
