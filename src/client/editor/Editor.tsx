@@ -546,7 +546,9 @@ export function Editor({
     if (retryToken > 0) void save();
   }, [retryToken, save]);
 
-  useEffect(
+  // Layout effect, not a passive one: Preact defers passive unmount cleanups until after paint,
+  // and the PUT must start before the next route's reads
+  useLayoutEffect(
     () => () => {
       mounted.current = false;
       // Cleanup cannot await, but the promise and fetch continue after Preact removes the DOM.

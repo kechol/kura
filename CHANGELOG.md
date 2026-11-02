@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Read browser graph data through a dedicated core query that omits document
   bodies and aliases, scopes both link endpoints in SQL, and keeps bind counts
   constant as the selected graph grows.
+- Update runtime, browser UI, and docs site dependencies, resolving the known
+  advisories reported by `bun audit`. The browser UI now runs on Preact 11 and
+  lazily loads Mermaid 12.2.
 
 ### Fixed
 

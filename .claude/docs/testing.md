@@ -5,7 +5,7 @@
 > (`resetConfigCache`), `src/core/db.ts` (`closeDb`, `openDatabase`),
 > `.github/workflows/ci.yml`.
 
-`bun test` runs everything; CI (`.github/workflows/ci.yml`) uses Bun 1.4.2,
+`bun test` runs everything; CI (`.github/workflows/ci.yml`) uses Bun 1.4.4,
 runs `bun run check` across source/scripts/tests, and runs `bun test` with
 `KURA_TEST_DOWNLOAD=1` on Linux. Each Linux/macOS matrix entry also compiles
 and starts a host binary against an isolated home. Tests must **never** touch
