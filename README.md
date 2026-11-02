@@ -160,8 +160,8 @@ kura browser        # http://127.0.0.1:7578 (binds to 127.0.0.1 only)
 ```
 
 Documents are read and edited on the same screen: the rendered Markdown is
-editable in place (Markdown shortcuts, a selection toolbar, autosave), with
-backlinks and 2-hop links alongside, and tags, the document's path and its
+editable in place (Markdown shortcuts, a selection toolbar, autosave), with an
+outline, outgoing links, backlinks and 2-hop links alongside, and tags, the document's path and its
 deletion handled in the sidebar. Plus three-mode search, a sidebar document
 tree following your document paths, a tag browser, and a d3-force knowledge
 graph (colored by tag, stale nodes dimmed).

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inlineText, normalizeInline } from "../src/client/editor/model";
+import { inlineText, normalizeInline, outlineOf } from "../src/client/editor/model";
 import { parseMarkdown } from "../src/client/editor/parse";
 import { serializeMarkdown } from "../src/client/editor/serialize";
 
@@ -19,6 +19,17 @@ function stable(markdown: string): string {
 }
 
 describe("editor model (docs: browser-ui.md)", () => {
+  test("the outline lists headings in order with their plain text", () => {
+    const blocks = parseMarkdown(
+      "# 概要\n\n本文\n\n## **検索**の設計\n\n- 項目\n\n### 形態素解析\n",
+    );
+    expect(outlineOf(blocks)).toEqual([
+      { level: 1, text: "概要" },
+      { level: 2, text: "検索の設計" },
+      { level: 3, text: "形態素解析" },
+    ]);
+  });
+
   test("headings, paragraphs and inline marks round-trip", () => {
     const src = [
       "# SQLite の WAL モード",

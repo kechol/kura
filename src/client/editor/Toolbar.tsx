@@ -26,7 +26,12 @@ export function Toolbar({ pos, onCommand }: { pos: ToolbarPos; onCommand: (c: st
   );
 
   return (
-    <div class="editor-toolbar" style={{ top: `${pos.top}px`, left: `${pos.left}px` }}>
+    <div
+      class="editor-toolbar"
+      role="toolbar"
+      aria-label="文字の装飾"
+      style={{ top: `${pos.top}px`, left: `${pos.left}px` }}
+    >
       {button("bold", "太字", <Bold size={14} />)}
       {button("italic", "斜体", <Italic size={14} />)}
       {button("strike", "打ち消し", <Strikethrough size={14} />)}

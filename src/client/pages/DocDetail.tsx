@@ -14,10 +14,13 @@ import {
 } from "../api";
 import { useBucket } from "../bucket";
 import { DocContent } from "../components/DocContent";
-import { DocLinkList } from "../components/DocLink";
+import { DocLinkList, docHref } from "../components/DocLink";
+import { DocOutline } from "../components/DocOutline";
+import { DocTags } from "../components/DocTags";
 import { InlineEditField } from "../components/InlineEditField";
 import { useCurrentDoc } from "../currentdoc";
 import { Editor, type SaveStatus } from "../editor/Editor";
+import type { HeadingLevel, OutlineItem } from "../editor/model";
 import { formatDateTime } from "../format";
 import { useAsync, useDocumentTitle } from "../hooks";
 import { forgetDoc, rememberDoc } from "../lastdoc";
@@ -34,6 +37,10 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
   saved: "保存しました",
   error: "保存に失敗しました",
 };
+
+const LEVELS = [1, 2, 3, 4, 5, 6];
+const EDITOR_HEADINGS = LEVELS.map((n) => `.doc-main .editor-block.h${n}`).join(",");
+const RENDERED_HEADINGS = LEVELS.map((n) => `.doc-main .doc-content h${n}`).join(",");
 
 function RelatedList({ docs }: { docs: RelatedDoc[] }) {
   return <DocLinkList docs={docs} class="related-list" />;
@@ -62,7 +69,17 @@ export function DocDetail({ docKey }: { docKey: string }) {
       throw e;
     }
   }, [docKey]);
-  const related = useAsync(() => fetchRelated(docKey), [docKey]);
+  // A saved body can change the links, so saving refetches them. The result carries its key:
+  // useAsync keeps the previous data while reloading, and a refetch of the open document must
+  // not take the editor off screen the way a route to another document does.
+  const [linksVersion, setLinksVersion] = useState(0);
+  const relatedState = useAsync(
+    () => fetchRelated(docKey).then((r) => ({ ...r, docKey })),
+    [docKey, linksVersion],
+  );
+  const related = relatedState.data?.docKey === docKey ? relatedState.data : null;
+  const outlinks = related?.outlinks ?? [];
+  const [headings, setHeadings] = useState<OutlineItem[]>([]);
   const [metadataStatus, setStatus] = useState<SaveStatus>("idle");
   const [bodyStatus, setBodyStatus] = useState<SaveStatus>("idle");
   const status =
@@ -72,12 +89,14 @@ export function DocDetail({ docKey }: { docKey: string }) {
   const [saveRetry, setSaveRetry] = useState(0);
   const [pathError, setPathError] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   useEffect(() => {
     setStatus("idle");
     setBodyStatus("idle");
     setSaveRetry(0);
     setPathError(null);
     setAliasError(null);
+    setActionError(null);
   }, [docKey]);
   const tree = useAsync(
     () => (bucket === "" ? Promise.resolve([]) : fetchDocTree(bucket)),
@@ -98,20 +117,34 @@ export function DocDetail({ docKey }: { docKey: string }) {
 
   // Hand the fetched document to the sidebar (tags, same-tag and same-path neighbours)
   const { publish } = useCurrentDoc();
-  const reload = doc.reload;
   useEffect(() => {
-    publish(d ?? null, reload);
-    return () => publish(null, reload);
-  }, [d, publish, reload]);
+    publish(d ?? null);
+    return () => publish(null);
+  }, [d, publish]);
 
   // [[link]] title → key resolution map (reuses the resolved outlinks)
   const resolve = useMemo(() => {
     const map = new Map<string, string>();
-    for (const o of related.data?.outlinks ?? []) {
+    for (const o of related?.outlinks ?? []) {
       if (o.target) map.set(o.target_title.toLowerCase(), o.target.key);
     }
     return (title: string) => map.get(title.toLowerCase()) ?? null;
-  }, [related.data]);
+  }, [related]);
+
+  // Clipped HTML has no editor model to read its headings from, only what it rendered to
+  const isHtml = d !== null && d.content_type === "html";
+  const htmlContent = isHtml ? d.content : null;
+  const bodyShown = related !== null || relatedState.error !== null;
+  useEffect(() => {
+    if (htmlContent === null || !bodyShown) return;
+    const rendered = document.querySelectorAll<HTMLElement>(RENDERED_HEADINGS);
+    setHeadings(
+      [...rendered].map((el) => ({
+        level: Number(el.tagName.slice(1)) as HeadingLevel,
+        text: (el.textContent ?? "").trim(),
+      })),
+    );
+  }, [htmlContent, bodyShown]);
 
   // A just-created document (Ctrl+N) opens with its placeholder title selected, so the first
   // thing typed replaces it instead of landing in an empty body. The condition includes the
@@ -119,7 +152,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
   // must not spend its one dependency change on a render that has no <h1> yet.
   const titleRef = useRef<HTMLHeadingElement>(null);
   const untitled =
-    !doc.loading && !related.loading && d !== null && d.content === "" && UNTITLED_RE.test(d.title);
+    !doc.loading && related !== null && d !== null && d.content === "" && UNTITLED_RE.test(d.title);
   useEffect(() => {
     const el = titleRef.current;
     if (!untitled || !el) return;
@@ -145,8 +178,15 @@ export function DocDetail({ docKey }: { docKey: string }) {
   });
 
   docKeys.current = null;
-  if ((doc.loading && d === null) || related.loading) return <p class="empty">読み込み中…</p>;
-  if (doc.error && d === null) return <p class="error">{doc.error}</p>;
+  if ((doc.loading && d === null) || (relatedState.loading && related === null)) {
+    return <p class="empty">読み込み中…</p>;
+  }
+  if (doc.error && d === null)
+    return (
+      <p class="error" role="alert">
+        {doc.error}
+      </p>
+    );
   if (!d) return null;
 
   const markdown = d.content_type !== "html";
@@ -200,23 +240,39 @@ export function DocDetail({ docKey }: { docKey: string }) {
   };
 
   const toggleFavorite = async () => {
+    setActionError(null);
     try {
       await setFavorite(d.key, !d.favorite);
       doc.reload();
     } catch (e) {
-      alert(`お気に入りの更新に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      setActionError(
+        `お気に入りの更新に失敗しました: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   };
 
   const remove = async () => {
-    if (!confirm(`「${d.title}」を削除しますか？この操作は取り消せません。`)) return;
+    const backlinks = related?.backlinks.length ?? 0;
+    const consequence =
+      backlinks > 0 ? `\nこのドキュメントへのリンク ${backlinks} 件は未解決になります。` : "";
+    if (!confirm(`「${d.title}」を削除しますか？この操作は取り消せません。${consequence}`)) return;
+    setActionError(null);
     try {
       await deleteDoc(d.key);
       forgetDoc(d.key);
       navigate("/docs");
     } catch (e) {
-      alert(`削除に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      setActionError(`削除に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+
+  const jumpToHeading = (index: number) => {
+    const selector = markdown ? EDITOR_HEADINGS : RENDERED_HEADINGS;
+    const el = document.querySelectorAll<HTMLElement>(selector)[index];
+    if (!el) return;
+    el.scrollIntoView({ block: "start" });
+    if (!markdown) el.tabIndex = -1;
+    el.focus({ preventScroll: true });
   };
 
   const keys: Record<string, () => void> = {
@@ -236,6 +292,11 @@ export function DocDetail({ docKey }: { docKey: string }) {
         {doc.error && (
           <p class="error" role="alert">
             {doc.error}
+          </p>
+        )}
+        {actionError !== null && (
+          <p class="error" role="alert">
+            {actionError}
           </p>
         )}
         {d.path !== "" && (
@@ -273,18 +334,20 @@ export function DocDetail({ docKey }: { docKey: string }) {
             {d.title}
           </h1>
           <div class="doc-actions">
-            {bodyStatus === "error" ? (
-              <button
-                type="button"
-                class={`save-status ${status}`}
-                title="クリックして保存を再試行"
-                onClick={() => setSaveRetry((value) => value + 1)}
-              >
-                {SAVE_LABEL[status]}
-              </button>
-            ) : (
-              <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
-            )}
+            <span role="status">
+              {bodyStatus === "error" ? (
+                <button
+                  type="button"
+                  class={`save-status ${status}`}
+                  title="クリックして保存を再試行"
+                  onClick={() => setSaveRetry((value) => value + 1)}
+                >
+                  {SAVE_LABEL[status]}
+                </button>
+              ) : (
+                <span class={`save-status ${status}`}>{SAVE_LABEL[status]}</span>
+              )}
+            </span>
             <button
               type="button"
               class={`icon-btn favorite-toggle${d.favorite ? " on" : ""}`}
@@ -302,7 +365,11 @@ export function DocDetail({ docKey }: { docKey: string }) {
             key={d.key}
             initial={d.content}
             resolve={resolve}
-            onStatus={setBodyStatus}
+            onStatus={(next) => {
+              setBodyStatus(next);
+              if (next === "saved") setLinksVersion((v) => v + 1);
+            }}
+            onOutline={setHeadings}
             retryToken={saveRetry}
             onSave={(content) => updateDoc(d.key, { content }).then(() => undefined)}
           />
@@ -311,7 +378,8 @@ export function DocDetail({ docKey }: { docKey: string }) {
           <DocContent content={d.content} contentType={d.content_type} resolve={resolve} />
         )}
       </article>
-      <aside class="doc-side">
+      <aside class="doc-side" aria-label="ドキュメント情報">
+        <DocOutline headings={headings} onJump={jumpToHeading} />
         <section class="side-box">
           <h2>メタ情報</h2>
           <dl class="meta-list">
@@ -320,9 +388,16 @@ export function DocDetail({ docKey }: { docKey: string }) {
               <dd>{d.bucket}</dd>
             </div>
             <div>
+              <dt>タグ</dt>
+              <dd>
+                <DocTags doc={d} onChange={doc.reload} />
+              </dd>
+            </div>
+            <div>
               <dt>パス</dt>
               <dd>
                 <InlineEditField
+                  label="パス"
                   display={d.path === "" ? <span class="muted">bucket 直下</span> : d.path}
                   value={d.path}
                   placeholder="db/sqlite（空欄で bucket 直下）"
@@ -344,6 +419,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
               <dt>別名</dt>
               <dd>
                 <InlineEditField
+                  label="別名"
                   display={
                     d.aliases.length === 0 ? <span class="muted">なし</span> : d.aliases.join(", ")
                   }
@@ -374,6 +450,7 @@ export function DocDetail({ docKey }: { docKey: string }) {
                 <dd>
                   <a href={d.source_url} target="_blank" rel="noreferrer">
                     {d.source_url}
+                    <span class="sr-only">（新しいタブで開く）</span>
                   </a>
                 </dd>
               </div>
@@ -381,19 +458,47 @@ export function DocDetail({ docKey }: { docKey: string }) {
           </dl>
         </section>
         <section class="side-box">
-          <h2>バックリンク</h2>
-          {related.error ? (
-            <p class="error">{related.error}</p>
+          <h2>リンク先</h2>
+          {outlinks.length === 0 ? (
+            <p class="empty">なし</p>
           ) : (
-            <RelatedList docs={related.data?.backlinks ?? []} />
+            <ul class="related-list">
+              {outlinks.map((o) => (
+                <li key={o.target_title}>
+                  {o.target !== null ? (
+                    <Link href={docHref(o.target.key)}>{o.target.title}</Link>
+                  ) : (
+                    <>
+                      <Link
+                        class="wikilink-unresolved"
+                        href={`/docs/title/${encodeURIComponent(o.target_title)}`}
+                      >
+                        {o.target_title}
+                      </Link>
+                      <span class="doc-link-meta">未解決</span>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section class="side-box">
+          <h2>バックリンク</h2>
+          {relatedState.error ? (
+            <p class="error" role="alert">
+              {relatedState.error}
+            </p>
+          ) : (
+            <RelatedList docs={related?.backlinks ?? []} />
           )}
         </section>
         <section class="side-box">
           <h2>2ホップリンク</h2>
-          {(related.data?.twoHop ?? []).length === 0 ? (
+          {(related?.twoHop ?? []).length === 0 ? (
             <p class="empty">なし</p>
           ) : (
-            (related.data?.twoHop ?? []).map((g) => (
+            (related?.twoHop ?? []).map((g) => (
               <div class="twohop-group" key={g.via.key}>
                 <h3>
                   <Link href={`/docs/${encodeURIComponent(g.via.key)}`}>{g.via.title}</Link> 経由

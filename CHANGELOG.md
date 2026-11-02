@@ -13,9 +13,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Update runtime, browser UI, and docs site dependencies, resolving the known
   advisories reported by `bun audit`. The browser UI now runs on Preact 11 and
   lazily loads Mermaid 12.2.
+- Make the browser UI meet WCAG 2.2 AA in automated checks: a skip link, a
+  marked current location, labeled controls, announced page changes and errors,
+  stronger text and control contrast, and 24px pointer targets. Narrow or
+  heavily zoomed windows now reflow to one column, with the sidebar behind a menu
+  button.
+- Add 検索 to the browser header and a link from the search modal, so the vector
+  and hybrid search page no longer needs a typed URL.
+- Add an outline and outgoing links to the browser's document side pane, and move
+  the document's tags there beside its other metadata. Outgoing links and
+  backlinks refresh after each save.
+- Combine the browser list's tag and path filters into one form with completions,
+  a result count, and removable filter chips.
+- Show stale documents as 陳腐化候補 on every browser screen, and offer a next step
+  in empty lists: create a document, or clear the filters.
+- Keep the browser sidebar in view while scrolling a long document, and name the
+  backlinks that become unresolved in the delete confirmation.
 
 ### Fixed
 
+- Keep keyboard focus inside browser modals, and open the row that has focus in
+  the recent-documents modal.
+- Keep unlinked documents on the knowledge graph canvas, and list the graph's
+  documents as links for keyboard and screen reader users.
 - Keep Markdown exports inside their requested directory even when document
   paths contain traversal-like segments or existing symlinks, without silently
   dropping documents whose sanitized names or collision suffixes collide.

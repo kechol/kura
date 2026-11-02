@@ -174,7 +174,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-function qs(params: Record<string, string | number | undefined>): string {
+export function qs(params: Record<string, string | number | undefined>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") sp.set(k, String(v));

@@ -1,6 +1,6 @@
-import { FilePlus, Keyboard, Moon, Search, Sun } from "lucide-preact";
+import { FilePlus, Keyboard, Menu, Moon, Search, Sun } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Link, useLocation } from "wouter-preact";
 import { fetchDocTree, fetchFavorites, fetchTagTree } from "../api";
 import { useBucket } from "../bucket";
@@ -12,6 +12,14 @@ import { DocContextSidebar } from "./DocContextSidebar";
 import { DocTree } from "./DocTree";
 import { FavoriteTree } from "./FavoriteTree";
 import { TagTree } from "./TagTree";
+
+const NAV_ITEMS: Array<[string, string]> = [
+  ["/docs", "ドキュメント"],
+  ["/search", "検索"],
+  ["/tags", "タグ"],
+  ["/graph", "グラフ"],
+  ["/stats", "統計"],
+];
 
 /**
  * Shared layout: header (search / new) + left sidebar (bucket picker / favorites /
@@ -44,6 +52,28 @@ export function Layout({ children }: { children: ComponentChildren }) {
   );
   const [theme, setThemeState] = useState<Theme>(currentTheme());
 
+  // A client-side route change leaves focus on a link that may be gone, and nothing tells a
+  // screen reader the page changed. Back/forward keeps the scroll position the browser restores.
+  const mainRef = useRef<HTMLElement>(null);
+  const previousLocation = useRef(location);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const popped = useRef(false);
+  useEffect(() => {
+    const onPopState = () => {
+      popped.current = true;
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  useEffect(() => {
+    if (previousLocation.current === location) return;
+    previousLocation.current = location;
+    setMenuOpen(false);
+    mainRef.current?.focus({ preventScroll: true });
+    if (!popped.current) window.scrollTo(0, 0);
+    popped.current = false;
+  }, [location]);
+
   const toggleTheme = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -52,6 +82,10 @@ export function Layout({ children }: { children: ComponentChildren }) {
 
   return (
     <div class="layout">
+      <a class="skip-link" href="#main">
+        本文へ移動
+      </a>
+      <div id="route-announcer" class="sr-only" role="status" />
       <header class="header">
         <Link href="/" class="brand">
           kura
@@ -74,15 +108,33 @@ export function Layout({ children }: { children: ComponentChildren }) {
         >
           <FilePlus size={16} />
         </button>
-        <nav class="nav">
-          <Link href="/docs">ドキュメント</Link>
-          <Link href="/tags">タグ</Link>
-          <Link href="/graph">グラフ</Link>
-          <Link href="/stats">統計</Link>
+        <button
+          type="button"
+          class="icon-btn menu-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="sidebar"
+          aria-label="サイドバー"
+          title="サイドバー"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <Menu size={16} />
+        </button>
+        <nav class="nav" aria-label="メイン">
+          {NAV_ITEMS.map(([href, label]) => (
+            <Link
+              key={href}
+              href={href}
+              aria-current={
+                location === href ? "page" : location.startsWith(`${href}/`) ? "true" : undefined
+              }
+            >
+              {label}
+            </Link>
+          ))}
         </nav>
       </header>
       <div class="layout-body">
-        <aside class="sidebar">
+        <aside id="sidebar" class={`sidebar${menuOpen ? " open" : ""}`} aria-label="サイドバー">
           <section class="sidebar-section">
             <h2>Bucket</h2>
             <select
@@ -107,9 +159,9 @@ export function Layout({ children }: { children: ComponentChildren }) {
             <h2>ドキュメント</h2>
             <DocTree nodes={docTree.data ?? []} />
           </section>
-          {/* On a document, the tag tree gives way to that document's own tags and neighbours */}
+          {/* On a document, the tag tree gives way to that document's neighbours */}
           {currentDoc.doc !== null ? (
-            <DocContextSidebar doc={currentDoc.doc} onChange={currentDoc.reload} />
+            <DocContextSidebar doc={currentDoc.doc} />
           ) : (
             <section class="sidebar-section">
               <h2>タグ</h2>
@@ -138,7 +190,7 @@ export function Layout({ children }: { children: ComponentChildren }) {
           </div>
         </aside>
         {/* Hold the screens back until the bucket resolves, so no list is ever rendered unscoped */}
-        <main class="main">
+        <main id="main" class="main" tabIndex={-1} ref={mainRef}>
           {bucket === "" && loading ? <p class="empty">読み込み中…</p> : children}
         </main>
       </div>

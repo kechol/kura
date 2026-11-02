@@ -14,7 +14,11 @@ export function TagsPage() {
         件数は「直接付与 / 子孫含む合計」。選択中の Bucket
         内で数えています。クリックで一覧を絞り込みます。
       </p>
-      {tree.error && <p class="error">{tree.error}</p>}
+      {tree.error && (
+        <p class="error" role="alert">
+          {tree.error}
+        </p>
+      )}
       {tree.loading ? (
         <p class="empty">読み込み中…</p>
       ) : (

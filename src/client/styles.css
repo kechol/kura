@@ -10,6 +10,8 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Reading-column cap: ~49 full-width JA characters at the prose size */
   --prose-measure: 52rem;
+  /* Height of the sticky header, which the sticky sidebar sits under */
+  --header-height: 3.15rem;
   /* Horizontal padding of the document panel; the panel caps its own width
      at the reading column + this padding, so frame and text stay flush */
   --panel-pad: clamp(1.4rem, 4vw, 2.75rem);
@@ -24,11 +26,13 @@
   --bg-panel: #ffffff;
   --bg-inset: #eceae5;
   --text: #21252b;
-  --text-muted: #6b7280;
+  --text-muted: #5f6570;
   --border: #dfddd6;
+  /* 3:1 against every surface: the edge of a control, where the hairline is too faint to find */
+  --border-strong: #85837b;
   --accent: #275c86; /* Hanada / Japan Blue — brand accent (docs: browser-ui.md) */
   --accent-text: #ffffff;
-  --danger: #dc2626;
+  --danger: #c81e1e;
   --warning-bg: #fef3c7;
   --warning-text: #92400e;
   --mark-bg: #fde68a;
@@ -36,11 +40,11 @@
   --code-bg: #f1f0ec;
   /* Overlay elevation only (modal, floating toolbar) — cards stay flat */
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
-  --hl-comment: #6e7781;
+  --hl-comment: #5f6972;
   --hl-keyword: #cf222e;
   --hl-string: #0a3069;
   --hl-number: #0550ae;
-  --hl-title: #8250df;
+  --hl-title: #7744d4;
   --hl-attr: #953800;
 }
 
@@ -52,6 +56,7 @@
   --text: #e3e6ea;
   --text-muted: #9aa2ad;
   --border: #33383f;
+  --border-strong: #7b838e;
   --accent: #64abda; /* Hanada / Japan Blue, lightened for the dark ground */
   --accent-text: #10131a;
   --danger: #f87171;
@@ -60,7 +65,7 @@
   --mark-bg: #7a5b00;
   --mark-text: #ffe9a8;
   --code-bg: #14161a;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   --hl-comment: #8b949e;
   --hl-keyword: #ff7b72;
   --hl-string: #a5d6ff;
@@ -79,6 +84,7 @@
     --text: #e3e6ea;
     --text-muted: #9aa2ad;
     --border: #33383f;
+    --border-strong: #7b838e;
     --accent: #64abda; /* Hanada / Japan Blue, lightened for the dark ground */
     --accent-text: #10131a;
     --danger: #f87171;
@@ -109,7 +115,7 @@ body {
 
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -146,6 +152,41 @@ h2 {
   margin: 0 0 0.5rem;
 }
 
+/* ---- Screen-reader and keyboard helpers ---- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 200;
+  padding: 0.4rem 0.8rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: var(--radius-sm);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* Focus lands here on navigation, as a starting point for Tab rather than a control */
+.main:focus {
+  outline: none;
+}
+
 /* ---- Form controls (base) ---- */
 
 input,
@@ -161,9 +202,14 @@ input[type="search"],
 select,
 textarea {
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0.3rem 0.6rem;
+}
+
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 input:focus-visible,
@@ -212,6 +258,11 @@ button:focus-visible {
   gap: 0.9rem;
 }
 
+/* Only narrow windows fold the sidebar away */
+.icon-btn.menu-toggle {
+  display: none;
+}
+
 .nav a {
   color: var(--text-muted);
   font-size: 0.92rem;
@@ -220,6 +271,16 @@ button:focus-visible {
 .nav a:hover {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* The section stays marked on its detail pages, where aria-current is "true" */
+.nav a[aria-current] {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.35em;
 }
 
 /* ---- Inline editor ---- */
@@ -239,6 +300,7 @@ button:focus-visible {
 
 /* A newline inside a paragraph must survive editing, so blocks keep their whitespace */
 .editor-block {
+  scroll-margin-top: 4rem; /* clears the sticky header on outline jumps */
   white-space: pre-wrap;
   outline: none;
   border-radius: 4px;
@@ -291,8 +353,10 @@ button:focus-visible {
   color: var(--text-muted);
 }
 
+/* The wash alone is too faint to find; the bar is the focus indicator */
 .editor-block:focus {
   background: var(--bg-inset);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .editor-block:empty::before {
@@ -307,6 +371,7 @@ button:focus-visible {
 
 .doc-title:focus {
   background: var(--bg-inset);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* The bullet is drawn by CSS, so it is not part of the editable text and cannot be deleted */
@@ -348,6 +413,8 @@ button:focus-visible {
   color: var(--text);
   cursor: pointer;
   line-height: 0;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 .editor-tool:hover {
@@ -368,6 +435,13 @@ button:focus-visible {
 .editor-raw:hover .editor-raw-edit,
 .editor-raw-edit:focus {
   opacity: 1;
+}
+
+/* Nothing hovers on a touch screen, so the pencil would never appear */
+@media (hover: none) {
+  .editor-raw-edit {
+    opacity: 1;
+  }
 }
 
 .editor-raw-input {
@@ -407,22 +481,32 @@ button:focus-visible {
 
 .tag-chip.add {
   cursor: pointer;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--border-strong);
   background: none;
   color: var(--text-muted);
   display: inline-flex;
   align-items: center;
 }
 
+/* 24px target around an 11px glyph; the negative margin keeps the chip's height */
 .tag-remove {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -0.25rem -0.45rem -0.25rem -0.2rem;
   background: none;
   border: none;
   padding: 0;
   color: var(--text-muted);
   cursor: pointer;
   line-height: 0;
+}
+
+.tag-chip-link {
+  display: inline-block;
+  padding-block: 0.1rem;
 }
 
 .tag-remove:hover {
@@ -469,6 +553,10 @@ button:focus-visible {
   background: none;
   border: none;
   cursor: default;
+}
+
+.modal:focus {
+  outline: none;
 }
 
 .modal {
@@ -519,8 +607,13 @@ button:focus-visible {
   padding: 0;
 }
 
+/* The field fills the head, so the head's rule carries its focus indicator */
 .search-modal-input:focus {
   outline: none;
+}
+
+.search-modal-head:focus-within {
+  border-bottom-color: var(--accent);
 }
 
 .search-modal-bar {
@@ -529,6 +622,25 @@ button:focus-visible {
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.search-modal-more {
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-align: left;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.search-modal-more:hover {
+  background: var(--hover);
+}
+
+.search-modal-more:focus-visible {
+  outline-offset: -2px;
 }
 
 .search-modal-bucket {
@@ -550,6 +662,7 @@ button:focus-visible {
   padding: 0.2rem 0.7rem;
   font-size: 0.82rem;
   cursor: pointer;
+  min-height: 24px;
 }
 
 .modal-tab.active {
@@ -569,12 +682,18 @@ button:focus-visible {
   color: var(--accent);
   font-size: 0.78rem;
   cursor: pointer;
+  min-height: 24px;
 }
 
 .modal-results {
   flex: 1;
   overflow-y: auto;
   padding: 0.4rem;
+}
+
+.modal-results:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .result-list {
@@ -604,6 +723,7 @@ button:focus-visible {
 
 .result-row.active {
   background: var(--bg-inset);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .result-title {
@@ -700,8 +820,13 @@ kbd {
   min-height: 0;
 }
 
+/* Scrolls on its own under the header, so the trees and footer stay reachable in a long document */
 .sidebar {
-  width: 240px;
+  position: sticky;
+  top: var(--header-height);
+  align-self: flex-start;
+  width: 248px;
+  height: calc(100vh - var(--header-height));
   flex-shrink: 0;
   padding: 1.1rem 1rem 1rem;
   border-right: 1px solid var(--border);
@@ -769,6 +894,10 @@ kbd {
   cursor: default;
 }
 
+.empty .btn {
+  margin-left: 0.25rem;
+}
+
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -813,6 +942,25 @@ mark {
   padding: 0 0.1em;
 }
 
+.list-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-height: 1.6rem;
+  margin-bottom: 0.7rem;
+}
+
+.list-summary-clear {
+  min-height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
@@ -833,20 +981,23 @@ mark {
   accent-color: var(--accent);
 }
 
+/* The text filters take their own row; the immediate controls share the next one */
 .tag-filter {
   display: flex;
+  flex-basis: 100%;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5rem 1rem;
 }
 
 .tag-chip {
   display: inline-block;
   background: var(--bg-inset);
   border-radius: 999px;
-  padding: 0.05rem 0.6rem;
+  padding: 0.1rem 0.6rem;
   font-size: 0.8rem;
   margin: 0.1rem 0.15rem 0.1rem 0;
-  white-space: nowrap;
+  /* break-word, not anywhere: a chip must not shrink a table column to one character */
+  overflow-wrap: break-word;
 }
 
 .tag-cell {
@@ -882,6 +1033,11 @@ mark {
   text-decoration: none;
 }
 
+.tag-tree-link[aria-current="page"] {
+  background: var(--hover);
+  font-weight: 600;
+}
+
 .tags-page-tree {
   max-width: 480px;
   background: var(--bg-panel);
@@ -910,7 +1066,8 @@ mark {
 
 .doc-tree-toggle {
   flex: none;
-  width: 1.1rem;
+  width: 24px;
+  min-height: 24px;
   padding: 0;
   border: none;
   background: none;
@@ -993,6 +1150,7 @@ mark {
 
 .kbd-cursor {
   background: var(--hover);
+  box-shadow: inset 2px 0 0 var(--accent);
   scroll-margin-block: 4rem 1rem; /* clears the sticky header when scrolled to */
 }
 
@@ -1029,7 +1187,7 @@ mark {
 
 .insight-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 0.9rem;
   margin-top: 0.9rem;
 }
@@ -1114,7 +1272,7 @@ mark {
 
 .broken-target {
   color: var(--danger);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .broken-sources {
@@ -1179,7 +1337,6 @@ mark {
 .doc-link-meta {
   color: var(--text-muted);
   font-size: 0.8rem;
-  white-space: nowrap;
 }
 
 /* ---- Document list table ---- */
@@ -1218,6 +1375,10 @@ mark {
 
 .doc-table td.num {
   text-align: right;
+}
+
+.doc-table td:nth-child(3) {
+  white-space: nowrap;
 }
 
 .pagination {
@@ -1263,6 +1424,7 @@ mark {
 }
 
 .doc-header h1 {
+  min-width: 0;
   margin: 0;
   font-size: 1.7rem;
   line-height: 1.45;
@@ -1284,6 +1446,16 @@ mark {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+}
+
+/* Scrolls on its own beside the document, so the outline is there wherever the reader is */
+@media (min-width: 901px) {
+  .doc-side {
+    position: sticky;
+    top: calc(var(--header-height) + 0.75rem);
+    max-height: calc(100vh - var(--header-height) - 1.5rem);
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1387,6 +1559,32 @@ mark {
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
   background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* Capped so a long outline does not push the metadata out of reach */
+.outline-list {
+  list-style: none;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+
+.outline-link {
+  width: 100%;
+  min-height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  padding: 0.1rem 0.3rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.outline-link:hover {
+  background: var(--hover);
 }
 
 .related-list {
@@ -1798,7 +1996,7 @@ mark {
 }
 
 .graph-edge {
-  stroke: var(--border);
+  stroke: var(--border-strong);
   stroke-width: 1.2;
 }
 
@@ -1818,6 +2016,12 @@ mark {
 
 .graph-node.stale {
   opacity: 0.35;
+}
+
+/* Fading alone cannot be told from a lighter palette color */
+.graph-node.stale circle {
+  stroke: var(--text);
+  stroke-dasharray: 2 2;
 }
 
 .graph-legend {
@@ -1840,6 +2044,24 @@ mark {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.graph-list {
+  margin-top: 0.8rem;
+}
+
+.graph-list summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.graph-list .doc-links {
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.9rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .swatch {
@@ -1895,6 +2117,8 @@ mark {
 }
 
 .home-section-more {
+  display: inline-block;
+  padding-block: 0.1rem;
   font-size: 0.82rem;
   color: var(--text-muted);
   white-space: nowrap;
@@ -1941,6 +2165,7 @@ mark {
 .doc-card.kbd-cursor {
   border-color: var(--accent);
   background: var(--hover);
+  box-shadow: none;
 }
 
 .doc-card-title {
@@ -1974,7 +2199,110 @@ mark {
   color: var(--text-muted);
   font-size: 0.78rem;
   margin-top: 0.3rem;
-  white-space: nowrap;
+}
+
+/* ---- Keyboard cursor on table rows ---- */
+
+/* A table row does not paint its own box-shadow in every browser */
+tr.kbd-cursor {
+  box-shadow: none;
+}
+
+tr.kbd-cursor > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ---- Narrow windows ---- */
+
+/* Also what a desktop window becomes at 200-400% zoom (WCAG 1.4.10): the page reflows to one
+   column, the sidebar folds behind a menu button in its DOM position (so Tab order still
+   matches what is on screen), and the header stops taking a share of a short viewport */
+@media (max-width: 768px) {
+  .header {
+    position: static;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.9rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .nav {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    gap: 0.2rem 0.9rem;
+  }
+
+  .nav a {
+    white-space: nowrap;
+    padding-block: 0.1rem;
+  }
+
+  .layout-body {
+    flex-direction: column;
+  }
+
+  .main {
+    flex: none;
+    padding: 1.1rem 1rem 2rem;
+  }
+
+  .icon-btn.menu-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .sidebar {
+    display: none;
+    position: static;
+    align-self: stretch;
+    width: auto;
+    height: auto;
+    overflow-y: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar.open {
+    display: flex;
+  }
+
+  .tag-filter,
+  .filter-bar label,
+  .pagination,
+  .doc-links li,
+  .recent-list li {
+    flex-wrap: wrap;
+  }
+
+  .filter-bar,
+  .tag-filter {
+    gap: 0.5rem;
+  }
+
+  .filter-bar input[type="text"],
+  .search-page-input {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mode-switch {
+    flex-wrap: wrap;
+  }
+
+  /* A one-finger drag scrolls the page here; panning stays available on the wider layout */
+  .graph-svg {
+    touch-action: auto;
+  }
+}
+
+/* A short viewport (landscape, heavy zoom) would otherwise leave the panel no room */
+@media (max-height: 500px) {
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+
+  .modal {
+    max-height: calc(100vh - 1rem);
+  }
 }
 
 /* ---- Print ---- */
@@ -1985,7 +2313,8 @@ mark {
   .sidebar,
   .doc-side,
   .doc-actions,
-  .doc-delete {
+  .doc-delete,
+  .skip-link {
     display: none;
   }
 

@@ -145,7 +145,7 @@ names the CLI command that fixes them.
 ### `GET /api/stale`
 
 Scored staleness candidates for one bucket via `staleDocuments()`
-(`src/core/stale.ts`), backing the home dashboard's 放置気味 section and its
+(`src/core/stale.ts`), backing the home dashboard's 陳腐化候補 section and its
 nudge chip (see [self-healing.md](self-healing.md)). This is the first REST
 exposure of the full `staleScore` — previously it was CLI-only.
 

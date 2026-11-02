@@ -256,7 +256,7 @@ Surfaces:
   the browser home dashboard; the **first place the full `staleScore` is
   exposed outside the CLI** (bucket-scoped, most-neglected first — see
   [http-api.md](http-api.md)).
-- **Browser UI** — the home dashboard's 放置気味 section and its nudge chip
+- **Browser UI** — the home dashboard's 陳腐化候補 section and its nudge chip
   read `GET /api/stale`, so they rank by the full score; the stat card and the
   graph's dimmed stale nodes use the cheaper cutoff (below);
   `GET /api/docs?stale=1` filters the list page.

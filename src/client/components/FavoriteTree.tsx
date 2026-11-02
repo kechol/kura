@@ -1,6 +1,6 @@
 import { Star } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { Link } from "wouter-preact";
+import { Link, useLocation } from "wouter-preact";
 import type { DocMeta, DocTreeNode } from "../api";
 import { DocTreeList } from "./DocTree";
 
@@ -47,7 +47,9 @@ export function FavoriteTree({ favorites, tree }: Props) {
 }
 
 function FavoriteItem({ doc, node }: { doc: DocMeta; node: DocTreeNode | null }) {
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const href = `/docs/${encodeURIComponent(doc.key)}`;
   const children = node?.children ?? [];
   const hasChildren = children.length > 0;
   return (
@@ -58,7 +60,7 @@ function FavoriteItem({ doc, node }: { doc: DocMeta; node: DocTreeNode | null })
             type="button"
             class="doc-tree-toggle"
             aria-expanded={open}
-            aria-label={open ? "折りたたむ" : "展開する"}
+            aria-label={`${doc.title} を${open ? "折りたたむ" : "展開する"}`}
             onClick={() => setOpen(!open)}
           >
             {open ? "▾" : "▸"}
@@ -66,7 +68,11 @@ function FavoriteItem({ doc, node }: { doc: DocMeta; node: DocTreeNode | null })
         ) : (
           <span class="doc-tree-toggle" aria-hidden="true" />
         )}
-        <Link href={`/docs/${encodeURIComponent(doc.key)}`} class="tag-tree-link">
+        <Link
+          href={href}
+          class="tag-tree-link"
+          aria-current={location === href ? "page" : undefined}
+        >
           <Star size={12} class="favorite-star" fill="currentColor" aria-hidden="true" />
           <span class="tag-segment">{doc.title}</span>
           {hasChildren && <span class="count">{node?.total}</span>}

@@ -44,26 +44,28 @@ searches or browses across buckets.** Two consequences worth knowing:
 | `theme.ts` | Light/dark theme: `data-theme` attribute + `localStorage` |
 | `styles.css` | All styling; CSS custom properties per theme |
 | `types.d.ts` | Ambient module declarations for the bundler |
-| `components/Layout.tsx` | Header (search / new-document icons, nav) + sidebar (bucket picker, favorites, document tree, tag tree, and a footer pinned at the bottom holding the shortcut-list and theme icons); refetches the trees on navigation and whenever the open document's path / title / favorite changes |
-| `components/Modal.tsx` | Modal shell: overlay, Escape, focus in on open / restored on close; `ModalHints` renders the `<kbd>` footer |
+| `components/Layout.tsx` | Skip link + header (search / new-document icons, nav, narrow-window menu button) + sticky sidebar (bucket picker, favorites, document tree, tag tree, and a footer pinned at the bottom holding the shortcut-list and theme icons); refetches the trees on navigation and whenever the open document's path / title / favorite changes |
+| `components/Modal.tsx` | Modal shell: overlay, Escape, Tab kept inside the panel, focus in on open / restored on close; `ModalHints` renders the `<kbd>` footer |
 | `components/SearchModal.tsx` | Raycast-style search: keystroke-by-keystroke keyword search, document / tag tabs, tag filter |
 | `components/RecentModal.tsx` | Recently-viewed documents (Ctrl+R) |
 | `components/ShortcutsModal.tsx` | The shortcut list (Ctrl+?), generated from `SHORTCUTS` |
 | `components/DocContent.tsx` | Body rendering (markdown/html), mermaid activation, internal-link click delegation |
-| `components/DocContextSidebar.tsx` | The open document's tags (add / remove) and its same-tag / same-path neighbours |
+| `components/DocContextSidebar.tsx` | The open document's same-tag / same-path neighbours |
+| `components/DocTags.tsx` | The open document's tags (add / remove), in the metadata box |
+| `components/DocOutline.tsx` | The open document's headings as jump targets; hidden below two headings |
 | `components/DocTree.tsx` | Collapsible per-bucket document-path tree; branches toggle, documents link to `/docs/<key>` |
 | `components/FavoriteTree.tsx` | The favorites section: each pinned document, with whatever is filed under it expanding from the same `DocTree` nodes |
 | `currentdoc.tsx` | `CurrentDocProvider` — the detail screen publishes the document it fetched so the sidebar can show it without fetching again |
 | `editor/` | The inline editor: `model.ts` (block model), `parse.ts` / `serialize.ts` (markdown ⇄ model), `dom.ts` (model ⇄ contenteditable, caret math), `Editor.tsx`, `blocks.tsx`, `Toolbar.tsx` |
 | `components/TagTree.tsx` | Recursive tag hierarchy; links to `/docs?tag=` |
-| `pages/Home.tsx` | Home dashboard: a data-hygiene nudge bar plus independently-loading sections of excerpt cards (recently viewed / updated / created / favorites / most-viewed / by-tag) and a 放置気味 list. `HomeSection` / `NudgeBar` / `TagPickup` are local to this file |
+| `pages/Home.tsx` | Home dashboard: a data-hygiene nudge bar plus independently-loading sections of excerpt cards (recently viewed / updated / created / favorites / most-viewed / by-tag) and a 陳腐化候補 list. `HomeSection` / `NudgeBar` / `TagPickup` are local to this file |
 | `pages/Stats.tsx` | Statistics + tidying insights (`GET /api/stats`, `GET /api/insights`) |
 | `pages/DocList.tsx` | Filterable/paged document table |
 | `pages/DocDetail.tsx` | Rendered document + related sidebar |
 | `components/DocLink.tsx` | `DocTitle` (path prefix + title) and `DocLinkList` — the one place a list of document links is rendered |
 | `components/DocCard.tsx` | `DocCard` / `DocCardGrid` — a document as a card (title, optional `excerpt`, up to three tag chips + caller-supplied meta); the whole card is one `<Link>`, so the tags are plain `<span>`s, not nested `<a>`s. Used by the home dashboard sections |
 | `pages/DocByTitle.tsx` | `[[link]]` resolution route (`GET /api/resolve` + search fallback) |
-| `pages/Search.tsx` | 3-mode search |
+| `pages/Search.tsx` | 3-mode search, linked from the header nav and the search modal |
 | `pages/Tags.tsx` | Tag browser |
 | `pages/Graph.tsx` | d3-force knowledge graph |
 
@@ -94,8 +96,10 @@ The **bucket is the exception**: it is app-wide state, not a per-screen
 filter, so it lives in the context above rather than in every query string.
 
 Each screen sets `document.title` through `useDocumentTitle()` — the document
-name on the detail page, the screen name elsewhere, both suffixed with
-`— kura`.
+name on the detail page, the screen name elsewhere (ホーム on `/`), both
+suffixed with `— kura`. The same call writes the name into the visually hidden
+`#route-announcer` live region. See [Accessibility](#accessibility) for what a
+route change does to focus and scroll.
 
 ## Screens
 
@@ -103,9 +107,9 @@ name on the detail page, the screen name elsewhere, both suffixed with
   both re-finding and tidying. It reads no new schema: every section is a
   scoped call to the existing list/insights/stale/tags endpoints.
   - **Nudge bar** (top, no heading) — data-hygiene chips from `/api/insights`
-    (未整理 / タグなし / 孤立 / 未解決リンク / タグ重複) plus 放置気味 from
+    (未整理 / タグなし / 孤立 / 未解決リンク / タグ重複) plus 陳腐化候補 from
     `/api/stale`. Zero-count chips are hidden and, if every count is zero, the
-    bar does not render. Chips link to `/stats`, except 放置気味 → `/docs?stale=1`.
+    bar does not render. Chips link to `/stats`, except 陳腐化候補 → `/docs?stale=1`.
   - **Card sections** — 最近表示した, 最近更新された, 新しく作成された,
     お気に入り, よく参照する, and タグ別ピックアップ (the bucket's top-3 tags
     by count, each showing its most-recently-updated documents). Each renders
@@ -121,16 +125,16 @@ name on the detail page, the screen name elsewhere, both suffixed with
     `last_accessed_at`; よく参照する keeps only `access_count > 0`; 最近更新された
     drops documents whose `created_at === updated_at` (never edited since
     creation) so it does not simply mirror 新しく作成された.
-  - **放置気味** — the bottom section: the top few staleness candidates from
+  - **陳腐化候補** — the bottom section: the top few staleness candidates from
     `/api/stale` as a `DocLinkList` (no excerpt), each with
     `更新から N 日 · 参照 M 回 · スコア S` and a hint pointing at
     `kura ls --stale`. Hidden entirely when the count is zero.
   - **Empty-bucket gate.** When the bucket holds no documents at all (the
     最近更新された query reports `total === 0`), the sections are replaced by a
-    single message linking to the document list — not seven empty shells.
+    single message with a button that creates a document — not seven empty shells.
   - **Keyboard.** The `j` / `k` cursor spans the six card sections as one
     flattened list in render order (`usePageListNavigation`), distributed back
-    to each grid by offsets; the 放置気味 list and nudge bar are outside it.
+    to each grid by offsets; the 陳腐化候補 list and nudge bar are outside it.
   - **Resume on open — unchanged.** `bootRedirect()` (`lastdoc.ts`) still
     rewrites `/` to `/docs/<last key>` *before the router reads the URL*, so a
     fresh visit lands back where the user left off; the dashboard is reached
@@ -148,9 +152,12 @@ name on the detail page, the screen name elsewhere, both suffixed with
   never mutates anything — staleness and gardening surface review candidates;
   nothing is auto-deleted or auto-merged (see
   [self-healing.md](self-healing.md)).
-- **Document list** — table with a hierarchical tag filter (descendants
-  included, matching the API), document-path filter (`prefix`, also
-  descendant-inclusive), sort selector (including 参照回数順 = `sort=views`),
+- **Document list** — table with one form for the hierarchical tag filter
+  (descendants included, matching the API) and the document-path filter
+  (`prefix`, also descendant-inclusive), both completed by a `datalist` of the
+  bucket's tags and paths. A summary line shows the total and one removable
+  chip per active filter, plus すべて解除 when there are several; the fields
+  follow the URL, so a tag link in the table fills them in. Then a sort selector (including 参照回数順 = `sort=views`),
   stale-only and favorites-only (`favorite=1`) checkboxes, 20 per page
   with prev/next pagination against `total`. Titles render with a muted
   `path/` prefix when the document has one. There is no bucket column or
@@ -159,13 +166,17 @@ name on the detail page, the screen name elsewhere, both suffixed with
 - **Document detail** — reading and editing are the same screen (below). A path
   breadcrumb above the title (each segment links to `/docs?prefix=`); the title
   itself is editable in place; a save-status line and a **favorite star**
-  (`PUT /api/docs/:key/favorite`) in the title row. The **left** sidebar becomes
-  the document's own (tags, same-tag and same-path neighbours), and the right
-  one keeps metadata (bucket, **path**, **別名 (aliases)**, access count,
-  created/updated, source URL), **backlinks**, **two-hop links grouped by the
-  shared target** from
-  `/api/docs/:key/related`, and — last, below everything reversible — the
-  delete button (confirm dialog). Delete is deliberately quiet: no panel, no
+  (`PUT /api/docs/:key/favorite`) in the title row. The **left** sidebar's tag
+  tree gives way to the document's same-tag and same-path neighbours. The
+  **right** pane scrolls on its own beside the document and holds the **outline**
+  (目次: from the editor's block model as it changes, or from the rendered
+  headings of a read-only HTML document; a click scrolls to the heading and
+  focuses it), metadata (bucket, **tags**, **path**, **別名 (aliases)**, access
+  count, created/updated, source URL), **outgoing links** (リンク先, unresolved
+  ones marked 未解決), **backlinks**, **two-hop links grouped by the shared
+  target** from `/api/docs/:key/related`, and — last, below everything
+  reversible — the delete button (confirm dialog). A saved body refetches the
+  link lists without unmounting the editor. Delete is deliberately quiet: no panel, no
   warning copy, muted until hover turns it red. It says what it does and gets
   out of the way. The path row is a field: clicking it offers the paths already in use
   in the bucket (a `datalist` built from `GET /api/docs/tree`) and saves with
@@ -180,7 +191,8 @@ name on the detail page, the screen name elsewhere, both suffixed with
   ハイブリッド) and a tag filter, `limit=30`, always within the selected
   bucket. Renders API `warnings` (degraded mode) above results; each hit
   shows title, source badge, score, snippet with `<mark>` highlights, and tag
-  chips. This is the *full* search; the modal below is the fast path.
+  chips. This is the *full* search, in the header nav; the modal below is the
+  fast path and hands its query and tag filter over to hybrid mode here.
 - **Sidebar document tree** — a sidebar section rendering
   `GET /api/docs/tree` for the selected bucket. Built by
   `buildDocTree` in core (mirrors `buildTagTree`): branch nodes come from
@@ -425,6 +437,42 @@ markdown-it (html: true, linkify)
   clicks — a left-click on an `<a href="/...">` without modifier keys is
   intercepted and routed through wouter instead of a full page load.
 
+## Accessibility
+
+The target is WCAG 2.2 AA, checked with axe-core on every screen and modal in
+both themes. `tests/client-a11y.test.tsx` guards the theme token contrast and
+the modal keyboard contract.
+
+- **Route changes.** When the pathname changes, `Layout` moves focus to `<main>`
+  (`tabIndex={-1}`, no ring), scrolls to the top unless the change came from
+  back/forward, and closes the narrow-window sidebar. Query-string changes
+  leave focus alone, so a filter field keeps it. The page's own later focus
+  (the untitled title on a new document) wins, because its data loads afterwards.
+- **Landmarks and location.** A skip link is the first tab stop. The header nav
+  marks the current route with `aria-current="page"` and its parent section on
+  a detail page with `aria-current="true"`; the sidebar trees mark the open
+  document. `/` has a visually hidden `<h1>`.
+- **Modals.** Tab wraps inside the panel, and the backdrop button is pointer-only
+  because Escape covers the keyboard. A panel with nothing focusable yet (the
+  recent list while loading) takes focus itself, so the keys it reads from the
+  window keep working. The arrow cursor in the search modal is announced through
+  a `role="status"` line, since focus stays in the input.
+- **Messages.** `.error` paragraphs carry `role="alert"` and the save status sits
+  in `role="status"`. Deletion stays on the native `confirm()`, which names the
+  document and how many backlinks become unresolved. Failures appear inline.
+- **Color and size.** Every text token reaches 4.5:1 on `--bg`, `--bg-panel`, and
+  `--bg-inset`. `--border-strong` is the 3:1 edge for form controls and graph
+  edges; `--border` stays for decorative hairlines. Pointer targets are at least
+  24px. Focus on a washed surface (editor blocks, the title, cursor rows) adds a
+  2px accent bar, because the wash alone is too faint.
+- **Narrow windows.** At 768px and below, which includes a desktop window at
+  200-400% zoom, the layout is one column, the header stops being sticky, and the
+  sidebar folds behind a menu button in its DOM position, so Tab order matches
+  the screen. Wide tables scroll inside `.table-wrap`.
+- **Graph.** The canvas responds only to a pointer, so `<details>` below it lists
+  the same nodes as links. Stale nodes add a dashed outline to the fade, and
+  `prefers-reduced-motion` settles the layout before drawing.
+
 ## Theming
 
 `theme.ts` stamps `data-theme="light" | "dark"` on `<html>`:
@@ -509,8 +557,10 @@ keeping the dependency surface small) and renders plain SVG DOM:
 - Node radius grows with `degree` (`4 + √degree × 2.5`); labels render for
   every node on small graphs (≤ 120 nodes), otherwise only for `degree ≥ 2`;
   every node gets a `<title>` tooltip.
-- **Stale nodes are dimmed** via the `stale` class (opacity in CSS), matching
-  the staleness surfaced on Home.
+- **Stale nodes are dimmed and dash-outlined** via the `stale` class in CSS,
+  matching the staleness surfaced on Home.
+- `forceX` / `forceY` pull weakly toward the middle, so repulsion cannot push
+  unlinked nodes off the canvas.
 - Zoom (wheel, 0.2×–5×, cursor-anchored), pan (background drag), and node
   drag (fixing `fx`/`fy` while dragging, with `alphaTarget` reheat) are
   **hand-rolled pointer-event handlers** on the SVG — hit-testing finds the
