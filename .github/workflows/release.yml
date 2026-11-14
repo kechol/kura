@@ -2,8 +2,8 @@ name: Release
 
 # Triggered by pushing a `vX.Y.Z` tag (the maintainer's manual step after the
 # `/release` bump PR merges). Cross-compiles every target, publishes a GitHub
-# Release with the archives + SHA256SUMS, and — for stable tags with the tap
-# token configured — pushes the generated Homebrew formula to kechol/homebrew-tap.
+# Release with the archives + SHA256SUMS, and — for stable tags with the tap's
+# GitHub App configured — pushes the generated Homebrew formula to kechol/homebrew-tap.
 # See docs: build-and-release.md.
 
 on:
@@ -19,10 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      # Job-level so the "Publish Homebrew formula" step's `if:` can read it.
-      # Empty when the secret is unset → the formula push is skipped, not failed.
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2.2.0
@@ -68,11 +64,26 @@ jobs:
           gh release create "$TAG" "${flags[@]}" \
             release/kura-*.tar.gz release/kura-*.zip release/SHA256SUMS.txt release/kura.rb
 
+      # Stable releases only, and only when the tap's GitHub App is configured;
+      # with the variable unset the formula push is skipped, not failed. The App
+      # is installed only on kechol/homebrew-tap, and the token can write that
+      # repository's contents and is revoked when the job ends.
+      - name: Create a homebrew-tap token
+        id: tap-token
+        if: ${{ steps.rel.outputs.prerelease == 'false' && vars.HOMEBREW_TAP_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.HOMEBREW_TAP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: kechol
+          repositories: homebrew-tap
+          permission-contents: write
+
       - name: Publish Homebrew formula
-        # Stable releases only, and only when the tap token is configured.
-        if: ${{ steps.rel.outputs.prerelease == 'false' && env.HOMEBREW_TAP_TOKEN != '' }}
+        if: ${{ steps.tap-token.outcome == 'success' }}
         env:
           TAG: ${{ github.ref_name }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
         run: |
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kechol/homebrew-tap.git" tap
           mkdir -p tap/Formula
