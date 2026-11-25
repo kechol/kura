@@ -72,7 +72,7 @@ jobs:
       - name: Create a homebrew-tap token
         id: tap-token
         if: ${{ steps.rel.outputs.prerelease == 'false' && vars.HOMEBREW_TAP_APP_CLIENT_ID != '' }}
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ vars.HOMEBREW_TAP_APP_CLIENT_ID }}
           private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
